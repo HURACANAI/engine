@@ -1,0 +1,14 @@
+environment: prod
+mode: live
+inherit_from: base
+s3:
+  endpoint_url: https://<r2-endpoint>
+  bucket: huracan-engine
+postgres:
+  dsn: postgresql+psycopg://huracan:<secure>@<neon-host>/<db>
+ray:
+  address: auto
+logging:
+  level: INFO
+notifications:
+  telegram_chat_id: <chat-id>
