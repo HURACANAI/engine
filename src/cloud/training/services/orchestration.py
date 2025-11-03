@@ -8,7 +8,7 @@ from dataclasses import asdict, dataclass
 from datetime import date, datetime, time, timezone, timedelta
 from io import BytesIO
 from statistics import median
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 import matplotlib
@@ -143,7 +143,7 @@ def _render_equity_curve(trades: pd.DataFrame, symbol: str) -> bytes:
     return buf.getvalue()
 
 
-def _compute_metrics(trades: pd.DataFrame, total_costs_bps: float, total_samples: int) -> Dict[str, float]:
+def _compute_metrics(trades: pd.DataFrame, total_costs_bps: float, total_samples: int) -> Dict[str, Any]:
     if trades.empty:
         return {
             "sharpe": 0.0,
@@ -162,7 +162,7 @@ def _compute_metrics(trades: pd.DataFrame, total_costs_bps: float, total_samples
     sharpe = (mean_pnl / std_pnl * np.sqrt(pnl.size)) if std_pnl > 0 else 0.0
     positives = pnl[pnl > 0].sum()
     negatives = pnl[pnl < 0].sum()
-    profit_factor = float(positives / abs(negatives)) if negatives < 0 else float("inf")
+    profit_factor = float(positives / max(abs(negatives), 1e-9))
     hit_rate = float((pnl > 0).mean()) if pnl.size else 0.0
     max_dd = _max_drawdown(trades["equity_curve"].to_numpy())
     turnover = (pnl.size / max(total_samples, 1)) * 100
@@ -254,7 +254,21 @@ class TrainingOrchestrator:
             notes=result.reason,
         )
         if result.metrics_payload:
-            self._registry.upsert_metrics(model_id=result.model_id, metrics=asdict(result.metrics_payload))
+            payload = {
+                "sharpe": result.metrics_payload.sharpe,
+                "profit_factor": result.metrics_payload.profit_factor,
+                "hit_rate": result.metrics_payload.hit_rate_pct / 100.0,
+                "max_dd_bps": result.metrics_payload.max_drawdown_bps,
+                "pnl_bps": result.metrics_payload.pnl_bps,
+                "trades_oos": result.metrics_payload.trades,
+                "turnover": result.metrics_payload.turnover_pct,
+                "fee_bps": result.metrics_payload.costs.get("fee_bps", 0.0),
+                "spread_bps": result.metrics_payload.costs.get("spread_bps", 0.0),
+                "slippage_bps": result.metrics_payload.costs.get("slippage_bps", 0.0),
+                "total_costs_bps": result.metrics_payload.costs.get("total_costs_bps", 0.0),
+                "validation_window": result.metrics_payload.validation_window,
+            }
+            self._registry.upsert_metrics(model_id=result.model_id, metrics=payload)
         self._registry.log_publish(
             model_id=result.model_id,
             symbol=result.symbol,
@@ -454,13 +468,13 @@ def _train_symbol(
         symbol=symbol,
         run_id=run_id,
         validation_window=validation_window,
-        sharpe=metrics["sharpe"],
-        profit_factor=metrics["profit_factor"],
-        hit_rate_pct=metrics["hit_rate"] * 100,
-        max_drawdown_bps=metrics["max_dd_bps"],
-        trades=metrics["trades_oos"],
-        turnover_pct=metrics["turnover"],
-        pnl_bps=metrics["pnl_bps"],
+        sharpe=float(metrics["sharpe"]),
+        profit_factor=float(metrics["profit_factor"]),
+        hit_rate_pct=float(metrics["hit_rate"]) * 100.0,
+        max_drawdown_bps=float(metrics["max_dd_bps"]),
+        trades=int(metrics["trades_oos"]),
+        turnover_pct=float(metrics["turnover"]),
+        pnl_bps=float(metrics["pnl_bps"]),
         costs={
             "fee_bps": costs.fee_bps,
             "spread_bps": costs.spread_bps,
@@ -578,24 +592,3 @@ def _train_symbol(
         model_params=hyperparams,
         feature_metadata={"columns": feature_cols, "feature_importances": feature_importances},
     )
-@dataclass
-class TrainingTaskResult:
-    symbol: str
-    costs: CostBreakdown
-    metrics: Dict[str, Any]
-    gate_results: Dict[str, bool]
-    published: bool
-    reason: str
-    artifacts: Optional[ArtifactBundle]
-    model_id: str
-    run_id: str
-    pilot_contract: Optional[PilotContract]
-    mechanic_contract: Optional[MechanicContract]
-    metrics_payload: Optional[MetricsPayload]
-    model_params: Dict[str, Any]
-    feature_metadata: Dict[str, Any]
-    artifacts_path: str = ""
-
-
-class TrainingOrchestrator:
-    """Coordinates per-coin jobs, retries, and teardown flow."""

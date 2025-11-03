@@ -55,6 +55,46 @@ class TradingState:
     current_drawdown_gbp: float
     trades_today: int
     win_rate_today: float
+    symbol: Optional[str] = None
+
+
+class RunningNormalizer:
+    """Keeps running statistics for feature normalization."""
+
+    def __init__(self, size: int, eps: float = 1e-6) -> None:
+        self._mean = torch.zeros(size, dtype=torch.float32)
+        self._var = torch.ones(size, dtype=torch.float32)
+        self._count = eps
+        self._eps = eps
+
+    def _update(self, batch: torch.Tensor) -> None:
+        if batch.numel() == 0:
+            return
+        batch_mean = batch.mean(dim=0)
+        batch_var = batch.var(dim=0, unbiased=False)
+        batch_count = batch.shape[0]
+
+        delta = batch_mean - self._mean
+        total_count = self._count + batch_count
+
+        new_mean = self._mean + delta * batch_count / total_count
+        m_a = self._var * self._count
+        m_b = batch_var * batch_count
+        m2 = m_a + m_b + (delta.pow(2) * self._count * batch_count / total_count)
+        new_var = m2 / total_count
+
+        self._mean = new_mean.detach()
+        self._var = torch.clamp(new_var.detach(), min=self._eps)
+        self._count = float(total_count)
+
+    def normalize(self, batch: torch.Tensor, update_stats: bool = True) -> torch.Tensor:
+        input_batch = batch if batch.dim() > 1 else batch.unsqueeze(0)
+        if update_stats:
+            self._update(input_batch.cpu())
+        mean = self._mean.to(input_batch.device)
+        var = self._var.to(input_batch.device)
+        normalized = (input_batch - mean) / torch.sqrt(var + self._eps)
+        return normalized if batch.dim() > 1 else normalized.squeeze(0)
 
 
 class ActorCritic(nn.Module):
@@ -78,7 +118,6 @@ class ActorCritic(nn.Module):
             nn.Linear(hidden_size, hidden_size // 2),
             nn.ReLU(),
             nn.Linear(hidden_size // 2, n_actions),
-            nn.Softmax(dim=-1),
         )
 
         # Value head (critic)
@@ -93,13 +132,13 @@ class ActorCritic(nn.Module):
         Forward pass.
 
         Returns:
-            action_probs: Probability distribution over actions
+            action_logits: Un-normalized logits for each action
             state_value: Estimated value of the state
         """
         features = self.shared(state)
-        action_probs = self.policy(features)
+        action_logits = self.policy(features)
         state_value = self.value(features)
-        return action_probs, state_value
+        return action_logits, state_value
 
 
 @dataclass
@@ -113,6 +152,13 @@ class PPOConfig:
     max_grad_norm: float = 0.5
     n_epochs: int = 10  # Epochs per update
     batch_size: int = 64
+    gae_lambda: float = 0.95
+    min_pattern_reliability: float = 0.15
+    large_position_penalty: float = 2.0
+    inaction_penalty: float = 1.0
+    drawdown_exit_trigger_bps: float = 5.0
+    drawdown_exit_boost: float = 2.0
+    action_temperature: float = 1.0
 
 
 class RLTradingAgent:
@@ -142,14 +188,16 @@ class RLTradingAgent:
         # Initialize network
         self.network = ActorCritic(state_dim, self.n_actions).to(self.device)
         self.optimizer = optim.Adam(self.network.parameters(), lr=self.config.learning_rate)
+        self.normalizer = RunningNormalizer(state_dim)
 
         # Experience buffer
-        self.states: List[np.ndarray] = []
+        self.states: List[torch.Tensor] = []
         self.actions: List[int] = []
         self.rewards: List[float] = []
-        self.log_probs: List[float] = []
-        self.values: List[float] = []
+        self.log_probs: List[torch.Tensor] = []
+        self.values: List[torch.Tensor] = []
         self.dones: List[bool] = []
+        self.bootstrap_value: float = 0.0
 
         logger.info("rl_agent_initialized", state_dim=state_dim, n_actions=self.n_actions)
 
@@ -190,29 +238,65 @@ class RLTradingAgent:
             log_prob: Log probability of the action (for training)
         """
         state_array = self.state_to_tensor(state)
-        state_tensor = torch.FloatTensor(state_array).unsqueeze(0).to(self.device)
+        state_tensor = torch.from_numpy(state_array).to(self.device)
+        normalized_state = self.normalizer.normalize(state_tensor, update_stats=not deterministic)
+        network_input = normalized_state.unsqueeze(0)
 
         with torch.no_grad():
-            action_probs, state_value = self.network(state_tensor)
+            logits, state_value = self.network(network_input)
+
+        logits = logits.squeeze(0) / max(self.config.action_temperature, 1e-6)
+        logits = self._apply_contextual_bias(logits, state)
+        dist = Categorical(logits=logits)
 
         if deterministic:
-            action_idx = torch.argmax(action_probs, dim=-1).item()
-            log_prob = torch.log(action_probs[0, action_idx]).item()
+            action_idx = torch.argmax(logits).item()
+            action_tensor = torch.tensor(action_idx, device=self.device)
         else:
-            dist = Categorical(action_probs)
             action_tensor = dist.sample()
             action_idx = action_tensor.item()
-            log_prob = dist.log_prob(action_tensor).item()
 
+        log_prob_tensor = dist.log_prob(action_tensor)
         action = TradingAction(action_idx)
 
         # Store for training
-        self.states.append(state_array)
+        self.states.append(normalized_state.detach().clone().to(self.device))
         self.actions.append(action_idx)
-        self.log_probs.append(log_prob)
-        self.values.append(state_value.item())
+        self.log_probs.append(log_prob_tensor.detach())
+        self.values.append(state_value.squeeze().detach())
 
-        return action, log_prob
+        return action, float(log_prob_tensor.item())
+
+    def _apply_contextual_bias(self, logits: torch.Tensor, state: TradingState) -> torch.Tensor:
+        """Mask invalid actions and inject context-aware biases."""
+        adjusted = logits.clone()
+
+        # Mask actions that are invalid given position state
+        mask = torch.zeros_like(adjusted, dtype=torch.bool)
+        if state.has_position:
+            mask[TradingAction.ENTER_LONG_SMALL.value] = True
+            mask[TradingAction.ENTER_LONG_NORMAL.value] = True
+            mask[TradingAction.ENTER_LONG_LARGE.value] = True
+        else:
+            mask[TradingAction.EXIT_POSITION.value] = True
+            mask[TradingAction.HOLD_POSITION.value] = True
+
+        adjusted[mask] = -1e9
+
+        # Reliability-aware penalties to curb oversized entries
+        reliability = float(state.similar_pattern_reliability)
+        reliability = max(0.0, min(reliability, 1.0))
+        if reliability < self.config.min_pattern_reliability:
+            penalty = (self.config.min_pattern_reliability - reliability) * self.config.large_position_penalty
+            adjusted[TradingAction.ENTER_LONG_LARGE.value] -= penalty
+        else:
+            adjusted[TradingAction.DO_NOTHING.value] -= (1.0 - reliability) * self.config.inaction_penalty
+
+        # Encourage exits when underwater beyond configured drawdown
+        if state.has_position and state.unrealized_pnl_bps <= -self.config.drawdown_exit_trigger_bps:
+            adjusted[TradingAction.EXIT_POSITION.value] += self.config.drawdown_exit_boost
+
+        return adjusted
 
     def store_reward(self, reward: float, done: bool) -> None:
         """Store reward for the last action."""

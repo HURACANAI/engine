@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import json
+from decimal import Decimal
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
@@ -118,3 +119,38 @@ class ModelRegistry:
                 connection.execute(statement, payload)
         except SQLAlchemyError as exc:
             raise RuntimeError("Failed to persist registry payload") from exc
+
+    def fetch_recent_metrics(self, symbol: str, limit: int = 5) -> List[Dict[str, Any]]:
+        statement = text(
+            """
+            SELECT
+                mm.sharpe,
+                mm.profit_factor,
+                mm.hit_rate,
+                mm.max_dd_bps,
+                mm.pnl_bps,
+                mm.trades_oos,
+                mm.turnover,
+                mm.total_costs_bps
+            FROM model_metrics mm
+            INNER JOIN models m ON m.model_id = mm.model_id
+            WHERE m.symbol = :symbol
+            ORDER BY m.created_at DESC
+            LIMIT :limit
+            """
+        )
+        try:
+            with self._engine.begin() as connection:
+                result = connection.execute(statement, {"symbol": symbol, "limit": limit})
+                rows = []
+                for row in result.mappings().all():
+                    parsed: Dict[str, Any] = {}
+                    for key, value in row.items():
+                        if isinstance(value, Decimal):
+                            parsed[key] = float(value)
+                        else:
+                            parsed[key] = value
+                    rows.append(parsed)
+                return rows
+        except SQLAlchemyError:
+            return []

@@ -1,0 +1,58 @@
+# Health Monitoring Configuration
+
+monitoring:
+  enabled: true
+  check_interval_seconds: 300  # 5 minutes
+
+  # Statistical anomaly detection thresholds
+  anomaly_detection:
+    win_rate_stddev_threshold: 2.0  # Std deviations below baseline
+    profit_stddev_threshold: 2.5
+    trade_volume_drop_pct: 0.5  # 50% drop triggers alert
+    min_trades_for_analysis: 30
+    baseline_window_days: 7
+    comparison_window_hours: 24
+
+  # Pattern health monitoring
+  pattern_health:
+    min_win_rate_threshold: 0.45  # 45% minimum
+    degradation_threshold_pct: 0.15  # 15% decline triggers alert
+    min_trades_for_assessment: 20
+    comparison_window_days: 7
+    baseline_window_days: 30
+
+  # Error monitoring
+  error_monitoring:
+    error_spike_multiplier: 3.0  # 3x baseline rate
+    baseline_window_hours: 24
+    comparison_window_minutes: 60
+    critical_error_types:
+      - DATABASE_CONNECTION_ERROR
+      - EXCHANGE_API_ERROR
+      - TRADING_HALTED
+      - MEMORY_ERROR
+
+  # Alert routing and delivery
+  alerts:
+    critical_immediate: true  # Send critical alerts immediately
+    warning_digest_enabled: true
+    warning_digest_interval_minutes: 60  # Hourly
+    daily_report_enabled: true
+    daily_report_time_utc: "08:00"  # 8 AM UTC
+    deduplication_window_minutes: 60
+
+  # Auto-remediation
+  auto_remediation:
+    enabled: true
+    dry_run: false  # Set true for testing
+    pause_failing_patterns: true
+    min_pattern_failure_threshold: 0.40  # Pause if < 40% win rate
+    log_context_on_anomalies: true
+
+  # System status reporting
+  system_status:
+    startup_check: true
+    resource_monitoring: true
+    service_health_checks: true
+    feature_detection: true
+    activity_tracking: true
