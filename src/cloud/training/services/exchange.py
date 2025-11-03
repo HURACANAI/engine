@@ -94,5 +94,3 @@ class ExchangeClient:
 
 	def parse_exchange_timestamp(self, ms_timestamp: int) -> datetime:
 		return datetime.fromtimestamp(ms_timestamp / 1_000, tz=timezone.utc)
-+
-*** End Patch
