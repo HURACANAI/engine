@@ -245,6 +245,9 @@ class ShadowTrader:
             profit_gbp=trade_result.net_profit_gbp,
             missed_profit_gbp=trade_result.missed_profit_gbp,
             hold_duration_minutes=trade_result.hold_duration_minutes,
+            position_size_gbp=position_size_gbp,
+            costs=trade_result.costs,
+            state=state,
         )
 
         self.agent.store_reward(reward=reward, done=True)

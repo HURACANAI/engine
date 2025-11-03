@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
@@ -13,7 +14,8 @@ import torch.optim as optim
 from torch.distributions import Categorical
 import structlog
 
-from ..memory.store import MemoryStore, PatternStats
+from ..memory.store import MemoryStore
+from ..services.costs import CostBreakdown
 
 logger = structlog.get_logger(__name__)
 
@@ -192,6 +194,7 @@ class RLTradingAgent:
 
         # Experience buffer
         self.states: List[torch.Tensor] = []
+        self.state_context: List[TradingState] = []
         self.actions: List[int] = []
         self.rewards: List[float] = []
         self.log_probs: List[torch.Tensor] = []
@@ -261,6 +264,7 @@ class RLTradingAgent:
 
         # Store for training
         self.states.append(normalized_state.detach().clone().to(self.device))
+        self.state_context.append(copy.deepcopy(state))
         self.actions.append(action_idx)
         self.log_probs.append(log_prob_tensor.detach())
         self.values.append(state_value.squeeze().detach())
@@ -303,75 +307,76 @@ class RLTradingAgent:
         self.rewards.append(reward)
         self.dones.append(done)
 
-    def compute_returns(self) -> np.ndarray:
-        """Compute discounted returns for each timestep."""
-        returns = []
-        R = 0.0
-        for reward, done in zip(reversed(self.rewards), reversed(self.dones)):
-            if done:
-                R = 0.0
-            R = reward + self.config.gamma * R
-            returns.insert(0, R)
-        return np.array(returns, dtype=np.float32)
-
-    def update(self) -> Dict[str, float]:
-        """
-        Update policy using PPO algorithm.
-
-        Returns:
-            metrics: Training metrics (loss, etc.)
-        """
+    def update(self, next_state: Optional[TradingState] = None) -> Dict[str, float]:
+        """Update policy using PPO with GAE advantages and contextual logits."""
         if len(self.states) < self.config.batch_size:
             logger.warning("insufficient_experience", size=len(self.states))
             return {}
 
-        # Convert to tensors
-        states_tensor = torch.FloatTensor(np.array(self.states)).to(self.device)
-        actions_tensor = torch.LongTensor(self.actions).to(self.device)
-        old_log_probs_tensor = torch.FloatTensor(self.log_probs).to(self.device)
-        returns = self.compute_returns()
-        returns_tensor = torch.FloatTensor(returns).to(self.device)
+        if next_state is not None:
+            next_array = self.state_to_tensor(next_state)
+            next_tensor = torch.from_numpy(next_array).to(self.device)
+            normalized_next = self.normalizer.normalize(next_tensor, update_stats=False)
+            with torch.no_grad():
+                _, next_value = self.network(normalized_next.unsqueeze(0))
+            self.bootstrap_value = float(next_value.squeeze().item())
+        else:
+            self.bootstrap_value = 0.0
 
-        # Normalize returns
-        returns_tensor = (returns_tensor - returns_tensor.mean()) / (returns_tensor.std() + 1e-8)
+        states_tensor = torch.stack(self.states).to(self.device)
+        actions_tensor = torch.tensor(self.actions, dtype=torch.long, device=self.device)
+        old_log_probs_tensor = torch.stack(self.log_probs).to(self.device).detach()
+        rewards_tensor = torch.tensor(self.rewards, dtype=torch.float32, device=self.device)
+        dones_tensor = torch.tensor(self.dones, dtype=torch.float32, device=self.device)
+        values_tensor = torch.stack(self.values).to(self.device)
 
-        # Training loop
+        value_targets = torch.cat(
+            [values_tensor, torch.tensor([self.bootstrap_value], dtype=torch.float32, device=self.device)],
+            dim=0,
+        )
+
+        advantages = torch.zeros_like(rewards_tensor, device=self.device)
+        gae = torch.tensor(0.0, device=self.device)
+        for idx in reversed(range(rewards_tensor.shape[0])):
+            mask = 1.0 - dones_tensor[idx]
+            delta = rewards_tensor[idx] + self.config.gamma * value_targets[idx + 1] * mask - value_targets[idx]
+            gae = delta + self.config.gamma * self.config.gae_lambda * mask * gae
+            advantages[idx] = gae
+
+        returns_tensor = advantages + value_targets[:-1]
+        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+        advantages_detached = advantages.detach()
+        returns_tensor = returns_tensor.detach()
+
         total_policy_loss = 0.0
         total_value_loss = 0.0
         total_entropy = 0.0
         n_updates = 0
 
         for _ in range(self.config.n_epochs):
-            # Forward pass
-            action_probs, state_values = self.network(states_tensor)
-            state_values = state_values.squeeze()
+            logits_batch, state_values = self.network(states_tensor)
+            adjusted_logits = torch.stack(
+                [
+                    self._apply_contextual_bias(logit_vec, ctx)
+                    for logit_vec, ctx in zip(logits_batch, self.state_context)
+                ]
+            )
 
-            # Calculate advantages
-            advantages = returns_tensor - state_values.detach()
-
-            # Policy loss (PPO clipped objective)
-            dist = Categorical(action_probs)
+            dist = Categorical(logits=adjusted_logits)
             new_log_probs = dist.log_prob(actions_tensor)
             ratio = torch.exp(new_log_probs - old_log_probs_tensor)
 
-            surr1 = ratio * advantages
-            surr2 = torch.clamp(ratio, 1.0 - self.config.clip_epsilon, 1.0 + self.config.clip_epsilon) * advantages
+            surr1 = ratio * advantages_detached
+            surr2 = torch.clamp(ratio, 1.0 - self.config.clip_epsilon, 1.0 + self.config.clip_epsilon) * advantages_detached
             policy_loss = -torch.min(surr1, surr2).mean()
 
-            # Value loss
-            value_loss = nn.MSELoss()(state_values, returns_tensor)
+            value_pred = state_values.squeeze()
+            value_loss = nn.MSELoss()(value_pred, returns_tensor)
 
-            # Entropy bonus (encourage exploration)
             entropy = dist.entropy().mean()
 
-            # Total loss
-            loss = (
-                policy_loss
-                + self.config.value_coef * value_loss
-                - self.config.entropy_coef * entropy
-            )
+            loss = policy_loss + self.config.value_coef * value_loss - self.config.entropy_coef * entropy
 
-            # Optimize
             self.optimizer.zero_grad()
             loss.backward()
             nn.utils.clip_grad_norm_(self.network.parameters(), self.config.max_grad_norm)
@@ -382,13 +387,14 @@ class RLTradingAgent:
             total_entropy += entropy.item()
             n_updates += 1
 
-        # Clear buffers
         self.states.clear()
+        self.state_context.clear()
         self.actions.clear()
         self.rewards.clear()
         self.log_probs.clear()
         self.values.clear()
         self.dones.clear()
+        self.bootstrap_value = 0.0
 
         metrics = {
             "policy_loss": total_policy_loss / n_updates,
@@ -421,47 +427,45 @@ class RLTradingAgent:
         profit_gbp: float,
         missed_profit_gbp: float,
         hold_duration_minutes: int,
+        *,
+        position_size_gbp: float,
+        costs: Optional[CostBreakdown] = None,
+        state: Optional[TradingState] = None,
         target_hold_minutes: int = 30,
     ) -> float:
-        """
-        Calculate reward for an action.
+        """Calculate shaped reward incorporating costs, reliability, and time efficiency."""
 
-        Reward components:
-        1. Actual P&L (primary signal)
-        2. Penalty for exiting too early (missed profit)
-        3. Penalty for holding too long (opportunity cost)
-        4. Penalty for excessive drawdown
+        notional = max(position_size_gbp, 1e-6)
+        pnl_bps = (profit_gbp / notional) * 10_000.0
+        missed_bps = (missed_profit_gbp / notional) * 10_000.0
+        reward = pnl_bps
 
-        Args:
-            action: Action taken
-            profit_gbp: Realized profit in GBP
-            missed_profit_gbp: Additional profit if held to optimal exit
-            hold_duration_minutes: How long position was held
-            target_hold_minutes: Target holding period
+        if costs:
+            reward -= costs.total_costs_bps
 
-        Returns:
-            reward: Scalar reward value
-        """
-        # Base reward: actual profit
-        reward = profit_gbp
+        if missed_bps > 5.0:
+            reward -= 0.5 * missed_bps
 
-        # Penalty for early exit (if we missed significant profit)
-        if missed_profit_gbp > 1.0:  # More than £1 missed
-            early_exit_penalty = -missed_profit_gbp * 0.5  # 50% of missed profit
-            reward += early_exit_penalty
-
-        # Penalty for holding too long (opportunity cost)
         if hold_duration_minutes > target_hold_minutes * 2:
-            hold_penalty = -0.5  # £0.50 penalty
-            reward += hold_penalty
+            reward -= 2.0
+        elif profit_gbp > 0.0 and hold_duration_minutes <= target_hold_minutes:
+            reward += 1.0
 
-        # Bonus for efficient trades (quick wins)
-        if profit_gbp > 1.0 and hold_duration_minutes < target_hold_minutes:
-            efficiency_bonus = 0.25
-            reward += efficiency_bonus
-
-        # Small penalty for doing nothing (encourage action)
         if action == TradingAction.DO_NOTHING:
-            reward -= 0.01
+            reward -= self.config.inaction_penalty
 
-        return reward
+        if state is not None:
+            reliability = float(state.similar_pattern_reliability)
+            reward += reliability * 5.0
+            if reliability < self.config.min_pattern_reliability:
+                reward -= (self.config.min_pattern_reliability - reliability) * self.config.large_position_penalty
+
+            if state.has_position and state.unrealized_pnl_bps <= -self.config.drawdown_exit_trigger_bps:
+                reward -= self.config.drawdown_exit_boost
+
+        if action == TradingAction.ENTER_LONG_LARGE and state is not None:
+            reliability = float(state.similar_pattern_reliability)
+            if reliability < self.config.min_pattern_reliability:
+                reward -= self.config.large_position_penalty * 5.0
+
+        return float(reward)
