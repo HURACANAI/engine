@@ -1,0 +1,66 @@
+[tool.poetry]
+name = "engine"
+version = "0.1.0"
+description = "Huracan Engine cloud training box"
+authors = ["Huracan Systems <ops@huracan.systems>"]
+license = "Proprietary"
+readme = "README.md"
+packages = [{ include = "cloud", from = "src" }, { include = "shared", from = "src" }]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+polars = "^0.19.0"
+pyarrow = "^15.0.0"
+pandas = "^2.2.0"
+duckdb = "^0.10.0"
+lightgbm = "^4.1.0"
+xgboost = "^2.0.0"
+ray = { version = "^2.9.0", extras = ["default"] }
+apscheduler = "^3.10.4"
+sqlalchemy = "^2.0.23"
+alembic = "^1.12.0"
+boto3 = "^1.28.0"
+s3fs = "^2023.10.0"
+pydantic = "^2.4.0"
+pydantic-settings = "^2.0.3"
+structlog = "^23.1.0"
+prometheus-client = "^0.17.1"
+great-expectations = "^0.18.10"
+tenacity = "^8.2.3"
+ccxt = "^4.1.0"
+requests = "^2.31.0"
+python-telegram-bot = "^20.5"
+numpy = "^1.26.0"
+scipy = "^1.11.0"
+matplotlib = "^3.8.0"
+
+[tool.poetry.extras]
+dl = ["torch"]
+
+[tool.poetry.group.dev.dependencies]
+ruff = "^0.1.5"
+mypy = "^1.6.1"
+pytest = "^7.4.2"
+pytest-cov = "^4.1.0"
+types-requests = "^2.31.0.6"
+
+[tool.poetry.scripts]
+cloud-training-daily-retrain = "cloud.training.pipelines.daily_retrain:run_daily_retrain"
+
+[build-system]
+requires = ["poetry-core>=1.6.1"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+strict_optional = true
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = "-ra -q"
+testpaths = ["tests"]
