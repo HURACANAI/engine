@@ -30,9 +30,56 @@ class WalkForwardSettings(BaseModel):
     min_trades: int = 300
 
 
+class RLAgentSettings(BaseModel):
+    enabled: bool = True
+    learning_rate: float = 0.0003
+    gamma: float = 0.99
+    epsilon: float = 0.2
+    clip_epsilon: float = 0.2
+    entropy_coef: float = 0.01
+    n_epochs: int = 10
+    epochs_per_update: int = 10
+    batch_size: int = 64
+    hidden_dim: int = 256
+    state_dim: int = 80
+    device: str = "cpu"
+
+
+class ShadowTradingSettings(BaseModel):
+    enabled: bool = True
+    position_size_gbp: float = 1000.0
+    stop_loss_bps: int = 50
+    take_profit_bps: int = 20
+    max_hold_hours: int = 24
+    max_hold_minutes: int = 120
+    min_confidence_threshold: float = 0.52
+
+
+class MemorySettings(BaseModel):
+    vector_dim: int = 128
+    similarity_threshold: float = 0.7
+    max_similar_patterns: int = 10
+    pattern_min_trades: int = 5
+
+
+class MonitoringSettings(BaseModel):
+    enabled: bool = True
+    check_interval_seconds: int = 300
+    win_rate_stddev_threshold: float = 2.0
+    profit_stddev_threshold: float = 2.0
+    volume_stddev_threshold: float = 2.5
+    auto_remediation_enabled: bool = True
+    pause_failing_patterns: bool = True
+    pattern_failure_threshold: float = 0.45
+
+
 class TrainingSettings(BaseModel):
     window_days: int = 150
     walk_forward: WalkForwardSettings = Field(default_factory=WalkForwardSettings)
+    rl_agent: RLAgentSettings = Field(default_factory=RLAgentSettings)
+    shadow_trading: ShadowTradingSettings = Field(default_factory=ShadowTradingSettings)
+    memory: MemorySettings = Field(default_factory=MemorySettings)
+    monitoring: MonitoringSettings = Field(default_factory=MonitoringSettings)
 
 
 class CostSettings(BaseModel):
@@ -115,6 +162,7 @@ class EngineSettings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         env_nested_delimiter="__",
+        extra="ignore",
     )
 
     @classmethod

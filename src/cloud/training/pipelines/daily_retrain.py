@@ -14,7 +14,10 @@ from ..services.model_registry import ModelRegistry, RegistryConfig
 from ..services.notifications import NotificationClient
 from ..services.orchestration import TrainingOrchestrator
 from ..services.universe import UniverseSelector
+from ..services.artifacts import ArtifactPublisher
 from ..datasets.data_loader import MarketMetadataLoader
+from ..monitoring.health_monitor import HealthMonitorOrchestrator
+from ..monitoring.system_status import SystemStatusReporter
 
 
 def configure_logging() -> None:
@@ -78,19 +81,81 @@ def run_daily_retrain() -> None:
     model_registry = ModelRegistry(RegistryConfig(dsn=settings.postgres.dsn))
 
     notifier = NotificationClient(settings.notifications)
+    artifact_publisher = ArtifactPublisher(settings.artifacts)
+
+    # Initialize health monitoring if enabled
+    health_monitor = None
+    if settings.training.monitoring.enabled:
+        logger.info(
+            "===== INITIALIZING HEALTH MONITORING =====",
+            check_interval=settings.training.monitoring.check_interval_seconds,
+        )
+        health_monitor = HealthMonitorOrchestrator(settings=settings, dsn=settings.postgres.dsn)
+
+        # Run initial system status check
+        logger.info("===== STARTUP STATUS CHECK =====", operation="STARTUP_HEALTH_CHECK")
+        status_reporter = SystemStatusReporter(dsn=settings.postgres.dsn)
+        startup_status = status_reporter.generate_full_report()
+        logger.info(
+            "startup_status_summary",
+            overall_status=startup_status.get("overall_status", "UNKNOWN"),
+            services_healthy=startup_status.get("services_healthy", 0),
+            services_total=startup_status.get("services_total", 0),
+        )
+    else:
+        logger.info("health_monitoring_disabled", reason="monitoring.enabled=false")
+
     orchestrator = TrainingOrchestrator(
         settings=settings,
         exchange_client=exchange_client,
         universe_selector=universe_selector,
         model_registry=model_registry,
         notifier=notifier,
+        artifact_publisher=artifact_publisher,
     )
 
     try:
+        # Run pre-training health check
+        if health_monitor:
+            logger.info("===== PRE-TRAINING HEALTH CHECK =====")
+            pre_alerts = health_monitor.run_health_check()
+            logger.info(
+                "pre_training_health_check_complete",
+                alerts=len(pre_alerts),
+                critical=sum(1 for a in pre_alerts if a.severity.value == "CRITICAL"),
+                warning=sum(1 for a in pre_alerts if a.severity.value == "WARNING"),
+            )
+
+        # Run main training
         orchestrator.run()
         logger.info("run_complete")
+
+        # Run post-training health check
+        if health_monitor:
+            logger.info("===== POST-TRAINING HEALTH CHECK =====")
+            post_alerts = health_monitor.run_health_check()
+            logger.info(
+                "post_training_health_check_complete",
+                alerts=len(post_alerts),
+                critical=sum(1 for a in post_alerts if a.severity.value == "CRITICAL"),
+                warning=sum(1 for a in post_alerts if a.severity.value == "WARNING"),
+            )
+
     except Exception as exc:  # noqa: BLE001
         logger.exception("run_failed", error=str(exc))
+
+        # Run emergency health check on failure
+        if health_monitor:
+            logger.info("===== EMERGENCY HEALTH CHECK (FAILURE) =====")
+            try:
+                emergency_alerts = health_monitor.run_health_check()
+                logger.info(
+                    "emergency_health_check_complete",
+                    alerts=len(emergency_alerts),
+                )
+            except Exception as health_exc:  # noqa: BLE001
+                logger.exception("emergency_health_check_failed", error=str(health_exc))
+
         raise
     finally:
         if ray.is_initialized():

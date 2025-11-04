@@ -90,7 +90,29 @@ class ExchangeClient:
 		limit: Optional[int] = None,
 		params: Optional[Dict[str, Any]] = None,
 	) -> list[list[Any]]:
-		return self._client.fetch_ohlcv(symbol, timeframe=timeframe, since=since, limit=limit, params=params)
+		# Fix: Ensure params is always a dict, never None
+		safe_params = params if params is not None else {}
+
+		# Add retry logic with exponential backoff
+		max_retries = 3
+		for attempt in range(max_retries):
+			try:
+				return self._client.fetch_ohlcv(
+					symbol,
+					timeframe=timeframe,
+					since=since,
+					limit=limit,
+					params=safe_params
+				)
+			except Exception as e:
+				if attempt == max_retries - 1:
+					# Last attempt failed, raise the error
+					raise
+				# Exponential backoff: 1s, 2s, 4s
+				import time
+				wait_time = 2 ** attempt
+				print(f"⚠️  OHLCV fetch failed (attempt {attempt + 1}/{max_retries}), retrying in {wait_time}s: {e}")
+				time.sleep(wait_time)
 
 	def parse_exchange_timestamp(self, ms_timestamp: int) -> datetime:
 		return datetime.fromtimestamp(ms_timestamp / 1_000, tz=timezone.utc)

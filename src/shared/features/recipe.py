@@ -11,8 +11,8 @@ import polars as pl
 
 
 def _rolling_zscore(column: pl.Expr, window: int) -> pl.Expr:
-    mean = column.rolling_mean(window, min_periods=max(1, window // 2))
-    std = column.rolling_std(window, min_periods=max(1, window // 2))
+    mean = column.rolling_mean(window_size=window, min_periods=max(1, window // 2))
+    std = column.rolling_std(window_size=window, min_periods=max(1, window // 2))
     return ((column - mean) / std).fill_null(0.0).alias(f"zscore_{window}")
 
 
@@ -39,6 +39,85 @@ def _atr(high: pl.Expr, low: pl.Expr, close: pl.Expr, period: int = 14) -> pl.Ex
     return tr.ewm_mean(alpha=1.0 / period, adjust=False).alias("atr")
 
 
+def _adx(high: pl.Expr, low: pl.Expr, close: pl.Expr, period: int = 14) -> pl.Expr:
+    """
+    Calculate Average Directional Index (ADX).
+    Measures trend strength (0-100), where >25 indicates strong trend.
+    """
+    prev_high = high.shift(1)
+    prev_low = low.shift(1)
+    prev_close = close.shift(1)
+
+    # Calculate +DM and -DM
+    plus_dm = pl.when((high - prev_high) > (prev_low - low)).then(
+        pl.max_horizontal(high - prev_high, pl.lit(0.0))
+    ).otherwise(0.0)
+
+    minus_dm = pl.when((prev_low - low) > (high - prev_high)).then(
+        pl.max_horizontal(prev_low - low, pl.lit(0.0))
+    ).otherwise(0.0)
+
+    # Calculate True Range
+    tr = pl.max_horizontal(high - low, (high - prev_close).abs(), (low - prev_close).abs())
+
+    # Smooth with EMA
+    alpha = 1.0 / period
+    atr_smooth = tr.ewm_mean(alpha=alpha, adjust=False)
+    plus_di = (plus_dm.ewm_mean(alpha=alpha, adjust=False) / (atr_smooth + 1e-9)) * 100
+    minus_di = (minus_dm.ewm_mean(alpha=alpha, adjust=False) / (atr_smooth + 1e-9)) * 100
+
+    # Calculate DX and ADX
+    dx = ((plus_di - minus_di).abs() / (plus_di + minus_di + 1e-9)) * 100
+    adx = dx.ewm_mean(alpha=alpha, adjust=False)
+
+    return adx.alias("adx")
+
+
+def _bollinger_bands(close: pl.Expr, period: int = 20, std_dev: float = 2.0) -> tuple[pl.Expr, pl.Expr, pl.Expr]:
+    """
+    Calculate Bollinger Bands and width.
+    Returns (upper_band, lower_band, bb_width_pct)
+    """
+    ma = close.rolling_mean(window_size=period, min_periods=period // 2)
+    std = close.rolling_std(window_size=period, min_periods=period // 2)
+
+    upper_band = (ma + std_dev * std).alias("bb_upper")
+    lower_band = (ma - std_dev * std).alias("bb_lower")
+    bb_width = ((upper_band - lower_band) / ma).alias("bb_width")
+
+    return upper_band, lower_band, bb_width
+
+
+def _volatility_regime(close: pl.Expr, short_window: int = 10, long_window: int = 50) -> pl.Expr:
+    """
+    Calculate volatility regime indicator.
+    Returns ratio of short-term volatility to long-term volatility.
+    > 1.5 = high volatility regime, < 0.7 = low volatility regime.
+    """
+    short_vol = close.pct_change().rolling_std(window_size=short_window, min_periods=short_window // 2)
+    long_vol = close.pct_change().rolling_std(window_size=long_window, min_periods=long_window // 2)
+
+    # Ratio of short-term to long-term volatility
+    vol_regime = (short_vol / (long_vol + 1e-9)).alias("volatility_regime")
+
+    return vol_regime
+
+
+def _price_position_in_range(high: pl.Expr, low: pl.Expr, close: pl.Expr, window: int = 14) -> pl.Expr:
+    """
+    Calculate where price is positioned within recent range.
+    0 = at bottom of range, 1 = at top of range.
+    """
+    rolling_high = high.rolling_max(window_size=window, min_periods=window // 2)
+    rolling_low = low.rolling_min(window_size=window, min_periods=window // 2)
+
+    # Position as percentage of range
+    range_size = rolling_high - rolling_low
+    position = ((close - rolling_low) / (range_size + 1e-9)).clip(0.0, 1.0)
+
+    return position.alias("price_position_in_range")
+
+
 @dataclass
 class FeatureRecipe:
     """Produces momentum, volatility, liquidity, and temporal features."""
@@ -58,9 +137,12 @@ class FeatureRecipe:
                 pl.col("close").pct_change(n).alias(f"ret_{n}") for n in self.momentum_windows
             ]
         )
-        zscore_features = [
-            _rolling_zscore(pl.col(f"ret_{n}"), window=60) for n in self.momentum_windows
-        ]
+        zscore_features = []
+        for n in self.momentum_windows:
+            mean = pl.col(f"ret_{n}").rolling_mean(window_size=60, min_periods=30)
+            std = pl.col(f"ret_{n}").rolling_std(window_size=60, min_periods=30)
+            zscore = ((pl.col(f"ret_{n}") - mean) / std).fill_null(0.0).alias(f"zscore_ret_{n}")
+            zscore_features.append(zscore)
         ema_features = []
         for fast, slow in self.ema_pairs:
             ema_fast = _ema(pl.col("close"), fast)
@@ -70,11 +152,13 @@ class FeatureRecipe:
         rsi_features = [_rsi(pl.col("close"), period) for period in self.rsi_periods]
 
         volatility_features = [
-            pl.col("close").pct_change().rolling_std(window, min_periods=window // 2).alias(f"realized_sigma_{window}")
+            pl.col("close").pct_change().rolling_std(window_size=window, min_periods=window // 2).alias(f"realized_sigma_{window}")
             for window in self.volatility_windows
         ]
 
         atr_feature = _atr(pl.col("high"), pl.col("low"), pl.col("close"))
+        adx_feature = _adx(pl.col("high"), pl.col("low"), pl.col("close"))
+        bb_upper, bb_lower, bb_width = _bollinger_bands(pl.col("close"), period=20, std_dev=2.0)
         range_feature = ((pl.col("high") - pl.col("low")) / pl.col("close")).alias("range_pct")
 
         typical_price = (pl.col("high") + pl.col("low") + pl.col("close")) / 3.0
@@ -84,20 +168,30 @@ class FeatureRecipe:
         drift = ((pl.col("close") - vwap) / vwap).alias("close_to_vwap")
 
         slope_feature = (
-            pl.col("close").pct_change().rolling_mean(window=15, min_periods=10).alias("micro_trend")
+            pl.col("close").pct_change().rolling_mean(window_size=15, min_periods=10).alias("micro_trend")
         )
 
         tod_seconds = pl.col("ts").dt.hour() * 3600 + pl.col("ts").dt.minute() * 60 + pl.col("ts").dt.second()
-        tod_fraction = (tod_seconds.cast(pl.Float64) / 86400.0).alias("tod_fraction")
-        tod_sin = (pl.col("tod_fraction") * 2 * pi).sin().alias("tod_sin")
-        tod_cos = (pl.col("tod_fraction") * 2 * pi).cos().alias("tod_cos")
+        tod_fraction_expr = tod_seconds.cast(pl.Float64) / 86400.0
+        tod_fraction = tod_fraction_expr.alias("tod_fraction")
+        tod_sin = (tod_fraction_expr * 2 * pi).sin().alias("tod_sin")
+        tod_cos = (tod_fraction_expr * 2 * pi).cos().alias("tod_cos")
+
+        # Day of week features (0=Monday, 6=Sunday)
+        dow = pl.col("ts").dt.weekday().alias("day_of_week")
+        dow_sin = ((dow.cast(pl.Float64) / 7.0) * 2 * pi).sin().alias("dow_sin")
+        dow_cos = ((dow.cast(pl.Float64) / 7.0) * 2 * pi).cos().alias("dow_cos")
+
+        # Enhanced volatility features
+        vol_regime = _volatility_regime(pl.col("close"), short_window=10, long_window=50)
+        price_position = _price_position_in_range(pl.col("high"), pl.col("low"), pl.col("close"), window=14)
 
         liquidity_features = []
         for window in self.liquidity_windows:
             liquidity_features.extend(
                 [
-                    pl.col("volume").rolling_mean(window, min_periods=window // 2).alias(f"volume_mean_{window}"),
-                    pl.col("volume").rolling_std(window, min_periods=window // 2).alias(f"volume_std_{window}"),
+                    pl.col("volume").rolling_mean(window_size=window, min_periods=window // 2).alias(f"volume_mean_{window}"),
+                    pl.col("volume").rolling_std(window_size=window, min_periods=window // 2).alias(f"volume_std_{window}"),
                 ]
             )
 
@@ -112,6 +206,10 @@ class FeatureRecipe:
                 *rsi_features,
                 *volatility_features,
                 atr_feature,
+                adx_feature,
+                bb_upper,
+                bb_lower,
+                bb_width,
                 range_feature,
                 vwap,
                 drift,
@@ -119,6 +217,11 @@ class FeatureRecipe:
                 tod_fraction,
                 tod_sin,
                 tod_cos,
+                dow,
+                dow_sin,
+                dow_cos,
+                vol_regime,
+                price_position,
                 *liquidity_features,
                 coin_age,
             ]

@@ -1,12 +1,9 @@
-environment: local
 inherit_from: base
 s3:
   endpoint_url: http://localhost:9000
   access_key: local-access-key
   secret_key: local-secret-key
 postgres:
-  dsn: postgresql+psycopg://local:local@localhost:5432/huracan
+  dsn: postgresql://haq@localhost:5432/huracan
 ray:
   address: null
-logging:
-  level: DEBUG
