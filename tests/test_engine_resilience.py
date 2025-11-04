@@ -123,3 +123,31 @@ def test_apply_scenario_modifiers_spread_shock():
     trader = ShadowTrader.__new__(ShadowTrader)
     modified = ShadowTrader._apply_scenario_modifiers(trader, frame, {"spread_multiplier": 2.0})
     assert modified["spread_bps"].to_list()[0] == 10
+
+
+def test_apply_scenario_modifiers_latency_shift():
+    frame = pl.DataFrame({
+        "ts": pl.datetime_range(start=0, end=4, interval="1m"),
+        "close": [100, 101, 102, 103, 104],
+        "open": [99, 100, 101, 102, 103],
+        "high": [101, 102, 103, 104, 105],
+        "low": [98, 99, 100, 101, 102],
+        "volume": [1000, 1100, 1050, 1150, 1200],
+    })
+    trader = ShadowTrader.__new__(ShadowTrader)
+    modified = ShadowTrader._apply_scenario_modifiers(trader, frame, {"latency_minutes": 1})
+    assert modified["close"].null_count() == 0
+
+
+def test_feature_recipe_handles_missing_values():
+    frame = pl.DataFrame({
+        "ts": pl.datetime_range(start=0, end=50, interval="1m"),
+        "open": [100.0] * 51,
+        "high": [101.0] * 51,
+        "low": [99.0] * 51,
+        "close": [100.5 if i % 10 else None for i in range(51)],
+        "volume": [1000 + i for i in range(51)],
+    })
+    recipe = FeatureRecipe()
+    features = recipe.build(frame)
+    assert features.null_count().sum_horizontal()[0] == 0

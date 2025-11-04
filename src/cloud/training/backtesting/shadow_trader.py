@@ -137,6 +137,7 @@ class ShadowTrader:
             logger.warning("insufficient_data", symbol=symbol)
             return []
 
+        self.current_position = None
         # Ensure sorted by time
         historical_data = historical_data.sort("ts")
 
@@ -757,7 +758,7 @@ class ShadowTrader:
     ) -> pl.DataFrame:
         """Apply scenario shocks to a DataFrame without mutating original."""
 
-        mutated = frame
+        mutated = frame.clone()
         ops = []
 
         spread_multiplier = config.get("spread_multiplier")

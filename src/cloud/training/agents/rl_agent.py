@@ -264,6 +264,8 @@ class RLTradingAgent:
         self.normalizer = RunningNormalizer(state_dim)
         self.replay_buffer = ExperienceReplayBuffer(self.config.replay_buffer_size)
         self.last_update_metrics: Dict[str, Any] = {}
+        self._tail_feature_count = 23
+        self.market_feature_dim = max(1, state_dim - self._tail_feature_count)
 
         # Experience buffer
         self.states: List[torch.Tensor] = []
@@ -279,8 +281,15 @@ class RLTradingAgent:
 
     def state_to_tensor(self, state: TradingState) -> np.ndarray:
         """Convert TradingState to flat numpy array."""
+        market_features = state.market_features
+        if market_features.shape[0] != self.market_feature_dim:
+            adjusted = np.zeros(self.market_feature_dim, dtype=np.float32)
+            length = min(len(market_features), self.market_feature_dim)
+            adjusted[:length] = market_features[:length]
+            market_features = adjusted
+
         features = [
-            *state.market_features,
+            *market_features,
             state.similar_pattern_win_rate,
             state.similar_pattern_avg_profit,
             state.similar_pattern_reliability,
@@ -559,6 +568,97 @@ class RLTradingAgent:
     def diagnostics(self) -> Dict[str, Any]:
         """Return diagnostics from the latest update cycle."""
         return dict(self.last_update_metrics)
+
+    def ingest_memory_replay(self, samples: List[Dict[str, Any]]) -> None:
+        """Add experiences sourced from historical memory into replay buffer."""
+
+        if not samples:
+            return
+
+        states_list: List[torch.Tensor] = []
+        actions_list: List[int] = []
+        log_probs_list: List[float] = []
+        advantages_list: List[float] = []
+        returns_list: List[float] = []
+        contexts: List[TradingState] = []
+
+        for item in samples:
+            embedding = np.array(item.get("entry_embedding", []), dtype=np.float32)
+            market_features = np.zeros(self.market_feature_dim, dtype=np.float32)
+            if embedding.size:
+                length = min(self.market_feature_dim, embedding.size)
+                market_features[:length] = embedding[:length]
+
+            position_size = float(item.get("position_size_gbp", 1_000.0) or 1_000.0)
+            net_profit = float(item.get("net_profit_gbp", 0.0) or 0.0)
+            reward_bps = (net_profit / max(position_size, 1e-6)) * 10_000.0
+
+            state = TradingState(
+                market_features=market_features,
+                similar_pattern_win_rate=float(item.get("win_rate", 0.5) or 0.5),
+                similar_pattern_avg_profit=float(item.get("avg_profit_gbp", 0.0) or 0.0),
+                similar_pattern_reliability=float(item.get("reliability_score", 0.5) or 0.5),
+                has_position=False,
+                position_size_multiplier=0.0,
+                unrealized_pnl_bps=0.0,
+                hold_duration_minutes=int(item.get("hold_duration_minutes", 0) or 0),
+                volatility_bps=float(item.get("volatility_bps", 0.0) or 0.0),
+                spread_bps=float(item.get("spread_bps", 5.0) or 5.0),
+                regime_code=self._regime_code_from_string(item.get("market_regime")),
+                current_drawdown_gbp=0.0,
+                trades_today=0,
+                win_rate_today=float(item.get("win_rate_today", 0.5) or 0.5),
+                recent_return_1m=0.0,
+                recent_return_5m=0.0,
+                recent_return_30m=0.0,
+                volume_zscore=0.0,
+                volatility_zscore=0.0,
+                estimated_transaction_cost_bps=float(item.get("spread_bps", 5.0) or 5.0),
+                trend_flag_5m=0.0,
+                trend_flag_1h=0.0,
+                orderbook_imbalance=float(item.get("orderbook_imbalance", 0.0) or 0.0),
+                flow_trend_score=float(item.get("flow_trend_score", 0.0) or 0.0),
+                symbol=item.get("symbol"),
+            )
+
+            state_tensor = torch.from_numpy(self.state_to_tensor(state))
+            self.normalizer.normalize(state_tensor, update_stats=True)
+
+            states_list.append(state_tensor)
+            actions_list.append(TradingAction.ENTER_LONG_NORMAL.value)
+            log_probs_list.append(0.0)
+            advantages_list.append(reward_bps / 100.0)
+            returns_list.append(reward_bps / 100.0)
+            contexts.append(state)
+
+        if not states_list:
+            return
+
+        states_tensor = torch.stack(states_list)
+        actions_tensor = torch.tensor(actions_list, dtype=torch.long)
+        log_probs_tensor = torch.tensor(log_probs_list, dtype=torch.float32)
+        advantages_tensor = torch.tensor(advantages_list, dtype=torch.float32)
+        returns_tensor = torch.tensor(returns_list, dtype=torch.float32)
+
+        self.replay_buffer.add_batch(
+            states_tensor,
+            actions_tensor,
+            log_probs_tensor,
+            advantages_tensor,
+            returns_tensor,
+            contexts,
+        )
+
+    @staticmethod
+    def _regime_code_from_string(regime: Optional[str]) -> int:
+        mapping = {
+            "trend": 3,
+            "range": 4,
+            "panic": 2,
+            "unknown": 1,
+            None: 1,
+        }
+        return mapping.get(str(regime).lower() if regime else None, 1)
 
     def calculate_reward(
         self,
