@@ -32,6 +32,8 @@ from .exchange import ExchangeClient
 from .model_registry import ModelRegistry
 from .notifications import NotificationClient
 from .universe import UniverseSelector
+from ..memory.store import MemoryStore
+from ..pipelines.rl_training_pipeline import RLTrainingPipeline
 from shared.contracts.mechanic import MechanicContract
 from shared.contracts.metrics import MetricsPayload
 from shared.contracts.pilot import PilotContract
@@ -220,6 +222,7 @@ class TrainingOrchestrator:
 
     def _submit_task(self, row: Dict[str, Any], history: List[Dict[str, Any]]) -> "ray.ObjectRef[TrainingTaskResult]":
         symbol = row["symbol"]
+        dsn = self._settings.postgres.dsn if self._settings.postgres else None
         return _train_symbol.remote(  # type: ignore[attr-defined]
             symbol,
             self._settings.model_dump(mode="python"),
@@ -228,6 +231,7 @@ class TrainingOrchestrator:
             history,
             self._run_date.isoformat(),
             self._settings.mode,
+            dsn,
         )
 
     def _finalize_result(self, result: TrainingTaskResult) -> None:
@@ -291,6 +295,7 @@ def _train_symbol(
     history: List[Dict[str, Any]],
     run_date_str: str,
     mode: str,
+    dsn: Optional[str] = None,
 ) -> TrainingTaskResult:
     settings = EngineSettings.model_validate(raw_settings)
     run_date = date.fromisoformat(run_date_str)
@@ -576,6 +581,20 @@ def _train_symbol(
             }
         )
 
+    # Run RL training if enabled and database configured
+    if dsn and settings.training.rl_agent.enabled:
+        rl_metrics = _run_rl_training_for_symbol(
+            symbol=symbol,
+            settings=settings,
+            exchange=exchange,
+            dsn=dsn,
+            lookback_days=settings.training.window_days,
+        )
+        if rl_metrics:
+            logger.info("rl_training_completed_for_symbol", symbol=symbol, rl_metrics=rl_metrics)
+        else:
+            logger.warning("rl_training_did_not_complete", symbol=symbol)
+
     return TrainingTaskResult(
         symbol=symbol,
         costs=costs,
@@ -592,3 +611,63 @@ def _train_symbol(
         model_params=hyperparams,
         feature_metadata={"columns": feature_cols, "feature_importances": feature_importances},
     )
+
+
+def _run_rl_training_for_symbol(
+    symbol: str,
+    settings: EngineSettings,
+    exchange: ExchangeClient,
+    dsn: str,
+    lookback_days: int = 365,
+) -> Optional[Dict[str, Any]]:
+    """Run RL training for a single symbol if enabled.
+
+    This executes shadow trading on historical data to learn patterns.
+    Returns metrics dict if successful, None if skipped/failed.
+    """
+    if not settings.training.rl_agent.enabled:
+        logger.info("rl_training_skipped", symbol=symbol, reason="rl_agent_disabled")
+        return None
+
+    if not settings.training.shadow_trading.enabled:
+        logger.info("rl_training_skipped", symbol=symbol, reason="shadow_trading_disabled")
+        return None
+
+    logger.info(
+        "===== STARTING RL TRAINING =====",
+        symbol=symbol,
+        lookback_days=lookback_days,
+        operation="RL_SHADOW_TRADING",
+    )
+
+    try:
+        # Initialize RL pipeline
+        rl_pipeline = RLTrainingPipeline(settings=settings, dsn=dsn)
+
+        # Run shadow trading and learning on historical data
+        metrics = rl_pipeline.train_on_symbol(
+            symbol=symbol,
+            exchange_client=exchange,
+            lookback_days=lookback_days,
+        )
+
+        logger.info(
+            "===== RL TRAINING COMPLETE =====",
+            symbol=symbol,
+            total_trades=metrics.get("total_trades", 0),
+            winning_trades=metrics.get("winning_trades", 0),
+            win_rate=metrics.get("win_rate", 0.0),
+            avg_profit_gbp=metrics.get("avg_profit_gbp", 0.0),
+            patterns_learned=metrics.get("patterns_learned", 0),
+        )
+
+        return metrics
+
+    except Exception as exc:
+        logger.exception(
+            "rl_training_failed",
+            symbol=symbol,
+            error=str(exc),
+            error_type=type(exc).__name__,
+        )
+        return None

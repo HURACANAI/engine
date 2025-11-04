@@ -1,5 +1,3 @@
-environment: base
-mode: shadow
 scheduler:
   daily_run_time_utc: "02:00"
   timezone: "UTC"
@@ -30,6 +28,20 @@ training:
     stop_loss_bps: 15
     take_profit_bps: 20
     min_confidence_threshold: 0.52
+  memory:
+    vector_similarity_threshold: 0.7
+    min_pattern_occurrences: 10
+    pattern_update_frequency: "daily"
+    max_similar_patterns: 20
+  monitoring:
+    enabled: true
+    check_interval_seconds: 300
+    win_rate_stddev_threshold: 2.0
+    profit_stddev_threshold: 2.0
+    volume_stddev_threshold: 2.5
+    auto_remediation_enabled: true
+    pause_failing_patterns: true
+    pattern_failure_threshold: 0.45
 costs:
   target_net_bps: 15
   taker_buffer_bps: 9
@@ -37,10 +49,7 @@ costs:
 artifacts:
   bucket: huracan-engine
   prefix: baselines
+postgres:
+  dsn: "postgresql://haq@localhost:5432/huracan"
 notifications:
   telegram_enabled: true
-memory:
-  vector_similarity_threshold: 0.7
-  min_pattern_occurrences: 10
-  pattern_update_frequency: "daily"
-  max_similar_patterns: 20

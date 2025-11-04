@@ -91,6 +91,23 @@ class PatternMatcher:
         self.connect()
 
         with self._conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # Without pgvector, we use JSON storage and fallback to simple matching
+            # For now, just return None if no patterns exist (will be populated over time)
+            cur.execute(
+                """
+                SELECT COUNT(*) as pattern_count
+                FROM pattern_library
+                WHERE market_regime = %s
+                """,
+                (market_regime,),
+            )
+
+            count_row = cur.fetchone()
+            if not count_row or count_row["pattern_count"] == 0:
+                return None
+
+            # TODO: Implement JSON-based similarity search when patterns exist
+            # For now, just return the best pattern for the regime
             cur.execute(
                 """
                 SELECT
@@ -98,7 +115,7 @@ class PatternMatcher:
                     pattern_name,
                     feature_signature,
                     market_regime,
-                    pattern_embedding,
+                    pattern_embedding_json as pattern_embedding,
                     total_occurrences,
                     wins,
                     losses,
@@ -111,15 +128,13 @@ class PatternMatcher:
                     reliability_score,
                     sample_size_adequate,
                     optimal_position_size_multiplier,
-                    optimal_exit_threshold_bps,
-                    1 - (pattern_embedding <=> %s::vector) as similarity
+                    optimal_exit_threshold_bps
                 FROM pattern_library
                 WHERE market_regime = %s
-                  AND 1 - (pattern_embedding <=> %s::vector) >= %s
-                ORDER BY similarity DESC
+                ORDER BY reliability_score DESC, win_rate DESC
                 LIMIT 1
                 """,
-                (embedding.tolist(), market_regime, embedding.tolist(), similarity_threshold),
+                (market_regime,),
             )
 
             row = cur.fetchone()
@@ -132,7 +147,7 @@ class PatternMatcher:
                 pattern_name=row["pattern_name"],
                 feature_signature=row["feature_signature"],
                 market_regime=row["market_regime"],
-                embedding=np.array(row["pattern_embedding"], dtype=np.float32),
+                embedding=np.array(row["pattern_embedding"], dtype=np.float32) if row["pattern_embedding"] else np.zeros(128, dtype=np.float32),
                 total_occurrences=row["total_occurrences"],
                 wins=row["wins"],
                 losses=row["losses"],
@@ -162,7 +177,7 @@ class PatternMatcher:
             cur.execute(
                 """
                 INSERT INTO pattern_library (
-                    pattern_name, feature_signature, pattern_embedding, market_regime,
+                    pattern_name, feature_signature, pattern_embedding_json, market_regime,
                     total_occurrences, wins, losses, win_rate,
                     optimal_position_size_multiplier, optimal_exit_threshold_bps
                 )
@@ -238,7 +253,7 @@ class PatternMatcher:
                 """
                 SELECT
                     pattern_id, pattern_name, feature_signature, market_regime,
-                    pattern_embedding, total_occurrences, wins, losses, win_rate,
+                    pattern_embedding_json as pattern_embedding, total_occurrences, wins, losses, win_rate,
                     avg_profit_bps, avg_hold_minutes, sharpe_ratio, max_drawdown_bps,
                     profit_factor, reliability_score, sample_size_adequate,
                     optimal_position_size_multiplier, optimal_exit_threshold_bps

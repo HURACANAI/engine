@@ -19,6 +19,9 @@ from ..agents.rl_agent import RLTradingAgent, TradingAction, TradingState
 from ..analyzers.loss_analyzer import LossAnalyzer
 from ..analyzers.win_analyzer import WinAnalyzer
 from ..memory.store import MemoryStore, TradeMemory
+from ..models.confidence_scorer import ConfidenceScorer
+from ..models.feature_importance_learner import FeatureImportanceLearner
+from ..models.regime_detector import RegimeDetector
 from ..services.costs import CostBreakdown, CostModel
 from shared.features.recipe import FeatureRecipe
 
@@ -50,6 +53,11 @@ class ShadowTradeResult:
     entry_embedding: np.ndarray
     market_regime: str
     costs: CostBreakdown
+
+    # NEW: Confidence scoring
+    regime_confidence: float = 0.5  # Confidence in regime detection
+    trade_confidence: float = 0.5  # Overall confidence in trade decision
+    decision_reason: str = ""  # Human-readable explanation
 
 
 @dataclass
@@ -88,6 +96,19 @@ class ShadowTrader:
         self.loss_analyzer = loss_analyzer
         self.feature_recipe = feature_recipe
         self.config = config or BacktestConfig()
+
+        # Initialize regime detection and confidence scoring
+        self.regime_detector = RegimeDetector()
+        self.confidence_scorer = ConfidenceScorer(
+            min_confidence_threshold=self.config.min_confidence_threshold,
+        )
+
+        # Initialize feature importance learning
+        self.feature_importance_learner = FeatureImportanceLearner(
+            ema_alpha=0.05,  # ~20-trade memory
+            min_samples_for_confidence=30,
+            top_k_features=10,
+        )
 
         self.current_position: Optional[Dict[str, Any]] = None
         self.trades_today = 0
@@ -143,6 +164,14 @@ class ShadowTrader:
                 if trade_result:
                     all_trades.append(trade_result)
 
+                    # Update feature importance learning
+                    self.feature_importance_learner.update(
+                        features=trade_result.entry_features,
+                        is_winner=trade_result.is_winner,
+                        profit_bps=trade_result.gross_profit_bps,
+                        timestamp=str(trade_result.entry_timestamp),
+                    )
+
             else:
                 # Have position - consider exit
                 exit_result = self._consider_exit(
@@ -154,11 +183,24 @@ class ShadowTrader:
                 if exit_result:
                     all_trades.append(exit_result)
 
+                    # Update feature importance learning
+                    self.feature_importance_learner.update(
+                        features=exit_result.entry_features,
+                        is_winner=exit_result.is_winner,
+                        profit_bps=exit_result.gross_profit_bps,
+                        timestamp=str(exit_result.entry_timestamp),
+                    )
+
+        # Get feature importance results
+        importance_result = self.feature_importance_learner.get_feature_importance()
+
         logger.info(
             "shadow_trading_complete",
             symbol=symbol,
             total_trades=len(all_trades),
             wins=sum(1 for t in all_trades if t.is_winner),
+            feature_importance_samples=importance_result.total_samples,
+            top_win_feature=importance_result.top_win_features[0][0] if importance_result.top_win_features else None,
         )
 
         return all_trades
@@ -180,6 +222,7 @@ class ShadowTrader:
         state = self._build_state(
             current_row=current_row,
             visible_data=visible_data,
+            current_idx=current_idx,
             has_position=False,
             symbol=symbol,
         )
@@ -192,9 +235,31 @@ class ShadowTrader:
             self.agent.store_reward(reward=0.0, done=False)  # Penalize inaction slightly
             return None
 
-        # Check confidence threshold
-        # (In real implementation, would get this from model)
-        if state.similar_pattern_win_rate < self.config.min_confidence_threshold:
+        # Calculate confidence score for this trade
+        # Get regime info (already calculated in _build_state)
+        regime_str, regime_conf = self._classify_regime(visible_data, current_idx)
+
+        # Check if regime matches historical best (simplified - would query pattern_library)
+        regime_match = regime_str == "trend"  # Simplified assumption
+
+        # Calculate confidence using our confidence scorer
+        confidence_result = self.confidence_scorer.calculate_confidence(
+            sample_count=max(1, int(state.similar_pattern_reliability * 100)),  # Estimate sample count
+            best_score=state.similar_pattern_win_rate,
+            runner_up_score=0.5,  # Simplified - would need actual runner-up from agent
+            pattern_similarity=state.similar_pattern_reliability,
+            pattern_reliability=state.similar_pattern_reliability,
+            regime_match=regime_match,
+            regime_confidence=regime_conf,
+        )
+
+        # Skip trade if confidence is too low
+        if confidence_result.decision == "skip":
+            logger.debug(
+                "trade_skipped_low_confidence",
+                confidence=confidence_result.confidence,
+                reason=confidence_result.reason,
+            )
             self.agent.store_reward(reward=-0.1, done=False)  # Penalty for ignoring low confidence
             return None
 
@@ -221,6 +286,8 @@ class ShadowTrader:
             "position_size_gbp": position_size_gbp,
             "entry_volatility_bps": float(current_row.get("realized_sigma_30", 0.0)) * 10000,
             "entry_spread_bps": state.spread_bps,
+            "visible_data": visible_data,  # Store for regime detection
+            "confidence_result": confidence_result,  # Store confidence info for trade result
         }
 
         logger.debug("shadow_entry", symbol=symbol, price=entry_price, idx=current_idx)
@@ -229,6 +296,7 @@ class ShadowTrader:
         trade_result = self._simulate_trade_outcome(
             future_data=future_data,
             entry_idx=current_idx,
+            visible_data=visible_data,
         )
 
         # Clear position
@@ -294,6 +362,7 @@ class ShadowTrader:
         state = self._build_state(
             current_row=current_row,
             visible_data=visible_data,
+            current_idx=current_idx,
             has_position=True,
             symbol=symbol,
             unrealized_pnl_bps=pnl_bps,
@@ -319,6 +388,7 @@ class ShadowTrader:
         return self._simulate_trade_outcome(
             future_data=future_data,
             entry_idx=self.current_position["entry_idx"],
+            visible_data=self.current_position["visible_data"],
             forced_exit_idx=exit_idx,
             forced_exit_reason=exit_reason,
         )
@@ -327,6 +397,7 @@ class ShadowTrader:
         self,
         future_data: pl.DataFrame,
         entry_idx: int,
+        visible_data: pl.DataFrame,
         forced_exit_idx: Optional[int] = None,
         forced_exit_reason: Optional[str] = None,
     ) -> ShadowTradeResult:
@@ -336,6 +407,9 @@ class ShadowTrader:
         Also tracks what WOULD have been the optimal exit (for learning).
         """
         entry = self.current_position
+        if entry is None:
+            raise RuntimeError("_simulate_trade_outcome called without active position")
+
         entry_price = entry["entry_price"]
 
         # Find exit point
@@ -374,6 +448,19 @@ class ShadowTrader:
         # Create embedding (simplified - would use actual model embedding)
         entry_embedding = self._create_embedding(entry["entry_features"])
 
+        # Classify regime at entry
+        regime_str, regime_conf = self._classify_regime(visible_data, entry["entry_idx"])
+
+        # Get confidence info from position
+        confidence_result = entry.get("confidence_result")
+        if confidence_result:
+            trade_confidence = confidence_result.confidence
+            decision_reason = confidence_result.reason
+        else:
+            # Fallback for legacy positions without confidence
+            trade_confidence = 0.5
+            decision_reason = "No confidence calculation available"
+
         hold_duration_minutes = int((exit_timestamp - entry["entry_timestamp"]).total_seconds() / 60)
 
         return ShadowTradeResult(
@@ -393,7 +480,10 @@ class ShadowTrader:
             missed_profit_gbp=max(0, missed_profit_gbp),
             entry_features=entry["entry_features"],
             entry_embedding=entry_embedding,
-            market_regime=self._classify_regime(entry["entry_features"]),
+            market_regime=regime_str,
+            regime_confidence=regime_conf,
+            trade_confidence=trade_confidence,
+            decision_reason=decision_reason,
             costs=costs,
         )
 
@@ -424,6 +514,7 @@ class ShadowTrader:
         self,
         current_row: Dict[str, Any],
         visible_data: pl.DataFrame,
+        current_idx: int,
         has_position: bool,
         symbol: str,
         unrealized_pnl_bps: float = 0.0,
@@ -446,9 +537,17 @@ class ShadowTrader:
 
         pattern_stats = self.memory.get_pattern_stats(similar_patterns)
 
-        # Classify regime
+        # Classify regime using sophisticated regime detector
         volatility_bps = float(current_row.get("realized_sigma_30", 0.0)) * 10000
-        regime_code = self._classify_regime_code(current_row)
+        regime_str, regime_confidence = self._classify_regime(visible_data, current_idx)
+
+        # Convert to code for RL agent state (backward compatibility)
+        regime_code = {
+            "trend": 3,
+            "range": 4,
+            "panic": 2,
+            "unknown": 1,
+        }.get(regime_str, 1)
 
         return TradingState(
             market_features=market_features,
@@ -483,21 +582,26 @@ class ShadowTrader:
 
         return np.array(feature_values, dtype=np.float32)
 
-    def _classify_regime(self, features: Dict[str, Any]) -> str:
-        """Classify market regime."""
-        volatility = float(features.get("realized_sigma_30", 0.0))
+    def _classify_regime(self, features_df: pl.DataFrame, current_idx: int) -> tuple[str, float]:
+        """
+        Classify market regime using our sophisticated regime detector.
 
-        if volatility < 0.01:
-            return "LOW_VOL"
-        elif volatility > 0.03:
-            return "HIGH_VOL"
-        else:
-            return "MEDIUM_VOL"
+        Returns:
+            tuple: (regime_name, confidence)
+        """
+        result = self.regime_detector.detect_regime(features_df, current_idx)
+        return (result.regime.value, result.confidence)
 
     def _classify_regime_code(self, features: Dict[str, Any]) -> int:
-        """Classify regime as integer code."""
-        regime = self._classify_regime(features)
-        return {"LOW_VOL": 0, "MEDIUM_VOL": 1, "HIGH_VOL": 2, "TRENDING": 3, "RANGING": 4}.get(regime, 1)
+        """Classify regime as integer code (kept for compatibility)."""
+        # This is used by RL agent state - keep simple mapping for now
+        regime_str = features.get("regime", "unknown")
+        return {
+            "trend": 3,
+            "range": 4,
+            "panic": 2,
+            "unknown": 1,
+        }.get(regime_str, 1)
 
     def _store_and_analyze_trade(self, symbol: str, trade: ShadowTradeResult) -> None:
         """Store trade in memory and run win/loss analysis."""

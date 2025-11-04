@@ -44,7 +44,7 @@ class CandleDataLoader:
         frame.write_parquet(cache_path)
         return frame
 
-    def _download(self, query: CandleQuery) -> pl.DataFrame:
+    def _download(self, query: CandleQuery, skip_validation: bool = False) -> pl.DataFrame:
         rows = []
         since_ms = int(query.start_at.timestamp() * 1_000)
         end_ms = int(query.end_at.timestamp() * 1_000)
@@ -71,7 +71,11 @@ class CandleDataLoader:
             pl.col("timestamp").map_elements(lambda ts: datetime.fromtimestamp(ts / 1_000, tz=timezone.utc)).alias("ts")
         )
         frame = frame.sort("ts")
-        return self._quality.validate(frame, query=query)
+
+        # Only validate if not skipping and quality suite is available
+        if not skip_validation and self._quality is not None:
+            return self._quality.validate(frame, query=query)
+        return frame
 
     def _cache_path(self, query: CandleQuery) -> Path:
         symbol_safe = query.symbol.replace("/", "-")
