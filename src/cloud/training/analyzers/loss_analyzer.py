@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 import psycopg2
-from psycopg2.extras import Json, RealDictCursor
+from psycopg2.extras import Json
 import structlog
 
 from ..memory.store import MemoryStore

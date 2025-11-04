@@ -157,7 +157,6 @@ class ShadowTrader:
                     symbol=symbol,
                     current_idx=current_idx,
                     visible_data=visible_data,
-                    future_data=features_df[current_idx + 1:],  # Hidden from agent!
                     training_mode=training_mode,
                 )
 
@@ -181,6 +180,32 @@ class ShadowTrader:
                         timestamp=str(exit_result.entry_timestamp),
                     )
 
+        # Force-close any remaining open position at end of data
+        if self.current_position is not None:
+            final_idx = features_df.height - self.config.lookback_for_optimal_exit - 1
+            if final_idx >= 0:
+                visible_data = features_df[:final_idx + 1]
+                current_row = visible_data.row(final_idx, named=True)
+                future_data = features_df[final_idx + 1:]
+                forced_exit = self._force_close_position(
+                    current_idx=final_idx,
+                    current_row=current_row,
+                    visible_data=visible_data,
+                    future_data=future_data,
+                    training_mode=training_mode,
+                    symbol=symbol,
+                )
+
+                if forced_exit:
+                    all_trades.append(forced_exit)
+
+                    self.feature_importance_learner.update(
+                        features=forced_exit.entry_features,
+                        is_winner=forced_exit.is_winner,
+                        profit_bps=forced_exit.gross_profit_bps,
+                        timestamp=str(forced_exit.entry_timestamp),
+                    )
+
         # Get feature importance results
         importance_result = self.feature_importance_learner.get_feature_importance()
 
@@ -200,9 +225,8 @@ class ShadowTrader:
         symbol: str,
         current_idx: int,
         visible_data: pl.DataFrame,
-        future_data: pl.DataFrame,
         training_mode: bool,
-    ) -> Optional[ShadowTradeResult]:
+    ) -> None:
         """Consider entering a new position."""
 
         # Extract current state (only from visible data!)
@@ -277,8 +301,6 @@ class ShadowTrader:
             "entry_volatility_bps": float(current_row.get("realized_sigma_30", 0.0)) * 10000,
             "entry_spread_bps": state.spread_bps,
             "visible_data": visible_data,  # Store for regime detection
-            "entry_state": state,
-            "entry_action": action,
             "confidence_result": confidence_result,  # Store confidence info for trade result
         }
 
@@ -342,8 +364,10 @@ class ShadowTrader:
 
         trade_result = self._execute_exit(current_idx, current_row, exit_reason, future_data)
 
+        executed_action = TradingAction.EXIT_POSITION if exit_reason != "MODEL_SIGNAL" else action
+
         reward = self.agent.calculate_reward(
-            action=self.current_position["entry_action"],
+            action=executed_action,
             profit_gbp=trade_result.net_profit_gbp,
             missed_profit_gbp=trade_result.missed_profit_gbp,
             hold_duration_minutes=trade_result.hold_duration_minutes,
@@ -364,6 +388,60 @@ class ShadowTrader:
             self._store_and_analyze_trade(symbol, trade_result)
 
         # Clear position
+        self.current_position = None
+
+        return trade_result
+
+    def _force_close_position(
+        self,
+        current_idx: int,
+        current_row: Dict[str, Any],
+        visible_data: pl.DataFrame,
+        future_data: pl.DataFrame,
+        training_mode: bool,
+        symbol: str,
+    ) -> Optional[ShadowTradeResult]:
+        """Force-close an open trade when we reach the end of historical data."""
+        if not self.current_position:
+            return None
+
+        pnl_bps = ((float(current_row["close"]) - self.current_position["entry_price"]) / self.current_position["entry_price"]) * 10000
+        hold_minutes = (current_row["ts"] - self.current_position["entry_timestamp"]).total_seconds() / 60
+
+        state = self._build_state(
+            current_row=current_row,
+            visible_data=visible_data,
+            current_idx=current_idx,
+            has_position=True,
+            symbol=symbol,
+            unrealized_pnl_bps=pnl_bps,
+            hold_duration_minutes=int(hold_minutes),
+        )
+
+        # Record the final decision step (action is overridden by forced exit)
+        self.agent.select_action(state, deterministic=False)
+
+        trade_result = self._execute_exit(current_idx, current_row, "END_OF_DATA", future_data)
+
+        reward = self.agent.calculate_reward(
+            action=TradingAction.EXIT_POSITION,
+            profit_gbp=trade_result.net_profit_gbp,
+            missed_profit_gbp=trade_result.missed_profit_gbp,
+            hold_duration_minutes=trade_result.hold_duration_minutes,
+            position_size_gbp=self.current_position["position_size_gbp"],
+            costs=trade_result.costs,
+            state=state,
+        )
+
+        self.agent.store_reward(reward=reward, done=True)
+
+        self.trades_today += 1
+        if trade_result.is_winner:
+            self.wins_today += 1
+
+        if training_mode:
+            self._store_and_analyze_trade(symbol, trade_result)
+
         self.current_position = None
 
         return trade_result
@@ -469,7 +547,7 @@ class ShadowTrader:
             best_exit_price=best_exit_price,
             best_exit_idx=best_exit_idx,
             missed_profit_gbp=max(0, missed_profit_gbp),
-            entry_features=entry["entry_features"],
+            entry_features=position["entry_features"],
             entry_embedding=entry_embedding,
             market_regime=regime_str,
             regime_confidence=regime_conf,
