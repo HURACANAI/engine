@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+from collections import deque
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
@@ -58,7 +59,72 @@ class TradingState:
     current_drawdown_gbp: float
     trades_today: int
     win_rate_today: float
+    recent_return_1m: float
+    recent_return_5m: float
+    recent_return_30m: float
+    volume_zscore: float
+    volatility_zscore: float
+    estimated_transaction_cost_bps: float
+    trend_flag_5m: float = 0.0
+    trend_flag_1h: float = 0.0
+    orderbook_imbalance: float = 0.0
+    flow_trend_score: float = 0.0
     symbol: Optional[str] = None
+
+
+class ExperienceReplayBuffer:
+    """Keeps a curriculum buffer of past experiences for replay."""
+
+    def __init__(self, capacity: int) -> None:
+        self._capacity = capacity
+        self._buffer: deque = deque(maxlen=capacity)
+
+    def add_batch(
+        self,
+        states: torch.Tensor,
+        actions: torch.Tensor,
+        log_probs: torch.Tensor,
+        advantages: torch.Tensor,
+        returns: torch.Tensor,
+        contexts: List[TradingState],
+    ) -> None:
+        for idx in range(actions.shape[0]):
+            self._buffer.append({
+                "state": states[idx].detach().cpu(),
+                "action": actions[idx].detach().cpu(),
+                "log_prob": log_probs[idx].detach().cpu(),
+                "advantage": advantages[idx].detach().cpu(),
+                "return": returns[idx].detach().cpu(),
+                "context": copy.deepcopy(contexts[idx]),
+            })
+
+    def sample(self, count: int) -> Optional[Dict[str, Any]]:
+        available = len(self._buffer)
+        if available == 0 or count <= 0:
+            return None
+
+        count = min(count, available)
+        indices = np.random.choice(available, count, replace=False)
+        selected = [self._buffer[idx] for idx in indices]
+
+        states = torch.stack([item["state"] for item in selected])
+        actions = torch.stack([item["action"] for item in selected])
+        log_probs = torch.stack([item["log_prob"] for item in selected])
+        advantages = torch.stack([item["advantage"] for item in selected])
+        returns = torch.stack([item["return"] for item in selected])
+        contexts = [item["context"] for item in selected]
+
+        return {
+            "states": states,
+            "actions": actions,
+            "log_probs": log_probs,
+            "advantages": advantages,
+            "returns": returns,
+            "contexts": contexts,
+        }
+
+    def __len__(self) -> int:  # pragma: no cover - trivial
+        return len(self._buffer)
 
 
 class RunningNormalizer:
@@ -162,6 +228,10 @@ class PPOConfig:
     drawdown_exit_trigger_bps: float = 5.0
     drawdown_exit_boost: float = 2.0
     action_temperature: float = 1.0
+    cost_penalty_scale: float = 0.5
+    replay_buffer_size: int = 4096
+    replay_sample_ratio: float = 0.3
+    replay_min_samples: int = 256
 
 
 class RLTradingAgent:
@@ -192,6 +262,8 @@ class RLTradingAgent:
         self.network = ActorCritic(state_dim, self.n_actions).to(self.device)
         self.optimizer = optim.Adam(self.network.parameters(), lr=self.config.learning_rate)
         self.normalizer = RunningNormalizer(state_dim)
+        self.replay_buffer = ExperienceReplayBuffer(self.config.replay_buffer_size)
+        self.last_update_metrics: Dict[str, Any] = {}
 
         # Experience buffer
         self.states: List[torch.Tensor] = []
@@ -222,6 +294,16 @@ class RLTradingAgent:
             state.current_drawdown_gbp / 100.0,
             state.trades_today / 50.0,  # Normalize
             state.win_rate_today,
+            state.recent_return_1m,
+            state.recent_return_5m,
+            state.recent_return_30m,
+            state.volume_zscore,
+            state.volatility_zscore,
+            state.estimated_transaction_cost_bps / 10.0,
+            state.trend_flag_5m,
+            state.trend_flag_1h,
+            state.orderbook_imbalance,
+            state.flow_trend_score,
         ]
         return np.array(features, dtype=np.float32)
 
@@ -349,6 +431,45 @@ class RLTradingAgent:
         advantages_detached = advantages.detach()
         returns_tensor = returns_tensor.detach()
 
+        # Add latest batch to replay buffer before sampling
+        self.replay_buffer.add_batch(
+            states_tensor.detach().cpu(),
+            actions_tensor.detach().cpu(),
+            old_log_probs_tensor.detach().cpu(),
+            advantages_detached.detach().cpu(),
+            returns_tensor.cpu(),
+            list(self.state_context),
+        )
+
+        training_state_context = list(self.state_context)
+        if len(self.replay_buffer) >= self.config.replay_min_samples:
+            replay_sample_size = int(actions_tensor.shape[0] * self.config.replay_sample_ratio)
+            replay_batch = self.replay_buffer.sample(replay_sample_size)
+            if replay_batch:
+                states_tensor = torch.cat([
+                    states_tensor,
+                    replay_batch["states"].to(self.device),
+                ], dim=0)
+                actions_tensor = torch.cat([
+                    actions_tensor,
+                    replay_batch["actions"].to(self.device).long(),
+                ], dim=0)
+                old_log_probs_tensor = torch.cat([
+                    old_log_probs_tensor,
+                    replay_batch["log_probs"].to(self.device),
+                ], dim=0)
+                advantages_detached = torch.cat([
+                    advantages_detached,
+                    replay_batch["advantages"].to(self.device),
+                ], dim=0)
+                returns_tensor = torch.cat([
+                    returns_tensor,
+                    replay_batch["returns"].to(self.device),
+                ], dim=0)
+                training_state_context.extend(replay_batch["contexts"])
+        else:
+            replay_batch = None
+
         total_policy_loss = 0.0
         total_value_loss = 0.0
         total_entropy = 0.0
@@ -359,7 +480,7 @@ class RLTradingAgent:
             adjusted_logits = torch.stack(
                 [
                     self._apply_contextual_bias(logit_vec, ctx)
-                    for logit_vec, ctx in zip(logits_batch, self.state_context)
+                    for logit_vec, ctx in zip(logits_batch, training_state_context)
                 ]
             )
 
@@ -397,12 +518,25 @@ class RLTradingAgent:
         self.dones.clear()
         self.bootstrap_value = 0.0
 
+        action_hist = torch.bincount(actions_tensor, minlength=self.n_actions).float()
+        action_prob = action_hist / max(action_hist.sum(), 1.0)
+        action_entropy = float(
+            -torch.sum(action_prob * torch.log(action_prob + 1e-8)).item()
+        )
+        avg_advantage = float(advantages_detached.mean().item())
+        std_advantage = float(advantages_detached.std().item())
+
         metrics = {
             "policy_loss": total_policy_loss / n_updates,
             "value_loss": total_value_loss / n_updates,
             "entropy": total_entropy / n_updates,
+            "action_entropy": action_entropy,
+            "avg_advantage": avg_advantage,
+            "std_advantage": std_advantage,
+            "replay_buffer": len(self.replay_buffer),
         }
 
+        self.last_update_metrics = metrics
         logger.info("agent_updated", **metrics)
         return metrics
 
@@ -421,6 +555,10 @@ class RLTradingAgent:
         self.network.load_state_dict(checkpoint["network_state_dict"])
         self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         logger.info("model_loaded", path=path)
+
+    def diagnostics(self) -> Dict[str, Any]:
+        """Return diagnostics from the latest update cycle."""
+        return dict(self.last_update_metrics)
 
     def calculate_reward(
         self,
@@ -463,6 +601,9 @@ class RLTradingAgent:
 
             if state.has_position and state.unrealized_pnl_bps <= -self.config.drawdown_exit_trigger_bps:
                 reward -= self.config.drawdown_exit_boost
+
+            if state.estimated_transaction_cost_bps > 0:
+                reward -= state.estimated_transaction_cost_bps * self.config.cost_penalty_scale
 
         if action == TradingAction.ENTER_LONG_LARGE and state is not None:
             reliability = float(state.similar_pattern_reliability)

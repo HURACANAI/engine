@@ -15,6 +15,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, Optional
 
+import math
+
 import numpy as np
 import polars as pl
 import structlog
@@ -87,6 +89,29 @@ class RegimeDetector:
         self.range_threshold = range_threshold
         self.panic_threshold = panic_threshold
 
+        self._meta_weights = {
+            "trend": {
+                "intercept": -0.15,
+                "trend_strength": 1.8,
+                "adx": 0.035,
+                "ema_slope": 1.1,
+                "momentum_slope": 0.9,
+            },
+            "range": {
+                "intercept": 0.1,
+                "compression_score": 1.2,
+                "bb_width_pct": -0.8,
+                "trend_strength": -0.9,
+            },
+            "panic": {
+                "intercept": -1.0,
+                "volatility_ratio": 1.4,
+                "volatility_percentile": 1.6,
+                "kurtosis": 0.05,
+                "skewness": -0.03,
+            },
+        }
+
         logger.info(
             "regime_detector_initialized",
             trend_threshold=trend_threshold,
@@ -123,33 +148,60 @@ class RegimeDetector:
         range_score = self._calculate_range_score(regime_features)
         panic_score = self._calculate_panic_score(regime_features)
 
+        meta_scores = self._meta_regime_scores(regime_features)
+
         regime_scores = {
             "trend": trend_score,
             "range": range_score,
             "panic": panic_score,
         }
 
+        # Blend heuristic and meta scores for greater robustness
+        blended_scores = {
+            key: float(
+                0.6 * regime_scores.get(key, 0.0) + 0.4 * meta_scores.get(key, 0.0)
+            )
+            for key in regime_scores
+        }
+
         # Determine regime (panic takes priority)
-        if panic_score >= self.panic_threshold:
+        if blended_scores["panic"] >= self.panic_threshold:
             regime = MarketRegime.PANIC
-            confidence = panic_score
-        elif trend_score >= self.trend_threshold and trend_score > range_score:
+            confidence = blended_scores["panic"]
+        elif blended_scores["trend"] >= self.trend_threshold and blended_scores["trend"] > blended_scores["range"]:
             regime = MarketRegime.TREND
-            confidence = trend_score
-        elif range_score >= self.range_threshold:
+            confidence = blended_scores["trend"]
+        elif blended_scores["range"] >= self.range_threshold:
             regime = MarketRegime.RANGE
-            confidence = range_score
+            confidence = blended_scores["range"]
         else:
             # Mixed/unclear regime
             regime = MarketRegime.UNKNOWN
-            confidence = max(trend_score, range_score, panic_score)
+            confidence = max(blended_scores.values())
 
         return RegimeDetectionResult(
             regime=regime,
             confidence=confidence,
-            regime_scores=regime_scores,
+            regime_scores={**regime_scores, "trend_meta": meta_scores["trend"], "range_meta": meta_scores["range"], "panic_meta": meta_scores["panic"], "trend_blended": blended_scores["trend"], "range_blended": blended_scores["range"], "panic_blended": blended_scores["panic"]},
             features=regime_features,
         )
+
+    def _meta_regime_scores(self, features: RegimeFeatures) -> Dict[str, float]:
+        """Compute meta-model scores using logistic projections."""
+
+        def logistic(x: float) -> float:
+            return 1.0 / (1.0 + math.exp(-x))
+
+        scores: Dict[str, float] = {}
+        for regime, weights in self._meta_weights.items():
+            value = weights.get("intercept", 0.0)
+            for key, weight in weights.items():
+                if key == "intercept":
+                    continue
+                feature_value = getattr(features, key, 0.0)
+                value += weight * feature_value
+            scores[regime] = float(logistic(value))
+        return scores
 
     def _extract_regime_features(
         self,

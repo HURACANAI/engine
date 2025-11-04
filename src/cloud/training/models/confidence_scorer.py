@@ -41,6 +41,8 @@ class ConfidenceFactors:
     # Regime alignment
     regime_match: bool  # Does current regime match best historical regime?
     regime_confidence: float  # 0-1, regime detection confidence
+    meta_signal: float  # Additional meta-model signal (0-1)
+    orderbook_bias: float  # -1 to 1, order-book imbalance signal
 
 
 @dataclass
@@ -96,6 +98,7 @@ class ConfidenceScorer:
         pattern_reliability: float = 0.5,
         regime_match: bool = False,
         regime_confidence: float = 0.5,
+        meta_features: Optional[Dict[str, float]] = None,
     ) -> ConfidenceResult:
         """
         Calculate confidence score for a trading decision.
@@ -139,9 +142,19 @@ class ConfidenceScorer:
         if regime_match and regime_confidence > 0.6:
             regime_bonus += 0.05
 
+        meta_signal = 0.5
+        orderbook_bias = 0.0
+        if meta_features:
+            meta_signal = float(meta_features.get("meta_signal", 0.5))
+            orderbook_bias = float(meta_features.get("orderbook_bias", 0.0))
+
+        # Meta-model contributes soft gating (70% confidence -> +0.05 boost)
+        meta_bonus = (meta_signal - 0.5) * 0.1
+        orderbook_bonus = orderbook_bias * 0.05
+
         # 7. Final confidence
         confidence = np.clip(
-            base_confidence + pattern_bonus + alignment_bonus + regime_bonus,
+            base_confidence + pattern_bonus + alignment_bonus + regime_bonus + meta_bonus + orderbook_bonus,
             0.0,
             1.0,
         )
@@ -157,6 +170,8 @@ class ConfidenceScorer:
             pattern_reliability=pattern_reliability,
             regime_match=regime_match,
             regime_confidence=regime_confidence,
+            meta_signal=meta_signal,
+            orderbook_bias=orderbook_bias,
         )
 
         # 9. Make decision
