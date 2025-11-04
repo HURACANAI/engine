@@ -424,7 +424,11 @@ class LossAnalyzer:
     def _store_analysis(self, insights: LossInsights) -> None:
         """Store analysis in database."""
         self.connect()
-        with self._conn.cursor() as cur:
+        conn = self._conn
+        if conn is None:
+            raise RuntimeError("Database connection is not available")
+
+        with conn.cursor() as cur:
             cur.execute(
                 """
                 INSERT INTO loss_analysis (
@@ -454,4 +458,4 @@ class LossAnalyzer:
                     insights.insights_text,
                 ),
             )
-            self._conn.commit()
+            conn.commit()

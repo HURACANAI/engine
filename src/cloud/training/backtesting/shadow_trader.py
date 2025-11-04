@@ -153,7 +153,7 @@ class ShadowTrader:
             # Make decision based on visible data only
             if self.current_position is None:
                 # No position - consider entry
-                trade_result = self._consider_entry(
+                self._consider_entry(
                     symbol=symbol,
                     current_idx=current_idx,
                     visible_data=visible_data,
@@ -161,23 +161,13 @@ class ShadowTrader:
                     training_mode=training_mode,
                 )
 
-                if trade_result:
-                    all_trades.append(trade_result)
-
-                    # Update feature importance learning
-                    self.feature_importance_learner.update(
-                        features=trade_result.entry_features,
-                        is_winner=trade_result.is_winner,
-                        profit_bps=trade_result.gross_profit_bps,
-                        timestamp=str(trade_result.entry_timestamp),
-                    )
-
             else:
                 # Have position - consider exit
                 exit_result = self._consider_exit(
                     current_idx=current_idx,
                     visible_data=visible_data,
                     future_data=features_df[current_idx + 1:],  # Hidden from agent!
+                    training_mode=training_mode,
                 )
 
                 if exit_result:
@@ -228,11 +218,11 @@ class ShadowTrader:
         )
 
         # Agent decides: enter or not?
-        action, log_prob = self.agent.select_action(state, deterministic=not training_mode)
+        action, _ = self.agent.select_action(state, deterministic=not training_mode)
 
         # Only enter if agent chooses entry action and we have confidence
         if action not in [TradingAction.ENTER_LONG_SMALL, TradingAction.ENTER_LONG_NORMAL, TradingAction.ENTER_LONG_LARGE]:
-            self.agent.store_reward(reward=0.0, done=False)  # Penalize inaction slightly
+            self.agent.store_reward(reward=0.0, done=False)  # Neutral reward for skipping
             return None
 
         # Calculate confidence score for this trade
@@ -287,50 +277,24 @@ class ShadowTrader:
             "entry_volatility_bps": float(current_row.get("realized_sigma_30", 0.0)) * 10000,
             "entry_spread_bps": state.spread_bps,
             "visible_data": visible_data,  # Store for regime detection
+            "entry_state": state,
+            "entry_action": action,
             "confidence_result": confidence_result,  # Store confidence info for trade result
         }
 
         logger.debug("shadow_entry", symbol=symbol, price=entry_price, idx=current_idx)
 
-        # Now simulate the trade playing out (but agent doesn't know outcome yet)
-        trade_result = self._simulate_trade_outcome(
-            future_data=future_data,
-            entry_idx=current_idx,
-            visible_data=visible_data,
-        )
+        # Store neutral reward until trade outcome is known
+        self.agent.store_reward(reward=0.0, done=False)
 
-        # Clear position
-        self.current_position = None
-
-        # Update statistics
-        self.trades_today += 1
-        if trade_result.is_winner:
-            self.wins_today += 1
-
-        # Calculate reward for agent
-        reward = self.agent.calculate_reward(
-            action=action,
-            profit_gbp=trade_result.net_profit_gbp,
-            missed_profit_gbp=trade_result.missed_profit_gbp,
-            hold_duration_minutes=trade_result.hold_duration_minutes,
-            position_size_gbp=position_size_gbp,
-            costs=trade_result.costs,
-            state=state,
-        )
-
-        self.agent.store_reward(reward=reward, done=True)
-
-        # Store in memory
-        if training_mode:
-            self._store_and_analyze_trade(symbol, trade_result)
-
-        return trade_result
+        return None
 
     def _consider_exit(
         self,
         current_idx: int,
         visible_data: pl.DataFrame,
         future_data: pl.DataFrame,
+        training_mode: bool,
     ) -> Optional[ShadowTradeResult]:
         """Consider exiting current position."""
         if not self.current_position:
@@ -343,21 +307,9 @@ class ShadowTrader:
         # Calculate current P&L
         pnl_bps = ((current_price - entry_price) / entry_price) * 10000
 
-        # Check stop loss / take profit
-        if pnl_bps <= -self.config.stop_loss_bps:
-            # Hit stop loss
-            return self._execute_exit(current_idx, current_row, "STOP_LOSS", future_data)
-
-        if pnl_bps >= self.config.take_profit_bps:
-            # Hit take profit
-            return self._execute_exit(current_idx, current_row, "TAKE_PROFIT", future_data)
-
-        # Check max hold time
         hold_minutes = (current_row["ts"] - self.current_position["entry_timestamp"]).total_seconds() / 60
-        if hold_minutes >= self.config.max_hold_minutes:
-            return self._execute_exit(current_idx, current_row, "TIMEOUT", future_data)
 
-        # Agent decision
+        # Agent decision (always gather feedback so experience stays aligned)
         symbol = self.current_position["symbol"]
         state = self._build_state(
             current_row=current_row,
@@ -371,11 +323,50 @@ class ShadowTrader:
 
         action, _ = self.agent.select_action(state, deterministic=False)
 
-        if action == TradingAction.EXIT_POSITION:
-            return self._execute_exit(current_idx, current_row, "MODEL_SIGNAL", future_data)
+        exit_reason: Optional[str] = None
 
-        # Continue holding
-        return None
+        # Forced exits override agent decision
+        if pnl_bps <= -self.config.stop_loss_bps:
+            exit_reason = "STOP_LOSS"
+        elif pnl_bps >= self.config.take_profit_bps:
+            exit_reason = "TAKE_PROFIT"
+        elif hold_minutes >= self.config.max_hold_minutes:
+            exit_reason = "TIMEOUT"
+        elif action == TradingAction.EXIT_POSITION:
+            exit_reason = "MODEL_SIGNAL"
+
+        if exit_reason is None:
+            # Continue holding, reward is neutral this step
+            self.agent.store_reward(reward=0.0, done=False)
+            return None
+
+        trade_result = self._execute_exit(current_idx, current_row, exit_reason, future_data)
+
+        reward = self.agent.calculate_reward(
+            action=self.current_position["entry_action"],
+            profit_gbp=trade_result.net_profit_gbp,
+            missed_profit_gbp=trade_result.missed_profit_gbp,
+            hold_duration_minutes=trade_result.hold_duration_minutes,
+            position_size_gbp=self.current_position["position_size_gbp"],
+            costs=trade_result.costs,
+            state=state,
+        )
+
+        self.agent.store_reward(reward=reward, done=True)
+
+        # Update stats
+        self.trades_today += 1
+        if trade_result.is_winner:
+            self.wins_today += 1
+
+        # Persist analysis while position context still available
+        if training_mode:
+            self._store_and_analyze_trade(symbol, trade_result)
+
+        # Clear position
+        self.current_position = None
+
+        return trade_result
 
     def _execute_exit(
         self,
@@ -385,36 +376,36 @@ class ShadowTrader:
         future_data: pl.DataFrame,
     ) -> ShadowTradeResult:
         """Execute exit and create trade result."""
+        position = self.current_position
+        if position is None:
+            raise RuntimeError("_execute_exit called without active position")
+
         return self._simulate_trade_outcome(
+            position=position,
             future_data=future_data,
-            entry_idx=self.current_position["entry_idx"],
-            visible_data=self.current_position["visible_data"],
-            forced_exit_idx=exit_idx,
-            forced_exit_reason=exit_reason,
+            entry_idx=position["entry_idx"],
+            exit_idx=exit_idx,
+            exit_row=exit_row,
+            visible_data=position["visible_data"],
+            exit_reason=exit_reason,
         )
 
     def _simulate_trade_outcome(
         self,
+        position: Dict[str, Any],
         future_data: pl.DataFrame,
         entry_idx: int,
+        exit_idx: int,
+        exit_row: Dict[str, Any],
         visible_data: pl.DataFrame,
-        forced_exit_idx: Optional[int] = None,
-        forced_exit_reason: Optional[str] = None,
+        exit_reason: str,
     ) -> ShadowTradeResult:
         """
         Simulate trade outcome using future data (hidden from agent during decision).
 
         Also tracks what WOULD have been the optimal exit (for learning).
         """
-        entry = self.current_position
-        if entry is None:
-            raise RuntimeError("_simulate_trade_outcome called without active position")
-
-        entry_price = entry["entry_price"]
-
-        # Find exit point
-        exit_idx = forced_exit_idx or entry_idx + 1
-        exit_row = future_data.row(exit_idx - entry_idx - 1, named=True) if forced_exit_idx is None else future_data.row(0, named=True)
+        entry_price = position["entry_price"]
         exit_price = float(exit_row["close"])
         exit_timestamp = exit_row["ts"]
 
@@ -424,13 +415,13 @@ class ShadowTrader:
         # Calculate costs
         costs = self.cost_model.estimate(
             taker_fee_bps=5.0,  # Assuming taker
-            spread_bps=entry["entry_spread_bps"],
-            volatility_bps=entry["entry_volatility_bps"],
+            spread_bps=position["entry_spread_bps"],
+            volatility_bps=position["entry_volatility_bps"],
             adv_quote=None,
         )
 
         net_profit_bps = gross_profit_bps - costs.total_costs_bps
-        net_profit_gbp = (net_profit_bps / 10000) * entry["position_size_gbp"]
+        net_profit_gbp = (net_profit_bps / 10000) * position["position_size_gbp"]
 
         is_winner = net_profit_gbp > 0
 
@@ -442,17 +433,17 @@ class ShadowTrader:
         )
 
         optimal_profit_bps = ((best_exit_price - entry_price) / entry_price) * 10000
-        optimal_profit_gbp = (optimal_profit_bps / 10000) * entry["position_size_gbp"]
+        optimal_profit_gbp = (optimal_profit_bps / 10000) * position["position_size_gbp"]
         missed_profit_gbp = optimal_profit_gbp - net_profit_gbp
 
         # Create embedding (simplified - would use actual model embedding)
-        entry_embedding = self._create_embedding(entry["entry_features"])
+        entry_embedding = self._create_embedding(position["entry_features"])
 
         # Classify regime at entry
-        regime_str, regime_conf = self._classify_regime(visible_data, entry["entry_idx"])
+        regime_str, regime_conf = self._classify_regime(visible_data, entry_idx)
 
         # Get confidence info from position
-        confidence_result = entry.get("confidence_result")
+        confidence_result = position.get("confidence_result")
         if confidence_result:
             trade_confidence = confidence_result.confidence
             decision_reason = confidence_result.reason
@@ -461,16 +452,16 @@ class ShadowTrader:
             trade_confidence = 0.5
             decision_reason = "No confidence calculation available"
 
-        hold_duration_minutes = int((exit_timestamp - entry["entry_timestamp"]).total_seconds() / 60)
+        hold_duration_minutes = int((exit_timestamp - position["entry_timestamp"]).total_seconds() / 60)
 
         return ShadowTradeResult(
-            entry_idx=entry["entry_idx"],
-            entry_timestamp=entry["entry_timestamp"],
+            entry_idx=position["entry_idx"],
+            entry_timestamp=position["entry_timestamp"],
             entry_price=entry_price,
             exit_idx=exit_idx,
             exit_timestamp=exit_timestamp,
             exit_price=exit_price,
-            exit_reason=forced_exit_reason or "MODEL_SIGNAL",
+            exit_reason=exit_reason,
             hold_duration_minutes=hold_duration_minutes,
             gross_profit_bps=gross_profit_bps,
             net_profit_gbp=net_profit_gbp,
