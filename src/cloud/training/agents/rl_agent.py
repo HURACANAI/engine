@@ -12,6 +12,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.distributions import Categorical
+from torch.nn.utils.clip_grad import clip_grad_norm_
 import structlog
 
 from ..memory.store import MemoryStore
@@ -253,11 +254,11 @@ class RLTradingAgent:
         dist = Categorical(logits=logits)
 
         if deterministic:
-            action_idx = torch.argmax(logits).item()
+            action_idx = int(torch.argmax(logits).item())
             action_tensor = torch.tensor(action_idx, device=self.device)
         else:
             action_tensor = dist.sample()
-            action_idx = action_tensor.item()
+            action_idx = int(action_tensor.item())
 
         log_prob_tensor = dist.log_prob(action_tensor)
         action = TradingAction(action_idx)
@@ -379,7 +380,7 @@ class RLTradingAgent:
 
             self.optimizer.zero_grad()
             loss.backward()
-            nn.utils.clip_grad_norm_(self.network.parameters(), self.config.max_grad_norm)
+            clip_grad_norm_(self.network.parameters(), self.config.max_grad_norm)
             self.optimizer.step()
 
             total_policy_loss += policy_loss.item()
