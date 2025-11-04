@@ -142,6 +142,8 @@ class RLTrainingPipeline:
 
         logger.info("historical_data_loaded", symbol=symbol, rows=historical_data.height)
 
+        self._seed_replay_from_memory()
+
         # 2. Run shadow trading - every possible trade
         logger.info("starting_shadow_trading", symbol=symbol)
         trades = self.shadow_trader.backtest_symbol(
@@ -162,9 +164,11 @@ class RLTrainingPipeline:
 
         # 4. Analyze aggregate performance
         wins = sum(1 for t in trades if t.is_winner)
-        total_profit = sum(t.net_profit_gbp for t in trades)
+        total_profit = sum((t.net_profit_gbp or 0.0) for t in trades)
         avg_profit = total_profit / len(trades) if trades else 0.0
         win_rate = wins / len(trades) if trades else 0.0
+        largest_win = max(((t.net_profit_gbp or 0.0) for t in trades), default=0.0)
+        largest_loss = min(((t.net_profit_gbp or 0.0) for t in trades), default=0.0)
 
         # 5. Learn optimal parameters for discovered patterns
         logger.info("learning_pattern_parameters", symbol=symbol)
@@ -176,6 +180,11 @@ class RLTrainingPipeline:
         # 6. Get exit timing stats
         exit_stats = self.post_exit_tracker.get_exit_learning_stats(symbol=symbol, days=lookback_days)
 
+        curriculum_metrics = self._run_curriculum_phases(
+            symbol=symbol,
+            historical_data=historical_data,
+        )
+
         metrics = {
             "symbol": symbol,
             "total_trades": len(trades),
@@ -184,9 +193,12 @@ class RLTrainingPipeline:
             "win_rate": win_rate,
             "total_profit_gbp": total_profit,
             "avg_profit_per_trade_gbp": avg_profit,
+            "largest_win_gbp": largest_win,
+            "largest_loss_gbp": largest_loss,
             "patterns_learned": len(top_patterns),
             "exit_timing_accuracy": exit_stats.get("exit_timing_accuracy", 0.0),
             "avg_missed_profit_bps": exit_stats.get("avg_missed_profit_bps", 0.0),
+            "curriculum": curriculum_metrics,
             **update_metrics,
         }
 
@@ -206,6 +218,15 @@ class RLTrainingPipeline:
             scenario_tests=scenario_snapshot,
         )
         metrics["manifest"] = manifest.to_dict()
+
+        try:
+            self.memory_store.record_model_performance(
+                model_version=manifest.model_id,
+                evaluation_date=datetime.now(tz=timezone.utc).date(),
+                metrics=metrics,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("model_performance_record_failed", error=str(exc))
 
         logger.info("training_complete", **metrics)
         return metrics
@@ -334,6 +355,73 @@ class RLTrainingPipeline:
             "total_patterns": 0,
             "top_patterns_count": 0,
         }
+
+    def _seed_replay_from_memory(self) -> None:
+        """Pull historical experiences into the agent replay buffer."""
+
+        try:
+            samples = self.memory_store.sample_replay_experiences(self.agent.config.replay_min_samples)
+            self.agent.ingest_memory_replay(samples)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("replay_seed_failed", error=str(exc))
+
+    def _run_curriculum_phases(self, symbol: str, historical_data: pl.DataFrame) -> Dict[str, Any]:
+        phases = self._build_curriculum_phases(historical_data)
+        results: Dict[str, Any] = {}
+
+        for name, phase_data in phases:
+            if phase_data.height < 120:
+                continue
+
+            trades = self.shadow_trader.backtest_symbol(
+                symbol=symbol,
+                historical_data=phase_data,
+                training_mode=True,
+            )
+
+            if not trades:
+                results[name] = {"trades": 0}
+                continue
+
+            update_metrics = self.agent.update()
+            wins = sum(1 for t in trades if t.is_winner)
+            total_profit = sum(t.net_profit_gbp for t in trades)
+            results[name] = {
+                "trades": len(trades),
+                "win_rate": wins / len(trades) if trades else 0.0,
+                "avg_profit_gbp": total_profit / len(trades) if trades else 0.0,
+                "update_metrics": update_metrics,
+            }
+
+        return results
+
+    def _build_curriculum_phases(self, data: pl.DataFrame) -> List[tuple[str, pl.DataFrame]]:
+        if data.height < 200:
+            return []
+
+        phases: List[tuple[str, pl.DataFrame]] = []
+        recent_window = min(120, data.height)
+        phases.append(("recent_focus", data.tail(recent_window)))
+
+        mid_start = max(0, data.height - 240)
+        mid_end = max(0, data.height - recent_window)
+        if mid_end - mid_start > 60:
+            phases.append(("mid_history", data.slice(mid_start, mid_end - mid_start)))
+
+        if "close" in data.columns:
+            abs_ret_series = (
+                data.with_columns(pl.col("close").pct_change().abs().alias("abs_ret"))["abs_ret"].drop_nulls()
+            )
+            if abs_ret_series.len() > 0:
+                threshold = abs_ret_series.quantile(0.9, interpolation="nearest")
+                if threshold is not None:
+                    high_vol = data.with_columns(
+                        pl.col("close").pct_change().abs().alias("abs_ret")
+                    ).filter(pl.col("abs_ret") >= threshold).drop("abs_ret")
+                    if high_vol.height >= 60:
+                        phases.append(("high_volatility", high_vol))
+
+        return phases
 
     def _scenario_snapshot(self, symbol: str, historical_data: pl.DataFrame) -> Dict[str, Any]:
         """Run small scenario suite to stress-test the baseline."""

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Dict, List, Optional
 
 import numpy as np
@@ -215,6 +215,88 @@ class MemoryStore:
 
             logger.info("similar_patterns_found", count=len(results), top_k=top_k)
             return results
+
+    def sample_replay_experiences(self, limit: int = 256) -> List[Dict[str, Any]]:
+        """Randomly sample historical trades for replay seeding."""
+
+        self.connect()
+        with self._conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT
+                    symbol,
+                    entry_embedding,
+                    net_profit_gbp,
+                    position_size_gbp,
+                    hold_duration_minutes,
+                    market_regime,
+                    spread_at_entry_bps,
+                    volatility_bps
+                FROM trade_memory
+                WHERE net_profit_gbp IS NOT NULL
+                ORDER BY RANDOM()
+                LIMIT %s
+                """,
+                (limit,),
+            )
+            rows = cur.fetchall()
+
+        samples: List[Dict[str, Any]] = []
+        for row in rows:
+            embedding = np.array(row.get("entry_embedding", []), dtype=np.float32)
+            samples.append({
+                "symbol": row.get("symbol"),
+                "entry_embedding": embedding,
+                "net_profit_gbp": row.get("net_profit_gbp", 0.0),
+                "position_size_gbp": row.get("position_size_gbp", 1_000.0),
+                "hold_duration_minutes": row.get("hold_duration_minutes", 0),
+                "market_regime": row.get("market_regime"),
+                "spread_bps": row.get("spread_at_entry_bps", 5.0),
+                "volatility_bps": row.get("volatility_bps", 0.0),
+            })
+
+        logger.info("replay_samples_loaded", count=len(samples))
+        return samples
+
+    def record_model_performance(self, model_version: str, evaluation_date: date, metrics: Dict[str, Any]) -> None:
+        """Persist aggregate model metrics for cross-module consumption."""
+
+        self.connect()
+        payload = {
+            "model_version": model_version,
+            "evaluation_date": evaluation_date,
+            "trades_total": metrics.get("total_trades"),
+            "trades_won": metrics.get("wins"),
+            "trades_lost": metrics.get("losses"),
+            "win_rate": metrics.get("win_rate"),
+            "total_profit_gbp": metrics.get("total_profit_gbp"),
+            "avg_profit_per_trade_gbp": metrics.get("avg_profit_per_trade_gbp"),
+            "largest_win_gbp": metrics.get("largest_win_gbp"),
+            "largest_loss_gbp": metrics.get("largest_loss_gbp"),
+            "sharpe_ratio": metrics.get("sharpe_ratio"),
+            "sortino_ratio": metrics.get("sortino_ratio"),
+            "max_drawdown_gbp": metrics.get("max_drawdown_gbp"),
+            "patterns_learned": metrics.get("patterns_learned"),
+            "insights_generated": metrics.get("insights_generated"),
+            "strategy_updates": metrics.get("strategy_updates"),
+        }
+
+        columns = ",".join(payload.keys())
+        placeholders = ",".join(["%s"] * len(payload))
+        updates = ",".join([f"{col} = EXCLUDED.{col}" for col in list(payload.keys())[2:]])
+
+        with self._conn.cursor() as cur:
+            cur.execute(
+                f"""
+                INSERT INTO model_performance ({columns})
+                VALUES ({placeholders})
+                ON CONFLICT(model_version, evaluation_date)
+                DO UPDATE SET {updates}
+                """,
+                list(payload.values()),
+            )
+            self._conn.commit()
+            logger.info("model_performance_recorded", model_version=model_version)
 
     def get_pattern_stats(self, similar_patterns: List[SimilarPattern]) -> PatternStats:
         """Calculate aggregate statistics from similar patterns."""
