@@ -118,6 +118,52 @@ def _price_position_in_range(high: pl.Expr, low: pl.Expr, close: pl.Expr, window
     return position.alias("price_position_in_range")
 
 
+def _trend_flag(close: pl.Expr, window: int, threshold_bps: float = 3.0) -> pl.Expr:
+    """
+    Trend flag indicating directional bias over a window.
+    Returns -1 (down), 0 (flat), +1 (up).
+    """
+    avg_return = close.pct_change().rolling_mean(window_size=window, min_periods=window // 2)
+    threshold = threshold_bps / 10_000.0
+    flag = (
+        pl.when(avg_return > threshold)
+        .then(1.0)
+        .when(avg_return < -threshold)
+        .then(-1.0)
+        .otherwise(0.0)
+        .alias(f"trend_flag_{window}")
+    )
+    return flag
+
+
+def _multi_timeframe_trend(close: pl.Expr, short_window: int, long_window: int) -> pl.Expr:
+    """
+    Multi timeframe trend strength computed as normalized EMA differential.
+    """
+    short_ema = close.ewm_mean(alpha=2.0 / (short_window + 1.0), adjust=False)
+    long_ema = close.ewm_mean(alpha=2.0 / (long_window + 1.0), adjust=False)
+    strength = ((short_ema - long_ema) / (close + 1e-9)).clip(-1.0, 1.0)
+    return strength.alias(f"trend_strength_{short_window}_{long_window}")
+
+
+def _orderbook_imbalance(bid: pl.Expr, ask: pl.Expr) -> pl.Expr:
+    """
+    Compute order-book imbalance (-1 to 1). Positive = bid-dominant.
+    """
+    imbalance = (bid - ask) / (bid + ask + 1e-9)
+    return imbalance.alias("orderbook_imbalance")
+
+
+def _flow_acceleration(flow: pl.Expr, window: int = 30) -> pl.Expr:
+    """
+    Macro/flow acceleration score. Detects rapid changes in net flows.
+    """
+    mean = flow.rolling_mean(window_size=window, min_periods=max(2, window // 3))
+    std = flow.rolling_std(window_size=window, min_periods=max(2, window // 3))
+    accel = ((flow - mean) / (std + 1e-9)).clip(-5.0, 5.0)
+    return accel.alias(f"flow_acceleration_{window}")
+
+
 # ============================================================================
 # REVUELTO-SPECIFIC FEATURES (From Revuelto Bot Analysis)
 # ============================================================================
@@ -688,6 +734,11 @@ class FeatureRecipe:
         ema_slope_feat = _ema_slope(pl.col("close"), period=20)
         momentum_slope_feat = _momentum_slope(pl.col("close"), short=5, long=20)
         htf = _htf_bias(pl.col("close"), htf_period=100)
+        trend_flag_5 = _trend_flag(pl.col("close"), window=5)
+        trend_flag_30 = _trend_flag(pl.col("close"), window=30)
+        trend_flag_120 = _trend_flag(pl.col("close"), window=120)
+        mt_trend_short = _multi_timeframe_trend(pl.col("close"), short_window=5, long_window=60)
+        mt_trend_long = _multi_timeframe_trend(pl.col("close"), short_window=30, long_window=240)
 
         # Volume Features
         vol_jump = _vol_jump_z(pl.col("volume"), window=20)
@@ -738,10 +789,35 @@ class FeatureRecipe:
                 ema_slope_feat,
                 momentum_slope_feat,
                 htf,
+                trend_flag_5,
+                trend_flag_30,
+                trend_flag_120,
+                mt_trend_short,
+                mt_trend_long,
                 vol_jump,
                 kurt,
             ]
         )
+
+        # Optional order-book features if bid/ask volumes are present
+        optional_features = []
+        if {"bid_volume", "ask_volume"}.issubset(set(frame.columns)):
+            optional_features.append(
+                _orderbook_imbalance(pl.col("bid_volume"), pl.col("ask_volume"))
+            )
+        if "cumulative_flow" in frame.columns:
+            optional_features.append(_flow_acceleration(pl.col("cumulative_flow"), window=60))
+            optional_features.append(_flow_acceleration(pl.col("cumulative_flow"), window=240))
+        if "funding_rate" in frame.columns:
+            optional_features.append(
+                pl.col("funding_rate").fill_null(0.0).alias("funding_rate_latest")
+            )
+            optional_features.append(
+                pl.col("funding_rate").rolling_mean(window_size=180, min_periods=60).alias("funding_rate_trend")
+            )
+
+        if optional_features:
+            feature_frame = feature_frame.with_columns(optional_features)
 
         filled = feature_frame.fill_null(strategy="forward").fill_null(strategy="backward").fill_nan(0.0)
         return filled

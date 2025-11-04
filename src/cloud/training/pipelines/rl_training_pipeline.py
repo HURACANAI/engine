@@ -11,13 +11,15 @@ This is the powerhouse that:
 
 from __future__ import annotations
 
+from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
-from typing import List
+from typing import Any, Dict, List
+from uuid import uuid4
 
 import polars as pl
 import structlog
 
-from ..agents.rl_agent import PPOConfig, RLTradingAgent
+from ..agents.rl_agent import PPOConfig, RLTradingAgent, TradingAction
 from ..analyzers.loss_analyzer import LossAnalyzer
 from ..analyzers.pattern_matcher import PatternMatcher
 from ..analyzers.post_exit_tracker import PostExitTracker
@@ -29,6 +31,7 @@ from ..datasets.quality_checks import DataQualitySuite
 from ..memory.store import MemoryStore
 from ..services.costs import CostModel
 from ..services.exchange import ExchangeClient
+from ..contracts.model_manifest import ModelManifest
 from shared.features.recipe import FeatureRecipe
 
 logger = structlog.get_logger(__name__)
@@ -187,6 +190,23 @@ class RLTrainingPipeline:
             **update_metrics,
         }
 
+        scenario_snapshot = self._scenario_snapshot(symbol, historical_data)
+        metrics["scenario_tests"] = scenario_snapshot
+
+        manifest = ModelManifest(
+            model_id=str(uuid4()),
+            created_at=datetime.now(tz=timezone.utc),
+            symbol=symbol,
+            training_window_days=lookback_days,
+            metrics=metrics,
+            agent_config=asdict(self.agent.config),
+            action_space=[action.name for action in TradingAction],
+            feature_count=self.agent.state_dim,
+            replay_buffer_size=self.agent.config.replay_buffer_size,
+            scenario_tests=scenario_snapshot,
+        )
+        metrics["manifest"] = manifest.to_dict()
+
         logger.info("training_complete", **metrics)
         return metrics
 
@@ -314,3 +334,27 @@ class RLTrainingPipeline:
             "total_patterns": 0,
             "top_patterns_count": 0,
         }
+
+    def _scenario_snapshot(self, symbol: str, historical_data: pl.DataFrame) -> Dict[str, Any]:
+        """Run small scenario suite to stress-test the baseline."""
+
+        try:
+            scenarios = {
+                "spread_x2": {"spread_multiplier": 2.0},
+                "volatility_spike": {"volatility_spike_bps": 25.0},
+            }
+            scenario_trades = self.shadow_trader.simulate_scenarios(symbol, historical_data, scenarios)
+        except Exception as exc:  # noqa: BLE001 - diagnostics only
+            logger.warning("scenario_simulation_failed", symbol=symbol, error=str(exc))
+            return {"error": str(exc)}
+
+        summary: Dict[str, Any] = {}
+        for name, trades in scenario_trades.items():
+            wins = sum(1 for t in trades if t.is_winner)
+            total_profit = sum(t.net_profit_gbp for t in trades)
+            summary[name] = {
+                "trades": len(trades),
+                "win_rate": wins / len(trades) if trades else 0.0,
+                "avg_profit_gbp": total_profit / len(trades) if trades else 0.0,
+            }
+        return summary

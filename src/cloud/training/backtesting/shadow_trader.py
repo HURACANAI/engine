@@ -172,13 +172,14 @@ class ShadowTrader:
                 if exit_result:
                     all_trades.append(exit_result)
 
-                    # Update feature importance learning
-                    self.feature_importance_learner.update(
-                        features=exit_result.entry_features,
-                        is_winner=exit_result.is_winner,
-                        profit_bps=exit_result.gross_profit_bps,
-                        timestamp=str(exit_result.entry_timestamp),
-                    )
+                    if training_mode:
+                        # Update feature importance learning
+                        self.feature_importance_learner.update(
+                            features=exit_result.entry_features,
+                            is_winner=exit_result.is_winner,
+                            profit_bps=exit_result.gross_profit_bps,
+                            timestamp=str(exit_result.entry_timestamp),
+                        )
 
         # Force-close any remaining open position at end of data
         if self.current_position is not None:
@@ -199,12 +200,13 @@ class ShadowTrader:
                 if forced_exit:
                     all_trades.append(forced_exit)
 
-                    self.feature_importance_learner.update(
-                        features=forced_exit.entry_features,
-                        is_winner=forced_exit.is_winner,
-                        profit_bps=forced_exit.gross_profit_bps,
-                        timestamp=str(forced_exit.entry_timestamp),
-                    )
+                    if training_mode:
+                        self.feature_importance_learner.update(
+                            features=forced_exit.entry_features,
+                            is_winner=forced_exit.is_winner,
+                            profit_bps=forced_exit.gross_profit_bps,
+                            timestamp=str(forced_exit.entry_timestamp),
+                        )
 
         # Get feature importance results
         importance_result = self.feature_importance_learner.get_feature_importance()
@@ -219,6 +221,25 @@ class ShadowTrader:
         )
 
         return all_trades
+
+    def simulate_scenarios(
+        self,
+        symbol: str,
+        historical_data: pl.DataFrame,
+        scenarios: Dict[str, Dict[str, float]],
+    ) -> Dict[str, List[ShadowTradeResult]]:
+        """Run what-if scenarios (spread shocks, volatility spikes, latency)."""
+
+        results: Dict[str, List[ShadowTradeResult]] = {}
+        for name, config in scenarios.items():
+            scenario_data = self._apply_scenario_modifiers(historical_data, config)
+            trades = self.backtest_symbol(
+                symbol=symbol,
+                historical_data=scenario_data,
+                training_mode=False,
+            )
+            results[name] = trades
+        return results
 
     def _consider_entry(
         self,
@@ -246,7 +267,8 @@ class ShadowTrader:
 
         # Only enter if agent chooses entry action and we have confidence
         if action not in [TradingAction.ENTER_LONG_SMALL, TradingAction.ENTER_LONG_NORMAL, TradingAction.ENTER_LONG_LARGE]:
-            self.agent.store_reward(reward=0.0, done=False)  # Neutral reward for skipping
+            if training_mode:
+                self.agent.store_reward(reward=0.0, done=False)  # Neutral reward for skipping
             return None
 
         # Calculate confidence score for this trade
@@ -265,6 +287,10 @@ class ShadowTrader:
             pattern_reliability=state.similar_pattern_reliability,
             regime_match=regime_match,
             regime_confidence=regime_conf,
+            meta_features={
+                "meta_signal": float(max(0.0, state.similar_pattern_reliability * state.win_rate_today)),
+                "orderbook_bias": float(state.orderbook_imbalance),
+            },
         )
 
         # Skip trade if confidence is too low
@@ -274,7 +300,8 @@ class ShadowTrader:
                 confidence=confidence_result.confidence,
                 reason=confidence_result.reason,
             )
-            self.agent.store_reward(reward=-0.1, done=False)  # Penalty for ignoring low confidence
+            if training_mode:
+                self.agent.store_reward(reward=-0.1, done=False)  # Penalty for ignoring low confidence
             return None
 
         # Execute entry
@@ -300,6 +327,7 @@ class ShadowTrader:
             "position_size_gbp": position_size_gbp,
             "entry_volatility_bps": float(current_row.get("realized_sigma_30", 0.0)) * 10000,
             "entry_spread_bps": state.spread_bps,
+            "entry_cost_bps": state.estimated_transaction_cost_bps,
             "visible_data": visible_data,  # Store for regime detection
             "confidence_result": confidence_result,  # Store confidence info for trade result
         }
@@ -307,7 +335,8 @@ class ShadowTrader:
         logger.debug("shadow_entry", symbol=symbol, price=entry_price, idx=current_idx)
 
         # Store neutral reward until trade outcome is known
-        self.agent.store_reward(reward=0.0, done=False)
+        if training_mode:
+            self.agent.store_reward(reward=0.0, done=False)
 
         return None
 
@@ -359,7 +388,8 @@ class ShadowTrader:
 
         if exit_reason is None:
             # Continue holding, reward is neutral this step
-            self.agent.store_reward(reward=0.0, done=False)
+            if training_mode:
+                self.agent.store_reward(reward=0.0, done=False)
             return None
 
         trade_result = self._execute_exit(current_idx, current_row, exit_reason, future_data)
@@ -376,7 +406,8 @@ class ShadowTrader:
             state=state,
         )
 
-        self.agent.store_reward(reward=reward, done=True)
+        if training_mode:
+            self.agent.store_reward(reward=reward, done=True)
 
         # Update stats
         self.trades_today += 1
@@ -433,7 +464,8 @@ class ShadowTrader:
             state=state,
         )
 
-        self.agent.store_reward(reward=reward, done=True)
+        if training_mode:
+            self.agent.store_reward(reward=reward, done=True)
 
         self.trades_today += 1
         if trade_result.is_winner:
@@ -595,6 +627,80 @@ class ShadowTrader:
         feature_names = [c for c in visible_data.columns if c not in ["ts", "open", "high", "low", "close", "volume"]]
         market_features = np.array([float(current_row.get(f, 0.0)) for f in feature_names], dtype=np.float32)
 
+        close_values = np.asarray(visible_data["close"], dtype=float)
+        volume_values = np.asarray(visible_data["volume"], dtype=float)
+
+        def _pct_change(series: np.ndarray, periods: int) -> float:
+            if series.size <= periods:
+                return 0.0
+            past = series[-periods - 1]
+            if past == 0:
+                return 0.0
+            return float((series[-1] - past) / past)
+
+        recent_return_1m = _pct_change(close_values, 1)
+        recent_return_5m = _pct_change(close_values, 5)
+        recent_return_30m = _pct_change(close_values, 30)
+        recent_return_60m = _pct_change(close_values, 60)
+
+        volume_window = volume_values[-120:] if volume_values.size >= 2 else volume_values
+        vol_mean = float(volume_window.mean()) if volume_window.size else 0.0
+        vol_std = float(volume_window.std()) if volume_window.size else 0.0
+        if vol_std < 1e-9:
+            volume_zscore = 0.0
+        else:
+            volume_zscore = float((volume_values[-1] - vol_mean) / vol_std)
+
+        returns = np.diff(close_values) / close_values[:-1] if close_values.size > 1 else np.zeros(1)
+        short_vol = float(np.std(returns[-30:])) if returns.size else 0.0
+        long_vol = float(np.std(returns[-180:])) if returns.size >= 180 else float(np.std(returns)) if returns.size else 0.0
+        if long_vol < 1e-9:
+            volatility_zscore = 0.0
+        else:
+            volatility_zscore = float((short_vol - long_vol) / (long_vol + 1e-9))
+
+        spread_bps = float(current_row.get("spread_bps", 5.0))
+        taker_fee_bps = current_row.get("taker_fee_bps")
+        taker_fee_bps = float(taker_fee_bps) if isinstance(taker_fee_bps, (int, float)) else None
+        volatility_bps = float(current_row.get("realized_sigma_30", 0.0)) * 10000
+
+        adv_window = volume_values[-1440:] if volume_values.size >= 10 else volume_values
+        adv_quote = None
+        if adv_window.size and close_values.size:
+            adv_quote = float(np.mean(adv_window) * close_values[-1])
+            if adv_quote <= 0:
+                adv_quote = None
+
+        cost_estimate = self.cost_model.estimate(
+            taker_fee_bps=taker_fee_bps,
+            spread_bps=spread_bps,
+            volatility_bps=volatility_bps,
+            adv_quote=adv_quote,
+        )
+
+        trend_flag_5m = 1.0 if recent_return_5m > 0.0 else -1.0 if recent_return_5m < 0.0 else 0.0
+        trend_flag_1h = 1.0 if recent_return_60m > 0.0 else -1.0 if recent_return_60m < 0.0 else 0.0
+
+        if {"bid_volume", "ask_volume"}.issubset(set(visible_data.columns)):
+            bid_vol = float(current_row.get("bid_volume", 0.0))
+            ask_vol = float(current_row.get("ask_volume", 0.0))
+            denom = bid_vol + ask_vol
+            orderbook_imbalance = (bid_vol - ask_vol) / denom if denom > 0 else 0.0
+        else:
+            orderbook_imbalance = 0.0
+
+        if "cumulative_flow" in current_row:
+            flow_series = np.asarray(visible_data["cumulative_flow"], dtype=float)
+            if flow_series.size > 60:
+                baseline = flow_series[-61]
+                flow_trend = float(flow_series[-1] - baseline)
+            elif flow_series.size > 1:
+                flow_trend = float(flow_series[-1] - flow_series[0])
+            else:
+                flow_trend = 0.0
+        else:
+            flow_trend = 0.0
+
         # Create embedding and query memory
         embedding = self._create_embedding(current_row)
         similar_patterns = self.memory.find_similar_patterns(
@@ -607,7 +713,6 @@ class ShadowTrader:
         pattern_stats = self.memory.get_pattern_stats(similar_patterns)
 
         # Classify regime using sophisticated regime detector
-        volatility_bps = float(current_row.get("realized_sigma_30", 0.0)) * 10000
         regime_str, regime_confidence = self._classify_regime(visible_data, current_idx)
 
         # Convert to code for RL agent state (backward compatibility)
@@ -628,12 +733,53 @@ class ShadowTrader:
             unrealized_pnl_bps=unrealized_pnl_bps,
             hold_duration_minutes=hold_duration_minutes,
             volatility_bps=volatility_bps,
-            spread_bps=5.0,  # Simplified - would fetch real spread
+            spread_bps=spread_bps,
             regime_code=regime_code,
             current_drawdown_gbp=0.0,  # Would track real drawdown
             trades_today=self.trades_today,
             win_rate_today=self.wins_today / self.trades_today if self.trades_today > 0 else 0.5,
+            recent_return_1m=recent_return_1m,
+            recent_return_5m=recent_return_5m,
+            recent_return_30m=recent_return_30m,
+            volume_zscore=volume_zscore,
+            volatility_zscore=volatility_zscore,
+            estimated_transaction_cost_bps=cost_estimate.total_costs_bps,
+            trend_flag_5m=trend_flag_5m,
+            trend_flag_1h=trend_flag_1h,
+            orderbook_imbalance=orderbook_imbalance,
+            flow_trend_score=flow_trend,
         )
+
+    def _apply_scenario_modifiers(
+        self,
+        frame: pl.DataFrame,
+        config: Dict[str, float],
+    ) -> pl.DataFrame:
+        """Apply scenario shocks to a DataFrame without mutating original."""
+
+        mutated = frame
+        ops = []
+
+        spread_multiplier = config.get("spread_multiplier")
+        if spread_multiplier and "spread_bps" in mutated.columns:
+            ops.append((pl.col("spread_bps") * spread_multiplier).alias("spread_bps"))
+
+        vol_spike = config.get("volatility_spike_bps")
+        if vol_spike:
+            for col in [c for c in mutated.columns if c.startswith("realized_sigma_")]:
+                ops.append((pl.col(col) + (vol_spike / 10_000.0)).alias(col))
+
+        latency_minutes = int(config.get("latency_minutes", 0))
+        if latency_minutes > 0:
+            shift_candles = max(1, latency_minutes)
+            for col in ["close", "open", "high", "low", "volume"]:
+                if col in mutated.columns:
+                    ops.append(pl.col(col).shift(shift_candles).fill_null(strategy="backward").alias(col))
+
+        if ops:
+            mutated = mutated.with_columns(ops)
+
+        return mutated
 
     def _create_embedding(self, features: Dict[str, Any]) -> np.ndarray:
         """Create vector embedding from features (simplified)."""

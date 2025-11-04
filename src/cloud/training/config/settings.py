@@ -89,6 +89,10 @@ class CostSettings(BaseModel):
     default_spread_bps: float = 6.0
     slippage_alpha: float = 1.1
     notional_per_trade: float = 1_000.0
+    slippage_floor_bps: float = 1.0
+    volatility_slippage_multiplier: float = 0.25
+    adv_liquidity_breakpoints: List[float] = Field(default_factory=lambda: [0.0005, 0.002, 0.01])
+    adv_penalties_bps: List[float] = Field(default_factory=lambda: [12.0, 6.0, 3.0, 1.0])
 
 
 class S3Settings(BaseModel):
@@ -201,4 +205,3 @@ class EngineSettings(BaseSettings):
             else:
                 result[key] = value
         return result
-
