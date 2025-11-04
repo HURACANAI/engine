@@ -1,53 +1,123 @@
 # Huracan Engine
 
-Huracan Engine is the nightly cloud training box that produces the Baseline Brain for the Huracan trading stack. This repository contains the scaffolding for data ingestion, feature engineering, modeling, validation, and artifact publishing as described in the full technical specification.
+Huracan Engine is the reinforcement-learning training box that produces the nightly “Baseline Brain” for the Huracan trading stack. The project now ships a fully wired PPO agent, walk-forward shadow trading simulator, post-trade analytics backed by PostgreSQL + pgvector, and a health-monitoring control loop wrapped in a daily orchestration pipeline.
+
+## Highlights
+
+- **Reinforcement learning agent** using PPO with contextual action biasing, running statistics, and gradient clipping (`src/cloud/training/agents/rl_agent.py`).
+- **Shadow trading simulator** that walks historical data without lookahead, captures rich trade context, and feeds rewards back into the agent (`src/cloud/training/backtesting/shadow_trader.py`).
+- **Post-trade analytics suite** covering wins, losses, pattern stats, and post-exit tracking, all persisted via `MemoryStore` into PostgreSQL/pgvector (`src/cloud/training/analyzers`, `src/cloud/training/memory`).
+- **Confidence, regime, and feature importance models** packaged under `src/cloud/training/models` to score trades before entry and explain outcomes.
+- **Daily orchestration and monitoring** with Ray integration, health checks, alerting, and artifact publishing (`src/cloud/training/pipelines/daily_retrain.py`, `src/cloud/training/monitoring`).
+
+## Repository Layout
+
+- `src/cloud/training/agents` – PPO agent and supporting utilities.
+- `src/cloud/training/backtesting` – Shadow trading engine plus backtest configuration.
+- `src/cloud/training/analyzers` – Win/loss insight generators, pattern matcher, post-exit tracker.
+- `src/cloud/training/models` – Regime detector, confidence scorer, feature importance learner, ensemble helpers.
+- `src/cloud/training/memory` – PostgreSQL schema and vector-backed memory store.
+- `src/cloud/training/pipelines` – Daily retrain entrypoint and RL training pipeline.
+- `src/cloud/training/services` – Orchestrator, costs, exchange client, artifact publishing, notifications.
+- `src/cloud/training/monitoring` – Health monitor orchestrator, anomaly detection, auto-remediation.
+- `config/` – Base, local, and monitoring YAML profiles used by `EngineSettings`.
+- `scripts/` – Setup helpers (`setup_database.sh`, `setup_rl_training.sh`), runner scripts (`run_daily_retrain.sh`, `run_health_monitor.py`).
+- `tests/` – Unit and integration coverage (confidence scoring, regime detection, RL system checks, etc.).
 
 ## Getting Started
 
-1. Install [Poetry](https://python-poetry.org/).
-2. Create a virtual environment using Python 3.11 (or rely on `.python-version`).
-3. Install dependencies:
+### 1. Prepare your environment
+
+- Python **3.11** (pyenv or `python -m venv .venv` are both fine).
+- PostgreSQL **14+** with access to install the `pgvector` extension.
+- Optional: Ray cluster access if you plan to distribute daily retraining.
+
+Create and activate a virtual environment:
+
+```bash
+python3.11 -m venv .venv
+source .venv/bin/activate
+```
+
+### 2. Install dependencies
+
+Poetry is the supported workflow (the project file lives under `infrastructure/pyproject.toml`):
+
+```bash
+cd infrastructure
+poetry install
+poetry shell  # optional: spawn a shell with the environment active
+```
+
+If you prefer plain `pip`, mirror the versions from `infrastructure/pyproject.toml` (the quick setup script installs the critical ones: torch, polars, psycopg2-binary, scipy).
+
+### 3. Configure PostgreSQL
+
+1. Ensure `DATABASE_URL` is exported, e.g.
    ```bash
-   poetry install
+   export DATABASE_URL='postgresql://user:password@localhost:5432/huracan'
    ```
-4. Run linters and tests:
+2. Provision schema and pgvector tables:
    ```bash
-   make lint
-   make test
+   ./scripts/setup_database.sh
    ```
+   The script validates connectivity, installs `vector`, and creates `trade_memory`, `post_exit_tracking`, `win_analysis`, `loss_analysis`, `pattern_library`, and `model_performance`.
 
-## Project Layout
+### 4. Update configuration
 
-- `src/cloud/training`: engine-specific orchestration, pipelines, and services.
-- `src/shared/features`: shared feature recipe consumed by Engine, Pilot, and Mechanic.
-- `src/shared/contracts`: schemas for daily JSON contracts and metrics payloads.
-- `config/`: environment-specific configuration profiles.
-- `scripts/`: operational helper scripts.
-- `tests/`: unit and integration tests.
+- Edit `config/base.yaml` (or the environment-specific profile you are using) to supply the PostgreSQL DSN, exchange credentials, S3/artifact settings, and any overrides for the RL, shadow trading, memory, or monitoring blocks.
+- `EngineSettings` can also read overrides from environment variables such as `HURACAN_ENV`, `HURACAN_MODE`, and `HURACAN_CONFIG_DIR`.
 
-## Document Library
+### 5. (Optional) Run the RL setup helper
 
-- [COMPLETE_SUMMARY.md](COMPLETE_SUMMARY.md) – Single-page overview of accomplishments and open items.
-- [COMPLETE_SYSTEM_OVERVIEW.md](COMPLETE_SYSTEM_OVERVIEW.md) – Architecture walkthrough originally prepared for stakeholders.
-- [FINAL_STATUS.md](FINAL_STATUS.md) – Detailed report on current capabilities and gaps.
-- [README_COMPLETE.md](README_COMPLETE.md) – End-to-end walkthrough of the system architecture.
-- [SESSION_COMPLETE.md](SESSION_COMPLETE.md) – Session timeline and outcomes recap.
-- [QUICKSTART.md](QUICKSTART.md) – Step-by-step guide for running the engine.
-- [GAP_ANALYSIS.md](GAP_ANALYSIS.md) – Remaining work mapped against requirements.
-- [IMPROVEMENTS_IN_PROGRESS.md](IMPROVEMENTS_IN_PROGRESS.md) – Active enhancements and next tasks.
-- [SETUP_GUIDE.md](SETUP_GUIDE.md) – Environment preparation and dependency setup instructions.
-- [INTEGRATION_COMPLETE.md](INTEGRATION_COMPLETE.md) – Summary of components wired into the pipeline.
-- [DEPLOYMENT_COMPLETE.md](DEPLOYMENT_COMPLETE.md) – Deployment considerations and verification steps.
-- [RL_TRAINING_GUIDE.md](RL_TRAINING_GUIDE.md) – Explanation of the PPO training pipeline.
-- [HEALTH_MONITORING_GUIDE.md](HEALTH_MONITORING_GUIDE.md) – Monitoring, alerting, and remediation playbook.
-- [FEATURE_COMPARISON.md](FEATURE_COMPARISON.md) – Huracan versus legacy systems capability matrix.
-- [REVUELTO_ANALYSIS.md](REVUELTO_ANALYSIS.md) – Full deep dive into Revuelto tactical features.
-- [REVUELTO_INTEGRATION_SUMMARY.md](REVUELTO_INTEGRATION_SUMMARY.md) – Actionable summary of Revuelto feature adoption plan.
-- [SYSTEM_OPERATIONAL.md](SYSTEM_OPERATIONAL.md) – Final verification log confirming end-to-end readiness.
+`./scripts/setup_rl_training.sh` installs core Python dependencies (via Poetry), checks PostgreSQL connectivity, and ensures the docs/models directories exist.
 
-## Next Steps
+## Running the Engine
 
-- Flesh out each placeholder class with real implementations respecting the design doc.
-- Wire the Ray-based parallel execution within the `daily_retrain` pipeline.
-- Implement Postgres migrations with Alembic and connect to Cloudflare R2 for artifact storage.
-- Add telemetry (structlog JSON, Prometheus metrics) and Telegram notifications for the nightly run.
+- **Daily retrain pipeline** (loads data, runs shadow trading, updates the agent, publishes artifacts, executes health checks):
+  ```bash
+  ./scripts/run_daily_retrain.sh
+  ```
+  This script maps to `cloud.training.pipelines.daily_retrain:run_daily_retrain`.
+
+- **Ad-hoc single-symbol training** with the RL pipeline:
+  ```bash
+  poetry run python - <<'PY'
+from cloud.training.config.settings import EngineSettings
+from cloud.training.pipelines.rl_training_pipeline import RLTrainingPipeline
+from cloud.training.services.exchange import ExchangeClient
+
+settings = EngineSettings.load()
+if not settings.postgres:
+    raise RuntimeError("Postgres DSN must be configured")
+
+pipeline = RLTrainingPipeline(settings=settings, dsn=settings.postgres.dsn)
+client = ExchangeClient(settings.exchange.primary, sandbox=settings.exchange.sandbox)
+metrics = pipeline.train_on_symbol(symbol="BTCUSDT", exchange_client=client, lookback_days=365)
+print(metrics)
+PY
+```
+
+- **Continuous health monitoring** with structured logging and (optional) Telegram alerts:
+  ```bash
+  poetry run ./scripts/run_health_monitor.py
+  ```
+
+## Testing & Quality Gates
+
+- Unit/integration tests: `poetry run pytest`
+- Linting and formatting: `poetry run ruff check src tests` and `poetry run ruff format src tests`
+- Static typing: `poetry run mypy src`
+- System smoke test: `poetry run python tests/verify_system.py`
+
+## Additional Documentation
+
+The `docs/` directory contains deep dives and runbooks:
+
+- [`SETUP_GUIDE.md`](SETUP_GUIDE.md) – full environment walkthrough.
+- [`RL_TRAINING_GUIDE.md`](RL_TRAINING_GUIDE.md) – detailed PPO + shadow trading explanation.
+- [`HEALTH_MONITORING_GUIDE.md`](HEALTH_MONITORING_GUIDE.md) – alerting, anomaly detection, and auto-remediation details.
+- [`INTEGRATION_COMPLETE.md`](INTEGRATION_COMPLETE.md) & [`DEPLOYMENT_COMPLETE.md`](DEPLOYMENT_COMPLETE.md) – integration status and deployment checklist.
+- [`README_COMPLETE.md`](README_COMPLETE.md) – comprehensive architecture summary.
+
+These references stay in sync with the code paths listed above, so you can trace each subsystem from documentation to implementation without outdated pointers.
