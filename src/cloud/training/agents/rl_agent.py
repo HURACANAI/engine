@@ -89,11 +89,33 @@ class TradingState:
 
 
 class ExperienceReplayBuffer:
-    """Keeps a curriculum buffer of past experiences for replay."""
+    """
+    Keeps a curriculum buffer of past experiences for regime-aware replay.
 
-    def __init__(self, capacity: int) -> None:
+    Supports context-aware sampling that prioritizes experiences from:
+    1. Current market regime (70% weight)
+    2. Other regimes (30% weight)
+
+    This implements "curriculum learning" - focus training on what's relevant NOW.
+    """
+
+    def __init__(self, capacity: int, regime_focus_weight: float = 0.7) -> None:
+        """
+        Initialize experience replay buffer.
+
+        Args:
+            capacity: Maximum number of experiences to store
+            regime_focus_weight: Weight for current regime experiences (0-1, default 0.7)
+        """
         self._capacity = capacity
         self._buffer: deque = deque(maxlen=capacity)
+        self._regime_focus_weight = regime_focus_weight
+
+        logger.info(
+            "experience_replay_buffer_initialized",
+            capacity=capacity,
+            regime_focus_weight=regime_focus_weight,
+        )
 
     def add_batch(
         self,
@@ -104,7 +126,12 @@ class ExperienceReplayBuffer:
         returns: torch.Tensor,
         contexts: List[TradingState],
     ) -> None:
+        """Add batch of experiences to buffer with regime tracking."""
         for idx in range(actions.shape[0]):
+            # Extract regime from context (map regime_code to string)
+            regime_code = contexts[idx].regime_code if hasattr(contexts[idx], "regime_code") else 0
+            regime_name = self._regime_code_to_name(regime_code)
+
             self._buffer.append({
                 "state": states[idx].detach().cpu(),
                 "action": actions[idx].detach().cpu(),
@@ -112,15 +139,39 @@ class ExperienceReplayBuffer:
                 "advantage": advantages[idx].detach().cpu(),
                 "return": returns[idx].detach().cpu(),
                 "context": copy.deepcopy(contexts[idx]),
+                "regime": regime_name,  # Track regime for weighted sampling
             })
 
-    def sample(self, count: int) -> Optional[Dict[str, Any]]:
+    def sample(
+        self,
+        count: int,
+        current_regime: Optional[str] = None,
+        use_regime_weighting: bool = True,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Sample experiences with optional regime-weighted prioritization.
+
+        Args:
+            count: Number of experiences to sample
+            current_regime: Current market regime for weighted sampling
+            use_regime_weighting: Enable regime-weighted sampling
+
+        Returns:
+            Dictionary of sampled experiences, or None if buffer empty
+        """
         available = len(self._buffer)
         if available == 0 or count <= 0:
             return None
 
         count = min(count, available)
-        indices = np.random.choice(available, count, replace=False)
+
+        # Regime-weighted sampling (curriculum learning)
+        if use_regime_weighting and current_regime:
+            indices = self._sample_regime_weighted(count, current_regime)
+        else:
+            # Standard uniform sampling
+            indices = np.random.choice(available, count, replace=False)
+
         selected = [self._buffer[idx] for idx in indices]
 
         states = torch.stack([item["state"] for item in selected])
@@ -138,6 +189,75 @@ class ExperienceReplayBuffer:
             "returns": returns,
             "contexts": contexts,
         }
+
+    def _sample_regime_weighted(self, count: int, current_regime: str) -> np.ndarray:
+        """
+        Sample experiences with higher probability for current regime.
+
+        Implements curriculum learning: 70% from current regime, 30% from others.
+
+        Args:
+            count: Number of samples
+            current_regime: Current market regime
+
+        Returns:
+            Array of selected indices
+        """
+        available = len(self._buffer)
+
+        # Separate indices by regime match
+        matching_indices = []
+        other_indices = []
+
+        for idx in range(available):
+            if self._buffer[idx].get("regime") == current_regime:
+                matching_indices.append(idx)
+            else:
+                other_indices.append(idx)
+
+        # Calculate split (70% current regime, 30% others)
+        target_matching = int(count * self._regime_focus_weight)
+        target_other = count - target_matching
+
+        # Sample from each group
+        selected_indices = []
+
+        if matching_indices and target_matching > 0:
+            actual_matching = min(target_matching, len(matching_indices))
+            selected_indices.extend(
+                np.random.choice(matching_indices, actual_matching, replace=False)
+            )
+
+        if other_indices and target_other > 0:
+            actual_other = min(target_other, len(other_indices))
+            selected_indices.extend(
+                np.random.choice(other_indices, actual_other, replace=False)
+            )
+
+        # If we didn't get enough samples, fill from whatever's available
+        if len(selected_indices) < count:
+            remaining = count - len(selected_indices)
+            all_indices = list(range(available))
+            # Remove already selected
+            available_indices = [idx for idx in all_indices if idx not in selected_indices]
+            if available_indices:
+                additional = min(remaining, len(available_indices))
+                selected_indices.extend(
+                    np.random.choice(available_indices, additional, replace=False)
+                )
+
+        return np.array(selected_indices)
+
+    def _regime_code_to_name(self, regime_code: int) -> str:
+        """Map regime code to string name."""
+        regime_map = {
+            0: "low_vol",
+            1: "medium_vol",
+            2: "high_vol",
+            3: "trending",
+            4: "ranging",
+        }
+        return regime_map.get(regime_code, "unknown")
 
     def __len__(self) -> int:  # pragma: no cover - trivial
         return len(self._buffer)

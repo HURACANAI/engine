@@ -170,10 +170,15 @@ class LossAnalyzer:
             insufficient_confirmation=insufficient_confirmation,
         )
 
-        # 12. Pattern to avoid
-        pattern_to_avoid = self._build_pattern_to_avoid(
+        # 12. Context-tagged pattern to avoid
+        pattern_to_avoid = self._build_context_tagged_pattern(
             entry_features=entry_features,
-            market_regime=market_regime_entry,
+            market_regime_entry=market_regime_entry,
+            market_regime_exit=market_regime_exit,
+            entry_volatility_bps=entry_volatility_bps,
+            symbol=symbol,
+            primary_reason=primary_reason,
+            regime_changed=regime_changed,
         )
 
         # 13. Calculate confidence penalty
@@ -371,12 +376,125 @@ class LossAnalyzer:
         entry_features: Dict[str, Any],
         market_regime: str,
     ) -> Dict[str, Any]:
-        """Build pattern signature to avoid in future."""
+        """Build pattern signature to avoid in future. (DEPRECATED - use _build_context_tagged_pattern)"""
         # Simplified: store key features and regime
         return {
             "market_regime": market_regime,
             "feature_snapshot": {k: v for k, v in list(entry_features.items())[:10]},
         }
+
+    def _build_context_tagged_pattern(
+        self,
+        entry_features: Dict[str, Any],
+        market_regime_entry: str,
+        market_regime_exit: str,
+        entry_volatility_bps: float,
+        symbol: str,
+        primary_reason: str,
+        regime_changed: bool,
+    ) -> Dict[str, Any]:
+        """
+        Build context-tagged failure pattern to avoid.
+
+        Instead of just storing "avoid ETH breakout entries", stores:
+        "avoid ETH breakout entries WHEN regime=PANIC AND volatility>200bps"
+
+        This creates precise avoidance rules that don't overgeneralize.
+
+        Args:
+            entry_features: Features at entry
+            market_regime_entry: Regime when entered
+            market_regime_exit: Regime when exited
+            entry_volatility_bps: Volatility at entry
+            symbol: Trading symbol
+            primary_reason: Primary failure reason
+            regime_changed: Whether regime changed during trade
+
+        Returns:
+            Context-tagged pattern with precise conditions
+        """
+        # Extract key technical features that define this pattern
+        key_features = {}
+        feature_keys = [
+            "trend_strength",
+            "adx",
+            "eps_net",
+            "ignition",
+            "volatility_bps",
+            "spread_bps",
+            "htf_bias",
+            "orderbook_imbalance",
+        ]
+
+        for key in feature_keys:
+            if key in entry_features:
+                key_features[key] = entry_features[key]
+
+        # Build context-specific avoidance rule
+        pattern = {
+            # Core identification
+            "symbol": symbol,
+            "market_regime_entry": market_regime_entry,
+            "market_regime_exit": market_regime_exit,
+            "regime_changed": regime_changed,
+
+            # Context conditions (the "WHEN" part)
+            "context_conditions": {
+                "regime": market_regime_entry,
+                "volatility_bps": entry_volatility_bps,
+                "volatility_threshold": "high" if entry_volatility_bps > 150 else "moderate",
+            },
+
+            # Pattern signature
+            "feature_snapshot": key_features,
+
+            # Why it failed
+            "failure_metadata": {
+                "primary_reason": primary_reason,
+                "regime_changed_during_trade": regime_changed,
+            },
+
+            # Avoidance rule (human-readable)
+            "avoidance_rule": self._generate_avoidance_rule(
+                symbol=symbol,
+                regime=market_regime_entry,
+                volatility=entry_volatility_bps,
+                key_features=key_features,
+                primary_reason=primary_reason,
+            ),
+        }
+
+        return pattern
+
+    def _generate_avoidance_rule(
+        self,
+        symbol: str,
+        regime: str,
+        volatility: float,
+        key_features: Dict[str, Any],
+        primary_reason: str,
+    ) -> str:
+        """Generate human-readable avoidance rule."""
+        conditions = [f"regime={regime.upper()}"]
+
+        # Add volatility condition
+        if volatility > 200:
+            conditions.append("volatility>200bps")
+        elif volatility > 150:
+            conditions.append("volatility>150bps")
+
+        # Add specific feature conditions
+        if "trend_strength" in key_features and abs(key_features["trend_strength"]) < 0.3:
+            conditions.append("weak_trend")
+
+        if "spread_bps" in key_features and key_features["spread_bps"] > 15:
+            conditions.append("wide_spread")
+
+        # Build rule
+        condition_str = " AND ".join(conditions)
+        rule = f"AVOID {symbol} entries WHEN {condition_str} (reason: {primary_reason})"
+
+        return rule
 
     def _calculate_confidence_penalty(
         self,

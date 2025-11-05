@@ -71,22 +71,40 @@ class ConfidenceScorer:
         min_confidence_threshold: float = 0.52,
         sample_threshold: int = 20,
         strong_alignment_threshold: float = 0.7,
+        use_regime_thresholds: bool = True,
+        regime_thresholds: Optional[Dict[str, float]] = None,
     ):
         """
         Args:
-            min_confidence_threshold: Minimum confidence to trade
+            min_confidence_threshold: Default minimum confidence to trade
             sample_threshold: Sample count for 63% confidence (sigmoid inflection)
             strong_alignment_threshold: Threshold for "strong alignment" bonus
+            use_regime_thresholds: Enable regime-specific confidence thresholds
+            regime_thresholds: Custom thresholds per regime (overrides defaults)
         """
         self.min_confidence_threshold = min_confidence_threshold
         self.sample_threshold = sample_threshold
         self.strong_alignment_threshold = strong_alignment_threshold
+        self.use_regime_thresholds = use_regime_thresholds
+
+        # Regime-specific thresholds (context-aware decision making!)
+        # TREND: Lower threshold (more aggressive) - strong directional moves
+        # RANGE: Moderate threshold - mean reversion opportunities
+        # PANIC: Higher threshold (conservative) - chaotic conditions, only high-conviction
+        self.regime_thresholds = regime_thresholds or {
+            "trend": 0.50,   # Most aggressive - trending markets are profitable
+            "range": 0.55,   # Moderate - range-bound trading requires precision
+            "panic": 0.65,   # Most conservative - high volatility = high risk
+            "unknown": 0.60, # Conservative default when regime unclear
+        }
 
         logger.info(
             "confidence_scorer_initialized",
             min_threshold=min_confidence_threshold,
             sample_threshold=sample_threshold,
             strong_alignment_threshold=strong_alignment_threshold,
+            use_regime_thresholds=use_regime_thresholds,
+            regime_thresholds=self.regime_thresholds,
         )
 
     def calculate_confidence(
@@ -99,9 +117,10 @@ class ConfidenceScorer:
         regime_match: bool = False,
         regime_confidence: float = 0.5,
         meta_features: Optional[Dict[str, float]] = None,
+        current_regime: Optional[str] = None,
     ) -> ConfidenceResult:
         """
-        Calculate confidence score for a trading decision.
+        Calculate confidence score for a trading decision with regime-aware thresholding.
 
         Args:
             sample_count: Number of historical examples
@@ -111,9 +130,11 @@ class ConfidenceScorer:
             pattern_reliability: Reliability of matched pattern (0-1)
             regime_match: Does current regime match best historical regime?
             regime_confidence: Regime detection confidence (0-1)
+            meta_features: Additional meta-model features
+            current_regime: Current market regime ("trend", "range", "panic", "unknown")
 
         Returns:
-            ConfidenceResult with confidence score and decision
+            ConfidenceResult with confidence score and context-aware decision
         """
         # 1. Sample-based confidence (sigmoid function)
         sample_confidence = self._sigmoid_confidence(sample_count)
@@ -174,13 +195,23 @@ class ConfidenceScorer:
             orderbook_bias=orderbook_bias,
         )
 
-        # 9. Make decision
-        if confidence >= self.min_confidence_threshold:
+        # 9. Make context-aware decision using regime-specific threshold
+        effective_threshold = self._get_effective_threshold(current_regime)
+
+        if confidence >= effective_threshold:
             decision = "trade"
-            reason = self._build_trade_reason(confidence, factors)
+            reason = self._build_trade_reason(confidence, factors, current_regime, effective_threshold)
         else:
             decision = "skip"
-            reason = self._build_skip_reason(confidence, factors)
+            reason = self._build_skip_reason(confidence, factors, current_regime, effective_threshold)
+
+        logger.debug(
+            "confidence_decision",
+            confidence=confidence,
+            effective_threshold=effective_threshold,
+            regime=current_regime,
+            decision=decision,
+        )
 
         return ConfidenceResult(
             confidence=confidence,
@@ -188,6 +219,25 @@ class ConfidenceScorer:
             decision=decision,
             reason=reason,
         )
+
+    def _get_effective_threshold(self, current_regime: Optional[str]) -> float:
+        """
+        Get regime-specific confidence threshold.
+
+        Args:
+            current_regime: Current market regime
+
+        Returns:
+            Effective confidence threshold for decision making
+        """
+        if not self.use_regime_thresholds or current_regime is None:
+            return self.min_confidence_threshold
+
+        # Normalize regime name (handle case variations)
+        regime_key = current_regime.lower() if current_regime else "unknown"
+
+        # Return regime-specific threshold, fallback to default
+        return self.regime_thresholds.get(regime_key, self.min_confidence_threshold)
 
     def _sigmoid_confidence(self, sample_count: int) -> float:
         """
@@ -200,9 +250,21 @@ class ConfidenceScorer:
         """
         return 1.0 - np.exp(-sample_count / self.sample_threshold)
 
-    def _build_trade_reason(self, confidence: float, factors: ConfidenceFactors) -> str:
+    def _build_trade_reason(
+        self,
+        confidence: float,
+        factors: ConfidenceFactors,
+        current_regime: Optional[str] = None,
+        effective_threshold: Optional[float] = None,
+    ) -> str:
         """Build human-readable explanation for trading."""
         reasons = []
+
+        # Include regime context if available
+        if current_regime:
+            reasons.append(f"Regime: {current_regime.upper()}")
+            if effective_threshold:
+                reasons.append(f"threshold: {effective_threshold:.2f}")
 
         if confidence > 0.8:
             reasons.append("Very high confidence")
@@ -227,9 +289,21 @@ class ConfidenceScorer:
 
         return "; ".join(reasons)
 
-    def _build_skip_reason(self, confidence: float, factors: ConfidenceFactors) -> str:
+    def _build_skip_reason(
+        self,
+        confidence: float,
+        factors: ConfidenceFactors,
+        current_regime: Optional[str] = None,
+        effective_threshold: Optional[float] = None,
+    ) -> str:
         """Build human-readable explanation for skipping."""
         reasons = []
+
+        # Include regime context
+        if current_regime:
+            reasons.append(f"Regime: {current_regime.upper()}")
+            if effective_threshold:
+                reasons.append(f"needs {effective_threshold:.2f}")
 
         if factors.sample_count < 10:
             reasons.append(f"insufficient data ({factors.sample_count} samples)")
@@ -246,7 +320,8 @@ class ConfidenceScorer:
             reasons.append("unfavorable regime")
 
         if not reasons:
-            reasons.append(f"below confidence threshold ({confidence:.2f} < {self.min_confidence_threshold:.2f})")
+            threshold = effective_threshold if effective_threshold else self.min_confidence_threshold
+            reasons.append(f"below threshold ({confidence:.2f} < {threshold:.2f})")
 
         return "; ".join(reasons)
 

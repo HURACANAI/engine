@@ -148,19 +148,29 @@ class MemoryStore:
         market_regime: Optional[str] = None,
         top_k: int = 20,
         min_similarity: float = 0.7,
+        regime_weight: float = 0.3,
+        use_regime_boost: bool = True,
     ) -> List[SimilarPattern]:
         """
-        Find similar historical trades using vector similarity.
+        Find similar historical trades using context-aware vector similarity.
 
         Args:
             embedding: Feature embedding to search for
             symbol: Optional filter by symbol
-            market_regime: Optional filter by market regime
+            market_regime: Optional filter by market regime (for boost/filter)
             top_k: Number of results to return
             min_similarity: Minimum cosine similarity threshold (0-1)
+            regime_weight: Weight for regime matching bonus (0-1, default 0.3)
+            use_regime_boost: If True, boost scores for matching regimes instead of filtering
 
         Returns:
-            List of similar patterns ordered by similarity
+            List of similar patterns ordered by context-aware similarity
+
+        Note:
+            When use_regime_boost=True and market_regime is provided:
+            - Patterns from same regime get similarity boosted by regime_weight
+            - Patterns from different regimes still returned but with lower scores
+            This prevents over-filtering while favoring contextually similar trades
         """
         self.connect()
 
@@ -171,41 +181,93 @@ class MemoryStore:
             where_clauses.append("symbol = %s")
             params.append(symbol)
 
-        if market_regime:
+        # Handle regime filtering vs boosting
+        if market_regime and not use_regime_boost:
+            # Traditional filtering: only return matching regimes
             where_clauses.append("market_regime = %s")
             params.append(market_regime)
 
         where_clause = " AND ".join(where_clauses)
-        params.append(top_k)
+
+        # Build regime-aware similarity calculation
+        if use_regime_boost and market_regime:
+            # Boost similarity for matching regimes
+            # base_similarity * (1 + regime_weight) if match, else base_similarity
+            similarity_calc = f"""
+                CASE
+                    WHEN market_regime = %s THEN
+                        (1 - (entry_embedding <=> %s::vector)) * (1.0 + {regime_weight})
+                    ELSE
+                        (1 - (entry_embedding <=> %s::vector))
+                END as context_similarity
+            """
+            query_params = [embedding.tolist(), min_similarity]
+            if symbol:
+                query_params.append(symbol)
+            query_params.extend([market_regime, embedding.tolist(), embedding.tolist()])
+            query_params.append(top_k * 2)  # Fetch more, then re-sort and limit
+
+            order_clause = "context_similarity DESC"
+        else:
+            # Standard vector similarity
+            similarity_calc = "1 - (entry_embedding <=> %s::vector) as context_similarity"
+            query_params = [embedding.tolist()] + params
+            query_params.append(top_k)
+            order_clause = "entry_embedding <=> %s::vector"
 
         with self._conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(
-                f"""
-                SELECT
-                    trade_id,
-                    symbol,
-                    entry_timestamp,
-                    1 - (entry_embedding <=> %s::vector) as similarity_score,
-                    is_winner,
-                    net_profit_gbp,
-                    hold_duration_minutes,
-                    market_regime
-                FROM trade_memory
-                WHERE {where_clause}
-                ORDER BY entry_embedding <=> %s::vector
-                LIMIT %s
-                """,
-                [embedding.tolist()] + params,
-            )
+            if use_regime_boost and market_regime:
+                cur.execute(
+                    f"""
+                    SELECT
+                        trade_id,
+                        symbol,
+                        entry_timestamp,
+                        {similarity_calc},
+                        is_winner,
+                        net_profit_gbp,
+                        hold_duration_minutes,
+                        market_regime
+                    FROM trade_memory
+                    WHERE {where_clause}
+                    ORDER BY {order_clause}
+                    LIMIT %s
+                    """,
+                    query_params,
+                )
+            else:
+                cur.execute(
+                    f"""
+                    SELECT
+                        trade_id,
+                        symbol,
+                        entry_timestamp,
+                        {similarity_calc},
+                        is_winner,
+                        net_profit_gbp,
+                        hold_duration_minutes,
+                        market_regime
+                    FROM trade_memory
+                    WHERE {where_clause}
+                    ORDER BY {order_clause}
+                    LIMIT %s
+                    """,
+                    query_params,
+                )
 
             results = []
-            for row in cur.fetchall():
+            rows = cur.fetchall()
+
+            for row in rows:
+                # Use context_similarity (regime-boosted) instead of similarity_score
+                similarity = row.get("context_similarity", row.get("similarity_score", 0.0))
+
                 results.append(
                     SimilarPattern(
                         trade_id=row["trade_id"],
                         symbol=row["symbol"],
                         entry_timestamp=row["entry_timestamp"],
-                        similarity_score=row["similarity_score"],
+                        similarity_score=similarity,  # Now context-aware!
                         is_winner=row["is_winner"],
                         net_profit_gbp=row["net_profit_gbp"],
                         hold_duration_minutes=row["hold_duration_minutes"],
@@ -213,7 +275,18 @@ class MemoryStore:
                     )
                 )
 
-            logger.info("similar_patterns_found", count=len(results), top_k=top_k)
+            # If we fetched extra for regime boosting, trim to top_k
+            if use_regime_boost and market_regime and len(results) > top_k:
+                results = results[:top_k]
+
+            regime_matches = sum(1 for r in results if r.market_regime == market_regime) if market_regime else 0
+            logger.info(
+                "context_aware_patterns_found",
+                count=len(results),
+                top_k=top_k,
+                regime_matches=regime_matches,
+                regime_boost_enabled=use_regime_boost and market_regime is not None,
+            )
             return results
 
     def sample_replay_experiences(self, limit: int = 256) -> List[Dict[str, Any]]:
@@ -422,3 +495,42 @@ class MemoryStore:
                 "total_profit_gbp": float(row["total_profit"] or 0.0),
                 "avg_hold_minutes": int(row["avg_hold_minutes"] or 0),
             }
+
+    @staticmethod
+    def get_regime_similarity_threshold(market_regime: Optional[str]) -> float:
+        """
+        Get dynamic similarity threshold based on market regime.
+
+        In unstable regimes (panic), require higher similarity for confidence.
+        In stable regimes (trend), can be less strict.
+
+        Args:
+            market_regime: Current market regime
+
+        Returns:
+            Minimum similarity threshold (0-1)
+
+        Regime-specific thresholds:
+        - TREND: 0.65 (can be less strict - patterns are reliable)
+        - RANGE: 0.70 (moderate - mean reversion requires precision)
+        - PANIC: 0.80 (very strict - only take high-conviction trades)
+        - UNKNOWN: 0.75 (conservative default)
+        """
+        if not market_regime:
+            return 0.70  # Default moderate threshold
+
+        regime = market_regime.lower()
+
+        regime_thresholds = {
+            "trend": 0.65,    # Less strict - trending markets are more predictable
+            "trending": 0.65,
+            "range": 0.70,    # Moderate - range trading requires decent similarity
+            "ranging": 0.70,
+            "panic": 0.80,    # Very strict - high volatility = need high confidence
+            "high_vol": 0.80,
+            "unknown": 0.75,  # Conservative when regime unclear
+            "low_vol": 0.68,
+            "medium_vol": 0.70,
+        }
+
+        return regime_thresholds.get(regime, 0.70)  # Default to moderate
