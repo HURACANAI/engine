@@ -1,0 +1,191 @@
+# Dual-Mode Trading Configuration
+# Supports concurrent short-hold (scalp) and long-hold (swing) trading
+
+dual_mode:
+  enabled: true
+  total_capital_gbp: 10000
+
+  # Book-level limits
+  books:
+    short_hold:
+      max_heat_pct: 0.20  # Max 20% of capital in short-hold book
+      max_positions: 10
+    long_hold:
+      max_heat_pct: 0.50  # Max 50% of capital in long-hold book
+      max_positions: 8
+
+  # Asset profiles - which assets run which modes
+  assets:
+    ETH:
+      mode: both  # Run both short-hold and long-hold
+      short_hold:
+        max_book_pct: 0.10
+        target_profit_bps: 15.0
+        scratch_threshold_bps: -3.0
+        max_hold_minutes: 30
+        maker_bias: true
+        aggressive_exit: true
+      long_hold:
+        max_book_pct: 0.35
+        add_grid_bps: [-150.0, -300.0]
+        trail_style: chandelier_atr_3
+        tp_multipliers: [1.0, 1.8, 2.8]
+        be_lock_after_bps: 60.0
+        panic_override: true
+        min_hold_hours: 8
+        max_hold_days: 7.0
+        max_floating_dd_bps: 500.0
+
+    SOL:
+      mode: both
+      short_hold:
+        max_book_pct: 0.10
+        target_profit_bps: 15.0
+        scratch_threshold_bps: -3.0
+        max_hold_minutes: 30
+        maker_bias: true
+        aggressive_exit: true
+      long_hold:
+        max_book_pct: 0.30
+        add_grid_bps: [-200.0]
+        trail_style: structure_swing
+        tp_multipliers: [1.2, 2.0, 3.0]
+        be_lock_after_bps: 80.0
+        panic_override: true
+        min_hold_hours: 8
+        max_hold_days: 7.0
+        max_floating_dd_bps: 600.0
+
+    BTC:
+      mode: both
+      short_hold:
+        max_book_pct: 0.10
+        target_profit_bps: 15.0
+        scratch_threshold_bps: -3.0
+        max_hold_minutes: 30
+        maker_bias: true
+        aggressive_exit: true
+      long_hold:
+        max_book_pct: 0.40
+        add_grid_bps: []  # No adds for BTC
+        trail_style: chandelier_atr_2
+        tp_multipliers: [0.8, 1.5, 2.5]
+        be_lock_after_bps: 50.0
+        panic_override: true
+        min_hold_hours: 6
+        max_hold_days: 7.0
+        max_floating_dd_bps: 400.0
+
+    # Default profile for all other assets
+    DEFAULT:
+      mode: short_hold
+      short_hold:
+        max_book_pct: 0.15
+        target_profit_bps: 15.0
+        scratch_threshold_bps: -3.0
+        max_hold_minutes: 30
+        maker_bias: true
+        aggressive_exit: true
+
+  # Safety rails for long-hold mode
+  safety_rails:
+    # Drawdown limits
+    max_floating_dd_bps: 500.0
+    dd_regime_check: true
+    dd_htf_check: true
+
+    # Time stops
+    max_hold_days: 7.0
+    stall_check_hours: 24.0
+
+    # Feature drift detection
+    drift_check_enabled: true
+    drift_window_hours: 12
+    drift_threshold: 0.3
+
+    # Event guards (volatility)
+    vol_spike_threshold: 2.0
+    vol_spike_clamp_adds: true
+    vol_spike_tighten_trail: true
+
+  # Per-mode policy settings
+  policies:
+    short_hold:
+      # Entry gates
+      min_eps_net: 0.0001  # Positive EPS required
+      max_spread_bps: 15.0
+      min_confidence: 0.55
+      min_micro_score: 55.0
+
+      # Exit thresholds
+      base_stop_loss_bps: -8.0
+      max_stop_loss_bps: -15.0
+
+      # Time management
+      max_hold_minutes: 30
+      scratch_on_regime_flip: true
+
+    long_hold:
+      # Entry gates
+      min_htf_bias: 0.2
+      min_confidence: 0.60
+      min_ignition_score: 60.0
+      min_trend_strength: 0.6
+
+      # Exit management
+      base_stop_loss_bps: -150.0
+      max_stop_loss_bps: -500.0
+
+      # Position management
+      max_adds_per_position: 3
+      min_add_age_hours: 2.0
+
+  # PPO integration
+  rl_agent:
+    # Mode-specific action masks
+    short_hold_actions:
+      - DO_NOTHING
+      - ENTER_LONG_SMALL
+      - ENTER_LONG_NORMAL
+      - ENTER_LONG_LARGE
+      - EXIT_POSITION
+      - HOLD_POSITION
+      - SCRATCH
+
+    long_hold_actions:
+      - DO_NOTHING
+      - ENTER_LONG_SMALL
+      - ENTER_LONG_NORMAL
+      - ENTER_LONG_LARGE
+      - EXIT_POSITION
+      - HOLD_POSITION
+      - ADD_GRID
+      - SCALE_OUT
+      - TRAIL_RUNNER
+
+    # Reward shaping
+    reward_shaping:
+      short_hold:
+        quick_bank_bonus: 1.0  # Bonus for banking £1-£2 fast
+        scratch_bonus: 0.5  # Bonus for avoiding left-tail with scratch
+        overheld_penalty: -2.0  # Penalty for holding beyond target window
+      long_hold:
+        ladder_gain_bonus: 2.0  # Bonus per TP tier hit
+        runner_bonus: 3.0  # Bonus for runner exceeding TP3
+        guardrail_violation_penalty: -5.0  # Penalty for violating safety rails
+
+  # Conflict resolution
+  conflicts:
+    # When both modes want same asset
+    priority_by_confidence: true
+    priority_by_capacity: true
+
+    # Max exposure per asset (across both books)
+    max_total_exposure_per_asset_pct: 0.45
+
+  # Monitoring and logging
+  monitoring:
+    log_routing_decisions: true
+    log_safety_violations: true
+    log_conflicts: true
+    stats_update_frequency_seconds: 60
