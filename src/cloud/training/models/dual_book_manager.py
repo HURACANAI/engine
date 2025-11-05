@@ -13,7 +13,7 @@ Each book:
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple
 
 import structlog
@@ -21,6 +21,45 @@ import structlog
 from .asset_profiles import TradingMode, TrailStyle
 
 logger = structlog.get_logger(__name__)
+
+
+def validate_position_size(
+    symbol: str,
+    price: float,
+    size_gbp: float,
+    min_size_gbp: float = 20.0,
+    max_size_gbp: float = 5000.0,
+) -> Tuple[bool, str]:
+    """
+    Validate position size is reasonable.
+
+    Args:
+        symbol: Asset symbol
+        price: Current price
+        size_gbp: Position size in GBP
+        min_size_gbp: Minimum allowed size
+        max_size_gbp: Maximum allowed size
+
+    Returns:
+        (is_valid, reason) tuple
+    """
+    # Check size bounds
+    if size_gbp < min_size_gbp:
+        return (False, f"Position size {size_gbp:.2f} GBP below minimum {min_size_gbp} GBP")
+
+    if size_gbp > max_size_gbp:
+        return (False, f"Position size {size_gbp:.2f} GBP above maximum {max_size_gbp} GBP")
+
+    # Check price validity
+    if price <= 0:
+        return (False, f"Invalid price: {price}")
+
+    # Calculate units
+    units = size_gbp / price
+    if units < 0.0001:  # Dust threshold
+        return (False, f"Position too small: {units:.6f} units (dust)")
+
+    return (True, "Valid")
 
 
 @dataclass
@@ -193,8 +232,14 @@ class DualBookManager:
         Returns:
             Position object
         """
+        # Validate position size
+        is_valid, reason = validate_position_size(symbol, entry_price, size_gbp)
+        if not is_valid:
+            logger.error("invalid_position_size", symbol=symbol, size_gbp=size_gbp, reason=reason)
+            raise ValueError(f"Invalid position size for {symbol}: {reason}")
+
         book = self._get_book(mode)
-        now = datetime.now()
+        now = datetime.now(timezone.utc)  # Use UTC timezone
 
         position = Position(
             symbol=symbol,
@@ -251,7 +296,7 @@ class DualBookManager:
             return None
 
         position.current_price = current_price
-        position.last_updated = datetime.now()
+        position.last_updated = datetime.now(timezone.utc)
 
         # Calculate P&L
         price_change_pct = (current_price - position.entry_price) / position.entry_price
@@ -424,7 +469,7 @@ class DualBookManager:
             size_gbp=position.position_size_gbp,
             pnl_gbp=realized_pnl_gbp,
             pnl_bps=realized_pnl_bps,
-            hold_minutes=position.age_minutes(datetime.now()),
+            hold_minutes=position.age_minutes(datetime.now(timezone.utc)),
         )
 
         return (position, realized_pnl_gbp)

@@ -5,7 +5,9 @@ This demonstrates the dual-mode system in isolation without requiring
 the full Engine pipeline. Great for testing and understanding the system.
 """
 
-from datetime import datetime, timedelta
+import sys
+import traceback
+from datetime import datetime, timedelta, timezone
 
 from src.cloud.training.models.asset_profiles import TradingMode
 from src.cloud.training.models.dual_mode_coordinator import create_dual_mode_system
@@ -63,7 +65,7 @@ def demo_dual_mode_system():
         volatility_bps=80.0,
         spread_bps=8.0,
         htf_bias=0.3,
-        timestamp=datetime.now(),
+        timestamp=datetime.now(timezone.utc),
     )
 
     signal = coordinator.evaluate_signal(eth_scalp_context)
@@ -104,7 +106,7 @@ def demo_dual_mode_system():
         volatility_bps=80.0,
         spread_bps=8.0,
         htf_bias=0.7,
-        timestamp=datetime.now(),
+        timestamp=datetime.now(timezone.utc),
     )
 
     signal = coordinator.evaluate_signal(eth_swing_context)
@@ -188,7 +190,7 @@ def demo_dual_mode_system():
             volatility_bps=80.0,
             spread_bps=8.0,
             htf_bias=0.6,
-            timestamp=datetime.now() + timedelta(hours=3),
+            timestamp=datetime.now(timezone.utc) + timedelta(hours=3),
         )
 
         should_add, reason, add_price = coordinator.should_add_to_position("ETH", dip_context)
@@ -222,7 +224,7 @@ def demo_dual_mode_system():
             volatility_bps=80.0,
             spread_bps=8.0,
             htf_bias=0.6,
-            timestamp=datetime.now() + timedelta(hours=12),
+            timestamp=datetime.now(timezone.utc) + timedelta(hours=12),
         )
 
         should_scale, reason, scale_pct = coordinator.should_scale_out_position("ETH", recovery_context)
@@ -277,4 +279,10 @@ def demo_dual_mode_system():
 
 
 if __name__ == "__main__":
-    demo_dual_mode_system()
+    try:
+        demo_dual_mode_system()
+        sys.exit(0)
+    except Exception as e:
+        print(f"\n❌ Demo failed with error: {e}")
+        traceback.print_exc()
+        sys.exit(1)

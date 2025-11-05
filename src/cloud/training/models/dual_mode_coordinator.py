@@ -15,6 +15,7 @@ Engines → Alpha Signals → Dual-Mode Coordinator →
 → PPO Actions → Position Management → Risk/Costs → Memory
 """
 
+from collections import deque
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
@@ -99,11 +100,11 @@ class DualModeCoordinator:
         self.safety_monitor = safety_monitor
         self.total_capital_gbp = total_capital_gbp
 
-        # Track routing decisions
-        self.routing_history: List[DualModeSignal] = []
+        # Track routing decisions (use deque for automatic size limiting)
+        self.routing_history = deque(maxlen=1000)
 
-        # Track conflict resolutions
-        self.conflict_history: List[ConflictResolution] = []
+        # Track conflict resolutions (use deque for automatic size limiting)
+        self.conflict_history = deque(maxlen=500)
 
         logger.info(
             "dual_mode_coordinator_initialized",
@@ -152,7 +153,8 @@ class DualModeCoordinator:
             current_asset_exposure = 0.0
             if self.book_manager.has_position(symbol, TradingMode.LONG_HOLD):
                 pos = self.book_manager.get_position(symbol, TradingMode.LONG_HOLD)
-                current_asset_exposure = pos.position_size_gbp
+                if pos:  # Add null check
+                    current_asset_exposure = pos.position_size_gbp
 
             long_ok, long_reason = long_policy.should_enter(
                 context=context,
@@ -196,10 +198,8 @@ class DualModeCoordinator:
             route_to=route_to,
         )
 
-        # Track routing decision
+        # Track routing decision (deque automatically handles size limit)
         self.routing_history.append(signal)
-        if len(self.routing_history) > 1000:
-            self.routing_history = self.routing_history[-1000:]
 
         logger.debug(
             "signal_evaluated",
@@ -258,10 +258,8 @@ class DualModeCoordinator:
             reason=reason,
         )
 
-        # Track conflict resolution
+        # Track conflict resolution (deque automatically handles size limit)
         self.conflict_history.append(resolution)
-        if len(self.conflict_history) > 500:
-            self.conflict_history = self.conflict_history[-500:]
 
         return resolution
 
@@ -443,9 +441,12 @@ class DualModeCoordinator:
 
         combined_stats["safety_rails"] = safety_summary
 
+        # Get recent conflicts (deque doesn't support negative slicing)
+        recent_conflicts = list(self.conflict_history)[-100:] if num_conflicts > 0 else []
+
         combined_stats["conflicts"] = {
             "total_conflicts": num_conflicts,
-            "recent_conflicts": len([c for c in self.conflict_history[-100:]]),
+            "recent_conflicts": len(recent_conflicts),
         }
 
         return combined_stats
