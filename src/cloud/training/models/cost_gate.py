@@ -183,28 +183,34 @@ class CostGate:
         self,
         maker_fee_bps: float = 2.0,
         taker_fee_bps: float = 5.0,
+        maker_rebate_bps: float = 2.0,  # NEW: Maker rebate (NEGATIVE fee)
         buffer_bps: float = 5.0,
         slippage_base_bps: float = 2.0,
         impact_coefficient: float = 0.5,  # Market impact scaling
         large_size_threshold_usd: float = 10000.0,
+        prefer_maker: bool = True,  # NEW: Prefer maker orders when possible
     ):
         """
         Initialize cost gate.
 
         Args:
-            maker_fee_bps: Maker fee in bps
+            maker_fee_bps: Maker fee in bps (if exchange charges maker fee)
             taker_fee_bps: Taker fee in bps
+            maker_rebate_bps: Maker rebate in bps (NEGATIVE fee - we get paid!)
             buffer_bps: Minimum net edge required (safety buffer)
             slippage_base_bps: Base slippage estimate
             impact_coefficient: Market impact coefficient
             large_size_threshold_usd: Threshold for large size
+            prefer_maker: If True, bias toward maker orders to earn rebates
         """
         self.maker_fee = maker_fee_bps
         self.taker_fee = taker_fee_bps
+        self.maker_rebate = maker_rebate_bps
         self.buffer = buffer_bps
         self.slippage_base = slippage_base_bps
         self.impact_coef = impact_coefficient
         self.large_threshold = large_size_threshold_usd
+        self.prefer_maker = prefer_maker
 
         # Statistics
         self.total_checks = 0
@@ -212,11 +218,17 @@ class CostGate:
         self.blocks = 0
         self.blocked_reasons: Dict[str, int] = {}
 
+        # Execution statistics
+        self.maker_attempts = 0
+        self.taker_attempts = 0
+
         logger.info(
             "cost_gate_initialized",
             maker_fee=maker_fee_bps,
             taker_fee=taker_fee_bps,
+            maker_rebate=maker_rebate_bps,
             buffer=buffer_bps,
+            prefer_maker=prefer_maker,
         )
 
     def analyze_edge(
@@ -295,12 +307,17 @@ class CostGate:
         """
         Estimate total execution costs.
 
+        Note: Maker rebates are NEGATIVE fees (we get paid).
+        This improves net edge: edge_net = edge_hat - costs
+        If costs are negative, edge_net increases!
+
         Returns:
             CostEstimate with breakdown
         """
-        # 1. Exchange fees
+        # 1. Exchange fees (MAKER CAN BE NEGATIVE!)
         if order_type == OrderType.MAKER:
-            exchange_fee = self.maker_fee
+            # Use rebate if available (negative fee)
+            exchange_fee = -self.maker_rebate  # NEGATIVE = rebate
         else:  # TAKER, TWAP, VWAP
             exchange_fee = self.taker_fee
 
@@ -491,9 +508,115 @@ class CostGate:
 
         return best_order_type, best_analysis
 
+    def recommend_order_type(
+        self,
+        edge_hat_bps: float,
+        position_size_usd: float,
+        spread_bps: float,
+        liquidity_score: float,
+        urgency: str,
+        fill_probability_maker: float = 0.70,  # Estimated fill prob for maker
+        volatility_bps: Optional[float] = None,
+    ) -> tuple[OrderType, bool, str]:
+        """
+        Recommend order type based on cost analysis and maker preference.
+
+        Args:
+            edge_hat_bps: Predicted edge
+            position_size_usd: Position size
+            spread_bps: Current spread
+            liquidity_score: Liquidity score
+            urgency: Urgency level
+            fill_probability_maker: Estimated fill probability for MAKER order
+            volatility_bps: Current volatility
+
+        Returns:
+            (recommended_order_type, use_post_only, reason)
+        """
+        # Analyze both maker and taker
+        maker_analysis = self.analyze_edge(
+            edge_hat_bps=edge_hat_bps,
+            order_type=OrderType.MAKER,
+            position_size_usd=position_size_usd,
+            spread_bps=spread_bps,
+            liquidity_score=liquidity_score,
+            urgency=urgency,
+            volatility_bps=volatility_bps,
+        )
+
+        taker_analysis = self.analyze_edge(
+            edge_hat_bps=edge_hat_bps,
+            order_type=OrderType.TAKER,
+            position_size_usd=position_size_usd,
+            spread_bps=spread_bps,
+            liquidity_score=liquidity_score,
+            urgency=urgency,
+            volatility_bps=volatility_bps,
+        )
+
+        # If maker preference enabled and maker has good edge + decent fill prob
+        if self.prefer_maker:
+            # Maker passes gate AND fill probability is reasonable
+            if maker_analysis.passes_gate and fill_probability_maker > 0.60:
+                self.maker_attempts += 1
+                return (
+                    OrderType.MAKER,
+                    True,  # Use POST_ONLY flag
+                    f"Maker preferred: edge_net={maker_analysis.edge_net_bps:.1f} bps, "
+                    f"fill_prob={fill_probability_maker:.0%}",
+                )
+
+        # Otherwise fallback to optimal (highest net edge)
+        if taker_analysis.passes_gate:
+            # If both pass, choose higher net edge
+            if maker_analysis.passes_gate:
+                if maker_analysis.edge_net_bps > taker_analysis.edge_net_bps:
+                    self.maker_attempts += 1
+                    return (
+                        OrderType.MAKER,
+                        True,
+                        f"Maker has better edge: {maker_analysis.edge_net_bps:.1f} > {taker_analysis.edge_net_bps:.1f} bps",
+                    )
+                else:
+                    self.taker_attempts += 1
+                    return (
+                        OrderType.TAKER,
+                        False,
+                        f"Taker has better edge: {taker_analysis.edge_net_bps:.1f} > {maker_analysis.edge_net_bps:.1f} bps",
+                    )
+            else:
+                # Only taker passes
+                self.taker_attempts += 1
+                return (
+                    OrderType.TAKER,
+                    False,
+                    f"Taker only option: edge_net={taker_analysis.edge_net_bps:.1f} bps",
+                )
+
+        # If neither passes, try maker anyway (might work)
+        if maker_analysis.edge_net_bps > taker_analysis.edge_net_bps:
+            self.maker_attempts += 1
+            return (
+                OrderType.MAKER,
+                True,
+                f"Best attempt (maker): edge_net={maker_analysis.edge_net_bps:.1f} bps",
+            )
+        else:
+            self.taker_attempts += 1
+            return (
+                OrderType.TAKER,
+                False,
+                f"Best attempt (taker): edge_net={taker_analysis.edge_net_bps:.1f} bps",
+            )
+
     def get_statistics(self) -> Dict[str, any]:
         """Get gate statistics."""
         pass_rate = self.passes / self.total_checks if self.total_checks > 0 else 0.0
+
+        total_attempts = self.maker_attempts + self.taker_attempts
+        maker_ratio = (
+            self.maker_attempts / total_attempts if total_attempts > 0 else 0.0
+        )
 
         return {
             'total_checks': self.total_checks,
@@ -501,10 +624,17 @@ class CostGate:
             'blocks': self.blocks,
             'pass_rate': pass_rate,
             'blocked_reasons': self.blocked_reasons,
+            'execution': {
+                'maker_attempts': self.maker_attempts,
+                'taker_attempts': self.taker_attempts,
+                'maker_ratio': maker_ratio,
+            },
             'config': {
                 'maker_fee_bps': self.maker_fee,
                 'taker_fee_bps': self.taker_fee,
+                'maker_rebate_bps': self.maker_rebate,
                 'buffer_bps': self.buffer,
+                'prefer_maker': self.prefer_maker,
             },
         }
 
@@ -514,3 +644,5 @@ class CostGate:
         self.passes = 0
         self.blocks = 0
         self.blocked_reasons.clear()
+        self.maker_attempts = 0
+        self.taker_attempts = 0

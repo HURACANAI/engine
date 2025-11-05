@@ -1,636 +1,593 @@
 """
-Dual Position Book Manager
+Dual-Book Position Manager - Separates scalps from runners.
 
-Manages two independent position books:
-1. Short-Hold Book: Fast scalps (£1-£2 net targets)
-2. Long-Hold Book: Swing positions (maximize gains, tolerate dips)
+Key Architecture:
+- SHORT_HOLD book: Fast scalps (£1-£2 target, 5-15 sec hold, 70-75% WR)
+- LONG_HOLD book: Runners (£5-£20 target, 5-60 min hold, 95%+ WR)
 
-Each book:
-- Has independent positions
-- Tracks separate P&L
-- Enforces separate risk caps
-- Can hold same asset concurrently (with conflict resolution)
+Each book has:
+- Independent position tracking
+- Separate heat/risk caps
+- Different exit ladders
+- Per-asset profiles
+
+Why This Matters:
+Scalps and runners have different:
+- Target sizes (scalp wants volume, runner wants precision)
+- Hold times (seconds vs minutes)
+- Risk profiles (many small vs few large)
+- Gate requirements (loose vs strict)
+
+Mixing them in one book creates conflicts. Separation allows optimization of each.
+
+Usage:
+    manager = DualBookManager(
+        total_capital=10000.0,
+        max_short_heat=0.40,  # 40% in scalps
+        max_long_heat=0.50,   # 50% in runners
+    )
+
+    # Define asset profiles
+    manager.set_asset_profile('ETH-USD', AssetProfile(
+        allowed_books=[BookType.SHORT_HOLD, BookType.LONG_HOLD],
+        scalp_target_bps=100,  # £1 on £100 = 100 bps
+        runner_target_bps=800,  # £8 on £100 = 800 bps
+    ))
+
+    # Add position
+    manager.add_position(
+        symbol='ETH-USD',
+        book=BookType.SHORT_HOLD,
+        entry_price=2000.0,
+        size=0.05,  # £100
+        direction='long',
+    )
+
+    # Check heat
+    scalp_heat = manager.get_book_heat(BookType.SHORT_HOLD)  # 0.10 (10%)
+    can_add = manager.can_add_position(BookType.SHORT_HOLD, size_usd=200.0)  # True
+
+    # Exit
+    manager.close_position(position_id, exit_price=2020.0)
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional, Tuple
+from enum import Enum
+from typing import Dict, List, Optional, Set
+import time
+import uuid
 
+import numpy as np
 import structlog
-
-from .asset_profiles import TradingMode, TrailStyle
 
 logger = structlog.get_logger(__name__)
 
 
-def validate_position_size(
-    symbol: str,
-    price: float,
-    size_gbp: float,
-    min_size_gbp: float = 20.0,
-    max_size_gbp: float = 5000.0,
-) -> Tuple[bool, str]:
-    """
-    Validate position size is reasonable.
+class BookType(Enum):
+    """Position book types."""
 
-    Args:
-        symbol: Asset symbol
-        price: Current price
-        size_gbp: Position size in GBP
-        min_size_gbp: Minimum allowed size
-        max_size_gbp: Maximum allowed size
+    SHORT_HOLD = "short_hold"  # Scalps: seconds to minutes
+    LONG_HOLD = "long_hold"  # Runners: minutes to hours
 
-    Returns:
-        (is_valid, reason) tuple
-    """
-    # Check size bounds
-    if size_gbp < min_size_gbp:
-        return (False, f"Position size {size_gbp:.2f} GBP below minimum {min_size_gbp} GBP")
 
-    if size_gbp > max_size_gbp:
-        return (False, f"Position size {size_gbp:.2f} GBP above maximum {max_size_gbp} GBP")
+@dataclass
+class AssetProfile:
+    """Per-asset trading profile."""
 
-    # Check price validity
-    if price <= 0:
-        return (False, f"Invalid price: {price}")
+    # Which books can trade this asset
+    allowed_books: List[BookType]
 
-    # Calculate units
-    units = size_gbp / price
-    if units < 0.0001:  # Dust threshold
-        return (False, f"Position too small: {units:.6f} units (dust)")
+    # Target profit levels (bps)
+    scalp_target_bps: float = 100.0  # £1 on £100
+    runner_target_bps: float = 800.0  # £8 on £100
 
-    return (True, "Valid")
+    # Hold time expectations (seconds)
+    scalp_hold_sec: float = 10.0  # 5-15 sec
+    runner_hold_sec: float = 600.0  # 5-60 min
+
+    # Max position size per trade (USD)
+    scalp_max_size: float = 200.0
+    runner_max_size: float = 1000.0
+
+    # Liquidity requirements
+    min_liquidity_score: float = 0.60
+
+    # Regime preferences
+    scalp_regimes: Set[str] = field(default_factory=lambda: {'TREND', 'RANGE', 'PANIC'})
+    runner_regimes: Set[str] = field(default_factory=lambda: {'TREND'})
 
 
 @dataclass
 class Position:
-    """Represents a single position in a book."""
+    """A single position."""
 
+    position_id: str
     symbol: str
-    mode: TradingMode
+    book: BookType
+    direction: str  # 'long' or 'short'
+
+    # Entry
     entry_price: float
-    entry_timestamp: datetime
-    position_size_gbp: float
-    stop_loss_bps: float
-    take_profit_bps: Optional[float] = None
+    size: float  # In asset units (e.g., 0.05 ETH)
+    size_usd: float  # In USD
+    entry_time: float
 
-    # Tracking
-    unrealized_pnl_gbp: float = 0.0
-    unrealized_pnl_bps: float = 0.0
-    current_price: float = 0.0
-    last_updated: Optional[datetime] = None
+    # Current state
+    current_price: float
+    unrealized_pnl: float = 0.0
 
-    # Long-hold specific
-    add_count: int = 0  # Number of adds (DCA)
-    scale_out_count: int = 0  # Number of partial exits
-    be_lock_active: bool = False  # Break-even lock engaged
-    trail_active: bool = False  # Trailing stop active
-    trail_level_bps: float = 0.0  # Current trail level
+    # Exit tracking
+    exit_price: Optional[float] = None
+    exit_time: Optional[float] = None
+    realized_pnl: Optional[float] = None
+    closed: bool = False
 
     # Metadata
-    entry_regime: str = "unknown"
-    entry_technique: str = "unknown"
-    entry_confidence: float = 0.0
-
-    def age_minutes(self, current_time: datetime) -> int:
-        """Get position age in minutes."""
-        return int((current_time - self.entry_timestamp).total_seconds() / 60)
-
-    def age_hours(self, current_time: datetime) -> float:
-        """Get position age in hours."""
-        return (current_time - self.entry_timestamp).total_seconds() / 3600
+    technique: Optional[str] = None  # Which engine opened this
+    regime_at_entry: Optional[str] = None
+    confidence_at_entry: Optional[float] = None
 
 
 @dataclass
-class BookState:
-    """State of a position book."""
+class BookMetrics:
+    """Metrics for a single book."""
 
-    mode: TradingMode
-    positions: Dict[str, Position]  # symbol → position
-    total_exposure_gbp: float = 0.0
-    total_unrealized_pnl_gbp: float = 0.0
-    num_positions: int = 0
-    realized_pnl_gbp: float = 0.0  # Session P&L
-    num_trades_today: int = 0
-    wins_today: int = 0
+    total_positions: int
+    open_positions: int
+    closed_positions: int
+
+    # Heat (capital allocation)
+    current_heat: float  # % of total capital
+    peak_heat: float  # Max heat reached
+
+    # P&L
+    total_realized_pnl: float
+    total_unrealized_pnl: float
+    largest_win: float
+    largest_loss: float
+
+    # Performance
+    win_rate: float
+    avg_win: float
+    avg_loss: float
+    profit_factor: float
 
 
 class DualBookManager:
     """
-    Manages dual position books for short-hold and long-hold modes.
+    Dual-book position manager.
 
-    Responsibilities:
-    1. Track positions in separate books
-    2. Enforce per-book risk caps
-    3. Handle adds (DCA) for long-hold
-    4. Handle scale-outs for long-hold
-    5. Resolve conflicts when both modes trade same asset
-    6. Track per-mode P&L
+    Manages two independent books:
+    - SHORT_HOLD: High-frequency scalps (£1-£2, 70-75% WR)
+    - LONG_HOLD: Precision runners (£5-£20, 95%+ WR)
+
+    Key Features:
+    1. Independent heat caps per book
+    2. Per-asset profiles (which books allowed)
+    3. Separate P&L tracking
+    4. Book-specific exit ladders
+
+    Architecture:
+        Total Capital: £10,000
+        ├── SHORT_HOLD Book (max 40% = £4,000)
+        │   ├── ETH-USD: £100 (scalp)
+        │   ├── SOL-USD: £150 (scalp)
+        │   └── BTC-USD: £200 (scalp)
+        └── LONG_HOLD Book (max 50% = £5,000)
+            ├── ETH-USD: £800 (runner)
+            └── BTC-USD: £1,200 (runner)
     """
 
     def __init__(
         self,
-        max_short_heat_pct: float = 0.20,  # Max 20% of capital in short-hold
-        max_long_heat_pct: float = 0.50,   # Max 50% of capital in long-hold
-        max_positions_per_book: int = 10,
+        total_capital: float = 10000.0,
+        max_short_heat: float = 0.40,  # Max 40% in scalps
+        max_long_heat: float = 0.50,  # Max 50% in runners
+        reserve_heat: float = 0.10,  # Keep 10% reserve
     ):
         """
-        Initialize dual book manager.
+        Initialize dual-book manager.
 
         Args:
-            max_short_heat_pct: Max portfolio % for short-hold book
-            max_long_heat_pct: Max portfolio % for long-hold book
-            max_positions_per_book: Max concurrent positions per book
+            total_capital: Total trading capital in USD
+            max_short_heat: Max % of capital in SHORT_HOLD book
+            max_long_heat: Max % of capital in LONG_HOLD book
+            reserve_heat: Reserve % (no trading)
         """
-        self.max_short_heat_pct = max_short_heat_pct
-        self.max_long_heat_pct = max_long_heat_pct
-        self.max_positions_per_book = max_positions_per_book
+        self.total_capital = total_capital
+        self.max_short_heat = max_short_heat
+        self.max_long_heat = max_long_heat
+        self.reserve_heat = reserve_heat
 
-        # Initialize books
-        self.book_short = BookState(mode=TradingMode.SHORT_HOLD, positions={})
-        self.book_long = BookState(mode=TradingMode.LONG_HOLD, positions={})
+        # Position books
+        self.book_short: Dict[str, Position] = {}
+        self.book_long: Dict[str, Position] = {}
+
+        # Asset profiles
+        self.asset_profiles: Dict[str, AssetProfile] = {}
+
+        # Statistics
+        self.total_trades = 0
+        self.trades_by_book: Dict[BookType, int] = {
+            BookType.SHORT_HOLD: 0,
+            BookType.LONG_HOLD: 0,
+        }
 
         logger.info(
             "dual_book_manager_initialized",
-            max_short_heat=max_short_heat_pct,
-            max_long_heat=max_long_heat_pct,
-            max_positions=max_positions_per_book,
+            total_capital=total_capital,
+            max_short_heat=max_short_heat,
+            max_long_heat=max_long_heat,
         )
 
-    def can_open_position(
+    def set_asset_profile(
         self,
         symbol: str,
-        mode: TradingMode,
-        size_gbp: float,
-        total_capital_gbp: float,
-    ) -> Tuple[bool, str]:
+        profile: AssetProfile,
+    ) -> None:
         """
-        Check if we can open a position.
+        Set trading profile for an asset.
 
         Args:
-            symbol: Asset symbol
-            mode: Trading mode
-            size_gbp: Proposed position size
-            total_capital_gbp: Total portfolio capital
-
-        Returns:
-            (can_open, reason) tuple
+            symbol: Asset symbol (e.g., 'ETH-USD')
+            profile: Asset profile configuration
         """
-        book = self._get_book(mode)
+        self.asset_profiles[symbol] = profile
 
-        # Check if already have position in this book
-        if symbol in book.positions:
-            return (False, f"Already have {mode.value} position in {symbol}")
-
-        # Check book capacity
-        if len(book.positions) >= self.max_positions_per_book:
-            return (False, f"{mode.value} book full ({self.max_positions_per_book} positions)")
-
-        # Check heat limits
-        new_exposure = book.total_exposure_gbp + size_gbp
-        max_heat = total_capital_gbp * (
-            self.max_short_heat_pct if mode == TradingMode.SHORT_HOLD
-            else self.max_long_heat_pct
+        logger.info(
+            "asset_profile_set",
+            symbol=symbol,
+            allowed_books=[b.value for b in profile.allowed_books],
         )
 
-        if new_exposure > max_heat:
-            heat_pct = new_exposure / total_capital_gbp
-            max_pct = self.max_short_heat_pct if mode == TradingMode.SHORT_HOLD else self.max_long_heat_pct
-            return (
-                False,
-                f"{mode.value} heat {heat_pct:.1%} exceeds max {max_pct:.1%}"
+    def can_add_position(
+        self,
+        book: BookType,
+        size_usd: float,
+        symbol: Optional[str] = None,
+    ) -> tuple[bool, str]:
+        """
+        Check if we can add a position to a book.
+
+        Args:
+            book: Which book to check
+            size_usd: Position size in USD
+            symbol: Asset symbol (optional, for profile check)
+
+        Returns:
+            (can_add, reason)
+        """
+        # Check book-specific heat limit
+        current_heat = self.get_book_heat(book)
+        max_heat = self.max_short_heat if book == BookType.SHORT_HOLD else self.max_long_heat
+
+        new_heat = current_heat + (size_usd / self.total_capital)
+
+        if new_heat > max_heat:
+            return False, f"Would exceed {book.value} heat limit: {new_heat:.2%} > {max_heat:.2%}"
+
+        # Check asset profile (if symbol provided)
+        if symbol and symbol in self.asset_profiles:
+            profile = self.asset_profiles[symbol]
+
+            if book not in profile.allowed_books:
+                return False, f"{symbol} not allowed in {book.value} book"
+
+            max_size = (
+                profile.scalp_max_size
+                if book == BookType.SHORT_HOLD
+                else profile.runner_max_size
             )
 
-        return (True, "OK")
+            if size_usd > max_size:
+                return False, f"Size ${size_usd:.0f} exceeds {book.value} max ${max_size:.0f}"
 
-    def open_position(
+        return True, "OK"
+
+    def add_position(
         self,
         symbol: str,
-        mode: TradingMode,
+        book: BookType,
         entry_price: float,
-        size_gbp: float,
-        stop_loss_bps: float,
-        take_profit_bps: Optional[float] = None,
-        entry_regime: str = "unknown",
-        entry_technique: str = "unknown",
-        entry_confidence: float = 0.0,
-    ) -> Position:
+        size: float,
+        direction: str,
+        technique: Optional[str] = None,
+        regime: Optional[str] = None,
+        confidence: Optional[float] = None,
+    ) -> Optional[Position]:
         """
-        Open a new position.
+        Add a new position to a book.
 
         Args:
             symbol: Asset symbol
-            mode: Trading mode
+            book: Which book (SHORT_HOLD or LONG_HOLD)
             entry_price: Entry price
-            size_gbp: Position size
-            stop_loss_bps: Stop loss in bps
-            take_profit_bps: Take profit in bps (optional)
-            entry_regime: Market regime at entry
-            entry_technique: Trading technique used
-            entry_confidence: Entry confidence score
+            size: Position size in asset units
+            direction: 'long' or 'short'
+            technique: Trading technique used
+            regime: Market regime at entry
+            confidence: Engine confidence at entry
 
         Returns:
-            Position object
+            Position if added, None if blocked
         """
-        # Validate position size
-        is_valid, reason = validate_position_size(symbol, entry_price, size_gbp)
-        if not is_valid:
-            logger.error("invalid_position_size", symbol=symbol, size_gbp=size_gbp, reason=reason)
-            raise ValueError(f"Invalid position size for {symbol}: {reason}")
+        size_usd = size * entry_price
 
-        book = self._get_book(mode)
-        now = datetime.now(timezone.utc)  # Use UTC timezone
+        # Check if can add
+        can_add, reason = self.can_add_position(book, size_usd, symbol)
+        if not can_add:
+            logger.warning(
+                "position_blocked",
+                symbol=symbol,
+                book=book.value,
+                reason=reason,
+            )
+            return None
 
+        # Create position
         position = Position(
+            position_id=str(uuid.uuid4()),
             symbol=symbol,
-            mode=mode,
+            book=book,
+            direction=direction,
             entry_price=entry_price,
-            entry_timestamp=now,
-            position_size_gbp=size_gbp,
-            stop_loss_bps=stop_loss_bps,
-            take_profit_bps=take_profit_bps,
+            size=size,
+            size_usd=size_usd,
+            entry_time=time.time(),
             current_price=entry_price,
-            last_updated=now,
-            entry_regime=entry_regime,
-            entry_technique=entry_technique,
-            entry_confidence=entry_confidence,
+            technique=technique,
+            regime_at_entry=regime,
+            confidence_at_entry=confidence,
         )
 
-        book.positions[symbol] = position
-        book.total_exposure_gbp += size_gbp
-        book.num_positions = len(book.positions)
+        # Add to appropriate book
+        if book == BookType.SHORT_HOLD:
+            self.book_short[position.position_id] = position
+        else:
+            self.book_long[position.position_id] = position
+
+        self.total_trades += 1
+        self.trades_by_book[book] += 1
 
         logger.info(
             "position_opened",
+            position_id=position.position_id[:8],
             symbol=symbol,
-            mode=mode.value,
-            entry_price=entry_price,
-            size_gbp=size_gbp,
-            stop_bps=stop_loss_bps,
-            total_positions=book.num_positions,
+            book=book.value,
+            direction=direction,
+            size_usd=size_usd,
+            technique=technique,
         )
 
         return position
 
     def update_position_price(
         self,
-        symbol: str,
-        mode: TradingMode,
+        position_id: str,
         current_price: float,
     ) -> Optional[Position]:
         """
-        Update position with current price.
+        Update position with current price and recalculate P&L.
 
         Args:
-            symbol: Asset symbol
-            mode: Trading mode
+            position_id: Position ID
             current_price: Current market price
 
         Returns:
-            Updated position or None if not found
+            Updated position, or None if not found
         """
-        book = self._get_book(mode)
-        position = book.positions.get(symbol)
-
+        position = self._get_position(position_id)
         if not position:
             return None
 
         position.current_price = current_price
-        position.last_updated = datetime.now(timezone.utc)
 
-        # Calculate P&L
-        price_change_pct = (current_price - position.entry_price) / position.entry_price
-        position.unrealized_pnl_gbp = price_change_pct * position.position_size_gbp
-        position.unrealized_pnl_bps = price_change_pct * 10_000
+        # Calculate unrealized P&L
+        if position.direction == 'long':
+            pnl = (current_price - position.entry_price) * position.size
+        else:  # short
+            pnl = (position.entry_price - current_price) * position.size
 
-        # Update book total
-        book.total_unrealized_pnl_gbp = sum(
-            pos.unrealized_pnl_gbp for pos in book.positions.values()
-        )
+        position.unrealized_pnl = pnl
 
         return position
-
-    def add_to_position(
-        self,
-        symbol: str,
-        mode: TradingMode,
-        add_price: float,
-        add_size_gbp: float,
-    ) -> Optional[Position]:
-        """
-        Add to existing position (DCA for long-hold).
-
-        Args:
-            symbol: Asset symbol
-            mode: Trading mode (must be LONG_HOLD)
-            add_price: Add price
-            add_size_gbp: Additional size
-
-        Returns:
-            Updated position or None if not found
-        """
-        if mode != TradingMode.LONG_HOLD:
-            logger.warning("add_to_position_invalid_mode", symbol=symbol, mode=mode.value)
-            return None
-
-        book = self._get_book(mode)
-        position = book.positions.get(symbol)
-
-        if not position:
-            logger.warning("add_to_position_not_found", symbol=symbol)
-            return None
-
-        # Calculate new average entry price
-        total_size = position.position_size_gbp + add_size_gbp
-        new_avg_price = (
-            (position.entry_price * position.position_size_gbp) +
-            (add_price * add_size_gbp)
-        ) / total_size
-
-        # Update position
-        position.entry_price = new_avg_price
-        position.position_size_gbp = total_size
-        position.add_count += 1
-
-        # Update book exposure
-        book.total_exposure_gbp += add_size_gbp
-
-        logger.info(
-            "position_add_executed",
-            symbol=symbol,
-            add_price=add_price,
-            add_size=add_size_gbp,
-            new_avg_price=new_avg_price,
-            total_size=total_size,
-            add_count=position.add_count,
-        )
-
-        return position
-
-    def scale_out_position(
-        self,
-        symbol: str,
-        mode: TradingMode,
-        exit_price: float,
-        scale_pct: float,  # 0.0-1.0
-    ) -> Tuple[Optional[Position], float]:
-        """
-        Scale out of position (partial exit for long-hold).
-
-        Args:
-            symbol: Asset symbol
-            mode: Trading mode
-            exit_price: Exit price
-            scale_pct: Percentage to exit (0.0-1.0)
-
-        Returns:
-            (updated_position, realized_pnl_gbp) tuple
-        """
-        book = self._get_book(mode)
-        position = book.positions.get(symbol)
-
-        if not position:
-            logger.warning("scale_out_position_not_found", symbol=symbol)
-            return (None, 0.0)
-
-        scale_pct = max(0.0, min(scale_pct, 1.0))
-        exit_size = position.position_size_gbp * scale_pct
-
-        # Calculate P&L for scaled portion
-        price_change_pct = (exit_price - position.entry_price) / position.entry_price
-        realized_pnl_gbp = price_change_pct * exit_size
-
-        # Update position
-        position.position_size_gbp -= exit_size
-        position.scale_out_count += 1
-
-        # Update book
-        book.total_exposure_gbp -= exit_size
-        book.realized_pnl_gbp += realized_pnl_gbp
-        book.wins_today += 1 if realized_pnl_gbp > 0 else 0
-
-        logger.info(
-            "position_scaled_out",
-            symbol=symbol,
-            mode=mode.value,
-            exit_price=exit_price,
-            scale_pct=scale_pct,
-            realized_pnl=realized_pnl_gbp,
-            remaining_size=position.position_size_gbp,
-        )
-
-        return (position, realized_pnl_gbp)
 
     def close_position(
         self,
-        symbol: str,
-        mode: TradingMode,
+        position_id: str,
         exit_price: float,
-    ) -> Tuple[Optional[Position], float]:
+        reason: str = "manual",
+    ) -> Optional[float]:
         """
-        Close position completely.
+        Close a position and realize P&L.
 
         Args:
-            symbol: Asset symbol
-            mode: Trading mode
+            position_id: Position ID
             exit_price: Exit price
+            reason: Reason for exit
 
         Returns:
-            (closed_position, realized_pnl_gbp) tuple
+            Realized P&L in USD, or None if position not found
         """
-        book = self._get_book(mode)
-        position = book.positions.get(symbol)
-
+        position = self._get_position(position_id)
         if not position:
-            logger.warning("close_position_not_found", symbol=symbol, mode=mode.value)
-            return (None, 0.0)
+            logger.warning("position_not_found", position_id=position_id)
+            return None
 
-        # Calculate final P&L
-        price_change_pct = (exit_price - position.entry_price) / position.entry_price
-        realized_pnl_gbp = price_change_pct * position.position_size_gbp
-        realized_pnl_bps = price_change_pct * 10_000
+        if position.closed:
+            logger.warning("position_already_closed", position_id=position_id)
+            return position.realized_pnl
 
-        # Update book
-        book.total_exposure_gbp -= position.position_size_gbp
-        book.realized_pnl_gbp += realized_pnl_gbp
-        book.num_trades_today += 1
-        book.wins_today += 1 if realized_pnl_gbp > 0 else 0
+        # Calculate realized P&L
+        if position.direction == 'long':
+            pnl = (exit_price - position.entry_price) * position.size
+        else:  # short
+            pnl = (position.entry_price - exit_price) * position.size
 
-        # Remove position
-        del book.positions[symbol]
-        book.num_positions = len(book.positions)
+        position.exit_price = exit_price
+        position.exit_time = time.time()
+        position.realized_pnl = pnl
+        position.closed = True
+
+        hold_time_sec = position.exit_time - position.entry_time
 
         logger.info(
             "position_closed",
-            symbol=symbol,
-            mode=mode.value,
-            exit_price=exit_price,
-            entry_price=position.entry_price,
-            size_gbp=position.position_size_gbp,
-            pnl_gbp=realized_pnl_gbp,
-            pnl_bps=realized_pnl_bps,
-            hold_minutes=position.age_minutes(datetime.now(timezone.utc)),
+            position_id=position.position_id[:8],
+            symbol=position.symbol,
+            book=position.book.value,
+            pnl=pnl,
+            hold_time_sec=hold_time_sec,
+            reason=reason,
         )
 
-        return (position, realized_pnl_gbp)
+        return pnl
 
-    def get_position(self, symbol: str, mode: TradingMode) -> Optional[Position]:
-        """Get position from specified book."""
-        book = self._get_book(mode)
-        return book.positions.get(symbol)
-
-    def has_position(self, symbol: str, mode: TradingMode) -> bool:
-        """Check if position exists in specified book."""
-        book = self._get_book(mode)
-        return symbol in book.positions
-
-    def get_all_positions(self, mode: Optional[TradingMode] = None) -> List[Position]:
+    def get_book_heat(self, book: BookType) -> float:
         """
-        Get all positions (optionally filtered by mode).
+        Get current heat (capital allocation) for a book.
 
         Args:
-            mode: Filter by mode (None = all positions)
+            book: Which book
 
         Returns:
-            List of positions
+            Heat as % of total capital (0.0 to 1.0)
         """
-        if mode is None:
-            return list(self.book_short.positions.values()) + \
-                   list(self.book_long.positions.values())
-        elif mode == TradingMode.SHORT_HOLD:
-            return list(self.book_short.positions.values())
-        else:
-            return list(self.book_long.positions.values())
+        positions = self._get_book_positions(book, open_only=True)
 
-    def get_book_state(self, mode: TradingMode) -> BookState:
-        """Get state of specified book."""
-        return self._get_book(mode)
+        total_allocated = sum(p.size_usd for p in positions)
 
-    def get_exposure(self, symbol: str) -> Dict[str, float]:
+        heat = total_allocated / self.total_capital
+
+        return heat
+
+    def get_book_metrics(self, book: BookType) -> BookMetrics:
         """
-        Get total exposure for a symbol across both books.
+        Get metrics for a book.
 
         Args:
-            symbol: Asset symbol
+            book: Which book
 
         Returns:
-            Dict with short_gbp, long_gbp, total_gbp
+            BookMetrics
         """
-        short_pos = self.book_short.positions.get(symbol)
-        long_pos = self.book_long.positions.get(symbol)
+        all_positions = self._get_book_positions(book, open_only=False)
+        open_positions = [p for p in all_positions if not p.closed]
+        closed_positions = [p for p in all_positions if p.closed]
 
-        short_gbp = short_pos.position_size_gbp if short_pos else 0.0
-        long_gbp = long_pos.position_size_gbp if long_pos else 0.0
+        # P&L
+        total_realized = sum(p.realized_pnl for p in closed_positions if p.realized_pnl)
+        total_unrealized = sum(p.unrealized_pnl for p in open_positions)
 
+        # Win/loss tracking
+        winners = [p for p in closed_positions if p.realized_pnl and p.realized_pnl > 0]
+        losers = [p for p in closed_positions if p.realized_pnl and p.realized_pnl < 0]
+
+        win_rate = len(winners) / len(closed_positions) if closed_positions else 0.0
+        avg_win = np.mean([p.realized_pnl for p in winners]) if winners else 0.0
+        avg_loss = np.mean([abs(p.realized_pnl) for p in losers]) if losers else 0.0
+
+        total_win_amount = sum(p.realized_pnl for p in winners)
+        total_loss_amount = sum(abs(p.realized_pnl) for p in losers)
+
+        profit_factor = (
+            total_win_amount / total_loss_amount if total_loss_amount > 0 else 0.0
+        )
+
+        largest_win = max((p.realized_pnl for p in winners), default=0.0)
+        largest_loss = min((p.realized_pnl for p in losers), default=0.0)
+
+        # Heat tracking
+        current_heat = self.get_book_heat(book)
+        # TODO: Track peak heat over time
+        peak_heat = current_heat  # Simplified
+
+        return BookMetrics(
+            total_positions=len(all_positions),
+            open_positions=len(open_positions),
+            closed_positions=len(closed_positions),
+            current_heat=current_heat,
+            peak_heat=peak_heat,
+            total_realized_pnl=total_realized,
+            total_unrealized_pnl=total_unrealized,
+            largest_win=largest_win,
+            largest_loss=largest_loss,
+            win_rate=win_rate,
+            avg_win=avg_win,
+            avg_loss=avg_loss,
+            profit_factor=profit_factor,
+        )
+
+    def get_combined_metrics(self) -> Dict[str, BookMetrics]:
+        """
+        Get metrics for both books.
+
+        Returns:
+            Dict mapping book type to metrics
+        """
         return {
-            "short_gbp": short_gbp,
-            "long_gbp": long_gbp,
-            "total_gbp": short_gbp + long_gbp,
+            BookType.SHORT_HOLD.value: self.get_book_metrics(BookType.SHORT_HOLD),
+            BookType.LONG_HOLD.value: self.get_book_metrics(BookType.LONG_HOLD),
         }
 
-    def update_trail_level(
-        self,
-        symbol: str,
-        mode: TradingMode,
-        trail_level_bps: float,
-    ) -> Optional[Position]:
-        """
-        Update trailing stop level for position.
-
-        Args:
-            symbol: Asset symbol
-            mode: Trading mode
-            trail_level_bps: New trail level in bps
-
-        Returns:
-            Updated position or None
-        """
-        position = self.get_position(symbol, mode)
-        if not position:
+    def _get_position(self, position_id: str) -> Optional[Position]:
+        """Get position by ID from either book."""
+        if position_id in self.book_short:
+            return self.book_short[position_id]
+        elif position_id in self.book_long:
+            return self.book_long[position_id]
+        else:
             return None
 
-        position.trail_active = True
-        position.trail_level_bps = trail_level_bps
-
-        logger.debug(
-            "trail_level_updated",
-            symbol=symbol,
-            mode=mode.value,
-            trail_bps=trail_level_bps,
-        )
-
-        return position
-
-    def activate_be_lock(
+    def _get_book_positions(
         self,
-        symbol: str,
-        mode: TradingMode,
-    ) -> Optional[Position]:
-        """
-        Activate break-even lock for position.
+        book: BookType,
+        open_only: bool = False,
+    ) -> List[Position]:
+        """Get all positions in a book."""
+        if book == BookType.SHORT_HOLD:
+            positions = list(self.book_short.values())
+        else:
+            positions = list(self.book_long.values())
 
-        Args:
-            symbol: Asset symbol
-            mode: Trading mode
+        if open_only:
+            positions = [p for p in positions if not p.closed]
 
-        Returns:
-            Updated position or None
-        """
-        position = self.get_position(symbol, mode)
-        if not position:
-            return None
+        return positions
 
-        position.be_lock_active = True
+    def get_summary(self) -> Dict:
+        """Get overall summary across both books."""
+        short_metrics = self.get_book_metrics(BookType.SHORT_HOLD)
+        long_metrics = self.get_book_metrics(BookType.LONG_HOLD)
 
-        logger.info(
-            "be_lock_activated",
-            symbol=symbol,
-            mode=mode.value,
-            unrealized_pnl_bps=position.unrealized_pnl_bps,
+        total_realized = short_metrics.total_realized_pnl + long_metrics.total_realized_pnl
+        total_unrealized = (
+            short_metrics.total_unrealized_pnl + long_metrics.total_unrealized_pnl
         )
 
-        return position
-
-    def get_combined_stats(self) -> Dict:
-        """Get combined statistics across both books."""
-        short_win_rate = (
-            self.book_short.wins_today / self.book_short.num_trades_today
-            if self.book_short.num_trades_today > 0 else 0.0
-        )
-
-        long_win_rate = (
-            self.book_long.wins_today / self.book_long.num_trades_today
-            if self.book_long.num_trades_today > 0 else 0.0
-        )
+        total_heat = short_metrics.current_heat + long_metrics.current_heat
 
         return {
-            "short_hold": {
-                "num_positions": self.book_short.num_positions,
-                "exposure_gbp": self.book_short.total_exposure_gbp,
-                "unrealized_pnl_gbp": self.book_short.total_unrealized_pnl_gbp,
-                "realized_pnl_gbp": self.book_short.realized_pnl_gbp,
-                "num_trades": self.book_short.num_trades_today,
-                "win_rate": short_win_rate,
+            'total_capital': self.total_capital,
+            'total_heat': total_heat,
+            'available_heat': 1.0 - total_heat - self.reserve_heat,
+            'short_book': {
+                'positions': short_metrics.open_positions,
+                'heat': short_metrics.current_heat,
+                'pnl': short_metrics.total_realized_pnl,
+                'win_rate': short_metrics.win_rate,
             },
-            "long_hold": {
-                "num_positions": self.book_long.num_positions,
-                "exposure_gbp": self.book_long.total_exposure_gbp,
-                "unrealized_pnl_gbp": self.book_long.total_unrealized_pnl_gbp,
-                "realized_pnl_gbp": self.book_long.realized_pnl_gbp,
-                "num_trades": self.book_long.num_trades_today,
-                "win_rate": long_win_rate,
+            'long_book': {
+                'positions': long_metrics.open_positions,
+                'heat': long_metrics.current_heat,
+                'pnl': long_metrics.total_realized_pnl,
+                'win_rate': long_metrics.win_rate,
             },
-            "total": {
-                "num_positions": self.book_short.num_positions + self.book_long.num_positions,
-                "exposure_gbp": self.book_short.total_exposure_gbp + self.book_long.total_exposure_gbp,
-                "unrealized_pnl_gbp": self.book_short.total_unrealized_pnl_gbp + self.book_long.total_unrealized_pnl_gbp,
-                "realized_pnl_gbp": self.book_short.realized_pnl_gbp + self.book_long.realized_pnl_gbp,
+            'combined': {
+                'total_positions': short_metrics.open_positions
+                + long_metrics.open_positions,
+                'total_realized_pnl': total_realized,
+                'total_unrealized_pnl': total_unrealized,
+                'total_trades': self.total_trades,
             },
         }
-
-    def _get_book(self, mode: TradingMode) -> BookState:
-        """Get book by mode."""
-        if mode == TradingMode.SHORT_HOLD:
-            return self.book_short
-        else:
-            return self.book_long
