@@ -30,6 +30,11 @@ class TradingAction(Enum):
     ENTER_LONG_LARGE = 3  # 1.5x position
     EXIT_POSITION = 4
     HOLD_POSITION = 5
+    # Dual-mode actions
+    SCRATCH = 6  # Fast exit for short-hold (minimize loss)
+    ADD_GRID = 7  # Add to position (DCA for long-hold)
+    SCALE_OUT = 8  # Partial exit (long-hold)
+    TRAIL_RUNNER = 9  # Activate trailing stop (long-hold)
 
 
 @dataclass
@@ -70,6 +75,17 @@ class TradingState:
     orderbook_imbalance: float = 0.0
     flow_trend_score: float = 0.0
     symbol: Optional[str] = None
+
+    # Dual-mode fields
+    trading_mode: str = "short_hold"  # "short_hold" or "long_hold"
+    has_short_position: bool = False
+    has_long_position: bool = False
+    short_position_pnl_bps: float = 0.0
+    long_position_pnl_bps: float = 0.0
+    long_position_age_hours: float = 0.0
+    num_adds: int = 0  # Number of adds for long-hold
+    be_lock_active: bool = False
+    trail_active: bool = False
 
 
 class ExperienceReplayBuffer:
@@ -264,7 +280,7 @@ class RLTradingAgent:
         self.normalizer = RunningNormalizer(state_dim)
         self.replay_buffer = ExperienceReplayBuffer(self.config.replay_buffer_size)
         self.last_update_metrics: Dict[str, Any] = {}
-        self._tail_feature_count = 23
+        self._tail_feature_count = 31  # Updated for dual-mode (23 + 8 new fields)
         self.market_feature_dim = max(1, state_dim - self._tail_feature_count)
 
         # Experience buffer
@@ -313,6 +329,16 @@ class RLTradingAgent:
             state.trend_flag_1h,
             state.orderbook_imbalance,
             state.flow_trend_score,
+            # Dual-mode features
+            1.0 if state.trading_mode == "long_hold" else 0.0,
+            float(state.has_short_position),
+            float(state.has_long_position),
+            state.short_position_pnl_bps / 100.0,
+            state.long_position_pnl_bps / 100.0,
+            state.long_position_age_hours / 24.0,  # Normalize to days
+            state.num_adds / 5.0,  # Normalize (max ~5 adds)
+            float(state.be_lock_active),
+            float(state.trail_active),
         ]
         return np.array(features, dtype=np.float32)
 
@@ -367,15 +393,50 @@ class RLTradingAgent:
         """Mask invalid actions and inject context-aware biases."""
         adjusted = logits.clone()
 
+        # Determine which mode we're in
+        is_short_mode = state.trading_mode == "short_hold"
+        is_long_mode = state.trading_mode == "long_hold"
+
         # Mask actions that are invalid given position state
         mask = torch.zeros_like(adjusted, dtype=torch.bool)
-        if state.has_position:
-            mask[TradingAction.ENTER_LONG_SMALL.value] = True
-            mask[TradingAction.ENTER_LONG_NORMAL.value] = True
-            mask[TradingAction.ENTER_LONG_LARGE.value] = True
-        else:
-            mask[TradingAction.EXIT_POSITION.value] = True
-            mask[TradingAction.HOLD_POSITION.value] = True
+
+        if is_short_mode:
+            # SHORT-HOLD mode: mask long-hold specific actions
+            mask[TradingAction.ADD_GRID.value] = True
+            mask[TradingAction.SCALE_OUT.value] = True
+            mask[TradingAction.TRAIL_RUNNER.value] = True
+
+            if state.has_short_position:
+                # Already have short position, can't enter
+                mask[TradingAction.ENTER_LONG_SMALL.value] = True
+                mask[TradingAction.ENTER_LONG_NORMAL.value] = True
+                mask[TradingAction.ENTER_LONG_LARGE.value] = True
+            else:
+                # No short position, can't exit/hold/scratch
+                mask[TradingAction.EXIT_POSITION.value] = True
+                mask[TradingAction.HOLD_POSITION.value] = True
+                mask[TradingAction.SCRATCH.value] = True
+
+        elif is_long_mode:
+            # LONG-HOLD mode: mask short-hold specific actions
+            mask[TradingAction.SCRATCH.value] = True
+
+            if state.has_long_position:
+                # Already have long position
+                mask[TradingAction.ENTER_LONG_SMALL.value] = True
+                mask[TradingAction.ENTER_LONG_NORMAL.value] = True
+                mask[TradingAction.ENTER_LONG_LARGE.value] = True
+
+                # Can't add more if already added too many times
+                if state.num_adds >= 3:
+                    mask[TradingAction.ADD_GRID.value] = True
+            else:
+                # No long position, can't exit/hold/add/scale/trail
+                mask[TradingAction.EXIT_POSITION.value] = True
+                mask[TradingAction.HOLD_POSITION.value] = True
+                mask[TradingAction.ADD_GRID.value] = True
+                mask[TradingAction.SCALE_OUT.value] = True
+                mask[TradingAction.TRAIL_RUNNER.value] = True
 
         adjusted[mask] = -1e9
 
@@ -388,9 +449,18 @@ class RLTradingAgent:
         else:
             adjusted[TradingAction.DO_NOTHING.value] -= (1.0 - reliability) * self.config.inaction_penalty
 
-        # Encourage exits when underwater beyond configured drawdown
-        if state.has_position and state.unrealized_pnl_bps <= -self.config.drawdown_exit_trigger_bps:
-            adjusted[TradingAction.EXIT_POSITION.value] += self.config.drawdown_exit_boost
+        # Short-hold: encourage SCRATCH when underwater
+        if is_short_mode and state.has_short_position and state.short_position_pnl_bps <= -self.config.drawdown_exit_trigger_bps:
+            adjusted[TradingAction.SCRATCH.value] += self.config.drawdown_exit_boost
+
+        # Long-hold: encourage SCALE_OUT when in profit, TRAIL_RUNNER when running
+        if is_long_mode and state.has_long_position:
+            if state.long_position_pnl_bps > 100.0:  # In good profit
+                adjusted[TradingAction.SCALE_OUT.value] += 2.0
+                adjusted[TradingAction.TRAIL_RUNNER.value] += 1.5
+            elif state.long_position_pnl_bps <= -self.config.drawdown_exit_trigger_bps:
+                # Deep underwater, consider exit
+                adjusted[TradingAction.EXIT_POSITION.value] += self.config.drawdown_exit_boost
 
         return adjusted
 
