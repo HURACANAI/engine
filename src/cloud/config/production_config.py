@@ -40,6 +40,26 @@ class Phase1Config:
     recency_min_similarity: float = 0.3
     recency_enabled: bool = True
 
+    # ===== PHASE 1 ENGINE ENHANCEMENTS (NEW!) =====
+
+    # Multi-Timeframe Analysis
+    enable_multi_timeframe: bool = True
+    timeframes: list = field(default_factory=lambda: ['5m', '15m', '1h'])
+    min_confluence_score: float = 0.67  # Require 2/3 timeframes to agree
+    multi_tf_trend_threshold: float = 0.3
+    multi_tf_momentum_threshold: float = 0.2
+
+    # Volume Validation
+    enable_volume_validation: bool = True
+    volume_breakout_min_ratio: float = 1.5  # Breakouts need 1.5x avg volume
+    volume_trend_min_ratio: float = 0.8  # Trends need 0.8x avg volume
+    volume_range_max_ratio: float = 1.3  # Range trades max 1.3x avg volume
+
+    # Pattern Memory Check
+    enable_pattern_memory: bool = True
+    pattern_min_samples: int = 5  # Need 5+ historical samples
+    pattern_min_similarity: float = 0.70  # Fairly strict similarity matching
+
 
 @dataclass
 class Phase2Config:
@@ -66,6 +86,204 @@ class Phase2Config:
     # Portfolio-Level Learning
     portfolio_ema_alpha: float = 0.05
     cross_symbol_threshold: int = 3  # Pattern must appear in 3+ symbols
+
+    # ===== PHASE 2 SMART EXITS (NEW!) =====
+
+    # Adaptive Trailing Stops
+    enable_adaptive_trailing: bool = True
+    trail_stage_1_profit_bps: float = 50.0  # First stage at +50 bps
+    trail_stage_1_distance_bps: float = 25.0  # Trail 25 bps
+    trail_stage_2_profit_bps: float = 100.0  # Second stage at +100 bps
+    trail_stage_2_distance_bps: float = 50.0  # Trail 50 bps
+    trail_stage_3_profit_bps: float = 200.0  # Third stage at +200 bps
+    trail_stage_3_distance_bps: float = 100.0  # Trail 100 bps
+    trail_stage_4_profit_bps: float = 400.0  # Fourth stage at +400 bps
+    trail_stage_4_distance_bps: float = 200.0  # Trail 200 bps
+    trail_volatility_multiplier_high: float = 1.5  # Widen in high vol
+    trail_volatility_multiplier_low: float = 0.7  # Tighten in low vol
+    trail_volatility_high_threshold: float = 200.0  # High vol threshold (bps)
+    trail_volatility_low_threshold: float = 80.0  # Low vol threshold (bps)
+    trail_momentum_tighten_threshold: float = 0.3  # Tighten if momentum < 0.3
+    trail_momentum_tighten_factor: float = 0.8  # Tighten by 20%
+
+    # Exit Signal Detection
+    enable_exit_signals: bool = True
+    exit_momentum_reversal_threshold: float = -0.2  # Momentum < -0.2 = reversal
+    exit_volume_climax_threshold: float = 2.5  # Volume > 2.5x avg = climax
+    exit_divergence_threshold: float = 0.15  # Divergence strength threshold
+    exit_overbought_rsi: float = 75.0  # RSI > 75 = overbought
+    exit_oversold_rsi: float = 25.0  # RSI < 25 = oversold
+    exit_profit_target_min_bps: float = 100.0  # Min profit for P3 exits
+
+    # Regime Exit Management
+    enable_regime_exits: bool = True
+    regime_exit_profit_threshold_bps: float = 50.0  # Min profit for protective exits
+    regime_panic_stop_tighten_bps: float = 50.0  # Tighten stops by 50 bps in panic
+    regime_range_stop_tighten_bps: float = 30.0  # Tighten stops by 30 bps in range
+    regime_trend_stop_relax_bps: float = 20.0  # Relax stops by 20 bps in favorable trend
+
+
+@dataclass
+class Phase3Config:
+    """Phase 3 feature configuration - Engine Intelligence."""
+
+    # ===== PHASE 3 ENGINE INTELLIGENCE =====
+
+    # Engine Consensus System
+    enable_engine_consensus: bool = True
+    consensus_min_participating_engines: int = 3  # Need 3+ engines with opinions
+    consensus_unanimous_boost: float = 0.10  # +10% confidence for unanimous
+    consensus_strong_boost: float = 0.05  # +5% confidence for 75%+ agreement
+    consensus_moderate_penalty: float = 0.0  # No change for 60-75% agreement
+    consensus_weak_penalty: float = -0.05  # -5% confidence for 50-60% agreement
+    consensus_divided_penalty: float = -0.15  # -15% confidence for <50% agreement
+    consensus_min_confidence_after_adjustment: float = 0.55  # Min after adjustment
+
+    # Regime-specific consensus requirements
+    consensus_trend_regime_min_agreement: float = 0.60  # 60% in TREND
+    consensus_range_regime_min_agreement: float = 0.60  # 60% in RANGE
+    consensus_panic_regime_min_agreement: float = 0.75  # 75% in PANIC (stricter)
+
+    # Confidence Calibration System
+    enable_confidence_calibration: bool = True
+    calibration_target_win_rate: float = 0.60  # Target 60% win rate
+    calibration_target_profit_factor: float = 2.0  # Target 2.0 profit factor
+    calibration_overconfident_threshold: float = 0.50  # <50% win rate = overconfident
+    calibration_underconfident_threshold: float = 0.75  # >75% win rate = underconfident
+    calibration_max_adjustment: float = 0.10  # Max ±10% adjustment per calibration
+    calibration_min_trades: int = 30  # Need 30 trades for calibration
+    calibration_ema_alpha: float = 0.3  # EMA smoothing for adjustments
+    calibration_lookback_trades: int = 50  # Analyze last 50 trades
+
+    # Regime-specific calibration
+    calibration_per_regime: bool = True  # Separate calibration per regime
+
+
+@dataclass
+class Phase4Config:
+    """Phase 4 feature configuration - Advanced Market Intelligence."""
+
+    # ===== PHASE 4 WAVE 1: MARKET CONTEXT INTELLIGENCE =====
+
+    # Cross-Asset Correlation Analyzer
+    enable_correlation_analyzer: bool = True
+    correlation_lookback_periods: int = 100  # Historical periods for correlation
+    correlation_rolling_window: int = 20  # Recent periods for rolling correlation
+    correlation_high_threshold: float = 0.70  # High correlation threshold
+    correlation_very_high_threshold: float = 0.90  # Very high correlation
+    correlation_min_periods: int = 30  # Minimum data for valid correlation
+    correlation_systemic_threshold: float = 0.80  # Market-wide event threshold
+    correlation_diversification_min: float = 0.40  # Min diversification ratio
+
+    # Win/Loss Pattern Analyzer
+    enable_pattern_analyzer: bool = True
+    pattern_failure_threshold: float = 0.35  # Below 35% = failure pattern
+    pattern_success_threshold: float = 0.70  # Above 70% = success pattern
+    pattern_min_size: int = 10  # Minimum trades per pattern
+    pattern_min_confidence: float = 0.65  # Minimum confidence to report
+    pattern_max_trades_stored: int = 5000  # Maximum trade history
+
+    # Take-Profit Ladder
+    enable_tp_ladder: bool = True
+    tp_ladder_style: str = "default"  # 'default' or 'aggressive'
+
+    # Default ladder settings
+    tp_level_1_target_bps: float = 100.0  # TP1 at +100 bps
+    tp_level_1_exit_pct: float = 0.30  # Exit 30%
+    tp_level_2_target_bps: float = 200.0  # TP2 at +200 bps
+    tp_level_2_exit_pct: float = 0.40  # Exit 40%
+    tp_level_3_target_bps: float = 400.0  # TP3 at +400 bps
+    tp_level_3_exit_pct: float = 0.20  # Exit 20%
+    tp_final_trail_bps: float = 200.0  # Trail remaining 10%
+    tp_final_trail_multiplier: float = 1.5  # 300 bps trail (200 * 1.5)
+
+    # Strategy Performance Tracker
+    enable_strategy_tracker: bool = True
+    strategy_min_win_rate: float = 0.50  # Minimum acceptable win rate
+    strategy_min_profit_factor: float = 1.5  # Minimum profit factor
+    strategy_min_trades_to_evaluate: int = 20  # Min trades before evaluation
+    strategy_recent_window: int = 20  # Recent performance window
+    strategy_auto_disable: bool = True  # Auto-disable underperforming strategies
+
+    # ===== PHASE 4 WAVE 2: ADVANCED LEARNING =====
+
+    # Adaptive Position Sizing 2.0
+    enable_adaptive_sizing: bool = True
+    adaptive_sizing_base_usd: float = 1000.0  # Base position size
+    adaptive_sizing_min_multiplier: float = 0.25  # Min 0.25x base
+    adaptive_sizing_max_multiplier: float = 2.50  # Max 2.5x base
+    adaptive_sizing_confidence_weight: float = 0.30
+    adaptive_sizing_consensus_weight: float = 0.25
+    adaptive_sizing_regime_weight: float = 0.20
+    adaptive_sizing_risk_weight: float = 0.15
+    adaptive_sizing_pattern_weight: float = 0.10
+
+    # Liquidity Depth Analyzer
+    enable_liquidity_analyzer: bool = True
+    liquidity_min_depth_ratio: float = 3.0  # Need 3x position size in depth
+    liquidity_slippage_tolerance_bps: float = 15.0  # Max 15 bps slippage
+    liquidity_spread_warning_multiplier: float = 2.0  # Warn if spread > 2x normal
+    liquidity_min_score: float = 0.50  # Min acceptable liquidity score
+
+    # Regime Transition Anticipator
+    enable_regime_anticipator: bool = True
+    regime_vol_spike_threshold: float = 2.0  # 2x vol = spike
+    regime_vol_surge_threshold: float = 2.5  # 2.5x volume = surge
+    regime_adx_collapse_threshold: float = 0.6  # 40% ADX drop = collapse
+    regime_transition_confidence_min: float = 0.60
+    regime_transition_action_min_confidence: float = 0.70
+
+    # Ensemble Exit Strategy
+    enable_ensemble_exits: bool = True
+    ensemble_p1_danger_votes: int = 3  # P1 DANGER = 3 votes
+    ensemble_p2_warning_votes: int = 2  # P2 WARNING = 2 votes
+    ensemble_p3_profit_votes: int = 1  # P3 PROFIT = 1 vote
+    ensemble_scale_25_threshold: int = 3  # 3-4 votes = 25% exit
+    ensemble_scale_50_threshold: int = 5  # 5-6 votes = 50% exit
+    ensemble_scale_75_threshold: int = 7  # 7-8 votes = 75% exit
+    ensemble_exit_all_threshold: int = 9  # 9+ votes = 100% exit
+
+    # ===== PHASE 4 WAVE 3: POLISH & OPTIMIZATION =====
+
+    # Smart Order Executor
+    enable_smart_execution: bool = True
+    smart_exec_maker_fee_bps: float = 2.0
+    smart_exec_taker_fee_bps: float = 5.0
+    smart_exec_large_size_threshold_usd: float = 10000.0  # Split orders > $10k
+    smart_exec_twap_slice_count: int = 10
+    smart_exec_twap_window_seconds: int = 300  # 5 minutes
+    smart_exec_limit_order_offset_bps: float = 1.0  # 1 bps better than mid
+
+    # Multi-Horizon Predictor
+    enable_multi_horizon: bool = True
+    multi_horizon_weight_5m: float = 0.10  # 5m weight
+    multi_horizon_weight_15m: float = 0.20  # 15m weight
+    multi_horizon_weight_1h: float = 0.30  # 1h weight
+    multi_horizon_weight_4h: float = 0.40  # 4h weight (most important)
+    multi_horizon_alignment_excellent: float = 0.85  # Excellent alignment threshold
+    multi_horizon_alignment_good: float = 0.70  # Good alignment threshold
+    multi_horizon_alignment_moderate: float = 0.55  # Moderate alignment threshold
+    multi_horizon_alignment_poor: float = 0.40  # Poor alignment threshold
+
+    # Macro Event Detector
+    enable_macro_detector: bool = True
+    macro_normal_volatility_bps: float = 100.0
+    macro_normal_spread_bps: float = 5.0
+    macro_vol_spike_threshold: float = 3.0  # 3x vol = spike
+    macro_volume_surge_threshold: float = 3.0  # 3x volume = surge
+    macro_spread_widening_threshold: float = 2.0  # 2x spread = widening
+    macro_rapid_move_threshold_bps: float = 500.0  # 500 bps in 5m = rapid
+    macro_correlation_breakdown_threshold: float = 0.50
+    macro_liquidation_threshold: float = 0.60
+    macro_history_window_minutes: int = 60
+
+    # Hyperparameter Auto-Tuner
+    enable_hyperparameter_tuning: bool = True
+    tuning_degradation_threshold: float = 0.15  # 15% drop triggers tuning
+    tuning_min_trades_baseline: int = 50  # Need 50 trades for baseline
+    tuning_min_trades_per_test: int = 30  # Test each param for 30 trades
+    tuning_improvement_threshold: float = 0.05  # Need 5% improvement to switch
+    tuning_performance_window: int = 100  # Track last 100 trades
 
 
 @dataclass
@@ -152,6 +370,8 @@ class ProductionConfig:
     # Sub-configurations
     phase1: Phase1Config = field(default_factory=Phase1Config)
     phase2: Phase2Config = field(default_factory=Phase2Config)
+    phase3: Phase3Config = field(default_factory=Phase3Config)
+    phase4: Phase4Config = field(default_factory=Phase4Config)
     trading: TradingConfig = field(default_factory=TradingConfig)
     backtest: BacktestConfig = field(default_factory=BacktestConfig)
     database: DatabaseConfig = field(default_factory=DatabaseConfig)
@@ -161,6 +381,8 @@ class ProductionConfig:
     # Feature flags
     enable_phase1_features: bool = True
     enable_phase2_features: bool = True
+    enable_phase3_features: bool = True
+    enable_phase4_features: bool = True
     enable_regime_detection: bool = True
     enable_confidence_scoring: bool = True
     enable_feature_importance: bool = True
@@ -169,6 +391,8 @@ class ProductionConfig:
     enable_enhanced_risk_management: bool = True
     enable_pattern_detection: bool = True
     enable_portfolio_learning: bool = True
+    enable_engine_consensus: bool = True
+    enable_confidence_calibration: bool = True
 
     @classmethod
     def development(cls) -> "ProductionConfig":

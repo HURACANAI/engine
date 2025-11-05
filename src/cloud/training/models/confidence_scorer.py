@@ -13,10 +13,13 @@ This allows the RL agent to know when to trade vs when to sit out.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Optional
+from typing import Dict, Optional, TYPE_CHECKING
 
 import numpy as np
 import structlog
+
+if TYPE_CHECKING:
+    from ..memory.store import MemoryStore
 
 logger = structlog.get_logger(__name__)
 
@@ -118,9 +121,13 @@ class ConfidenceScorer:
         regime_confidence: float = 0.5,
         meta_features: Optional[Dict[str, float]] = None,
         current_regime: Optional[str] = None,
+        features_embedding: Optional[np.ndarray] = None,
+        memory_store: Optional["MemoryStore"] = None,
+        symbol: Optional[str] = None,
     ) -> ConfidenceResult:
         """
-        Calculate confidence score for a trading decision with regime-aware thresholding.
+        Calculate confidence score for a trading decision with regime-aware thresholding
+        and optional pattern memory checking.
 
         Args:
             sample_count: Number of historical examples
@@ -132,6 +139,9 @@ class ConfidenceScorer:
             regime_confidence: Regime detection confidence (0-1)
             meta_features: Additional meta-model features
             current_regime: Current market regime ("trend", "range", "panic", "unknown")
+            features_embedding: Feature embedding for pattern matching (optional)
+            memory_store: MemoryStore instance for pattern history lookup (optional)
+            symbol: Trading symbol for pattern lookup (optional)
 
         Returns:
             ConfidenceResult with confidence score and context-aware decision
@@ -173,9 +183,20 @@ class ConfidenceScorer:
         meta_bonus = (meta_signal - 0.5) * 0.1
         orderbook_bonus = orderbook_bias * 0.05
 
-        # 7. Final confidence
+        # 7. Pattern Memory Check (NEW - Phase 1 enhancement!)
+        pattern_memory_bonus = 0.0
+        pattern_history_note = ""
+        if memory_store and features_embedding is not None and symbol:
+            pattern_memory_bonus, pattern_history_note = self._check_pattern_history(
+                features_embedding=features_embedding,
+                regime=current_regime,
+                memory_store=memory_store,
+                symbol=symbol,
+            )
+
+        # 8. Final confidence
         confidence = np.clip(
-            base_confidence + pattern_bonus + alignment_bonus + regime_bonus + meta_bonus + orderbook_bonus,
+            base_confidence + pattern_bonus + alignment_bonus + regime_bonus + meta_bonus + orderbook_bonus + pattern_memory_bonus,
             0.0,
             1.0,
         )
@@ -201,9 +222,15 @@ class ConfidenceScorer:
         if confidence >= effective_threshold:
             decision = "trade"
             reason = self._build_trade_reason(confidence, factors, current_regime, effective_threshold)
+            # Append pattern history note if available
+            if pattern_history_note:
+                reason += f"; {pattern_history_note}"
         else:
             decision = "skip"
             reason = self._build_skip_reason(confidence, factors, current_regime, effective_threshold)
+            # Append pattern history note if available
+            if pattern_history_note:
+                reason += f"; {pattern_history_note}"
 
         logger.debug(
             "confidence_decision",
@@ -211,6 +238,7 @@ class ConfidenceScorer:
             effective_threshold=effective_threshold,
             regime=current_regime,
             decision=decision,
+            pattern_memory_bonus=pattern_memory_bonus,
         )
 
         return ConfidenceResult(
@@ -324,6 +352,102 @@ class ConfidenceScorer:
             reasons.append(f"below threshold ({confidence:.2f} < {threshold:.2f})")
 
         return "; ".join(reasons)
+
+    def _check_pattern_history(
+        self,
+        features_embedding: np.ndarray,
+        regime: Optional[str],
+        memory_store: "MemoryStore",
+        symbol: str,
+        min_samples: int = 5,
+    ) -> Tuple[float, str]:
+        """
+        Check LogBook for similar historical patterns and adjust confidence.
+
+        This is Phase 1 Enhancement #3: Pattern Memory Check
+        Before trading, ask LogBook: "Have we seen this setup before? How did it perform?"
+
+        Args:
+            features_embedding: Feature vector for similarity search
+            regime: Current market regime
+            memory_store: MemoryStore instance
+            symbol: Trading symbol
+            min_samples: Minimum historical samples needed
+
+        Returns:
+            (confidence_adjustment, reasoning_note)
+            - confidence_adjustment: Bonus/penalty (-0.15 to +0.15)
+            - reasoning_note: Human-readable explanation
+        """
+        try:
+            # Query LogBook for similar patterns
+            similar_patterns = memory_store.find_similar_patterns(
+                embedding=features_embedding,
+                symbol=symbol,
+                market_regime=regime,
+                top_k=20,
+                min_similarity=0.70,  # Fairly strict similarity
+                use_regime_boost=True,  # Use context-aware similarity
+            )
+
+            if len(similar_patterns) < min_samples:
+                return (0.0, f"Pattern history: {len(similar_patterns)} samples (need {min_samples}+)")
+
+            # Calculate pattern win rate
+            wins = sum(1 for p in similar_patterns if p.is_winner)
+            pattern_win_rate = wins / len(similar_patterns)
+
+            # Calculate avg profit
+            avg_profit = np.mean([p.net_profit_gbp for p in similar_patterns])
+
+            # Calculate confidence adjustment based on pattern history
+            # Strong pattern (65%+ win rate) → +0.10 to +0.15 boost
+            # Good pattern (55-65% win rate) → +0.03 to +0.10 boost
+            # Neutral pattern (45-55% win rate) → No adjustment
+            # Bad pattern (35-45% win rate) → -0.05 to -0.10 penalty
+            # Very bad pattern (<35% win rate) → -0.10 to -0.15 penalty
+
+            if pattern_win_rate >= 0.65:
+                # Strong pattern - big boost
+                confidence_adjustment = 0.10 + min((pattern_win_rate - 0.65) * 0.5, 0.05)
+                note = f"Pattern history: STRONG ({pattern_win_rate:.0%} win rate, n={len(similar_patterns)})"
+            elif pattern_win_rate >= 0.55:
+                # Good pattern - moderate boost
+                confidence_adjustment = 0.03 + (pattern_win_rate - 0.55) * 0.7
+                note = f"Pattern history: GOOD ({pattern_win_rate:.0%} win rate, n={len(similar_patterns)})"
+            elif pattern_win_rate >= 0.45:
+                # Neutral pattern - no adjustment
+                confidence_adjustment = 0.0
+                note = f"Pattern history: NEUTRAL ({pattern_win_rate:.0%} win rate, n={len(similar_patterns)})"
+            elif pattern_win_rate >= 0.35:
+                # Bad pattern - moderate penalty
+                confidence_adjustment = -0.05 - (0.45 - pattern_win_rate) * 0.5
+                note = f"Pattern history: WEAK ({pattern_win_rate:.0%} win rate, n={len(similar_patterns)})"
+            else:
+                # Very bad pattern - heavy penalty
+                confidence_adjustment = -0.10 - min((0.35 - pattern_win_rate) * 0.5, 0.05)
+                note = f"Pattern history: AVOID ({pattern_win_rate:.0%} win rate, n={len(similar_patterns)})"
+
+            logger.info(
+                "pattern_history_checked",
+                symbol=symbol,
+                regime=regime,
+                samples=len(similar_patterns),
+                win_rate=pattern_win_rate,
+                avg_profit=avg_profit,
+                adjustment=confidence_adjustment,
+            )
+
+            return (confidence_adjustment, note)
+
+        except Exception as e:
+            logger.error(
+                "pattern_history_check_failed",
+                symbol=symbol,
+                regime=regime,
+                error=str(e),
+            )
+            return (0.0, "Pattern history check failed")
 
     def adjust_threshold_by_regime(
         self,
