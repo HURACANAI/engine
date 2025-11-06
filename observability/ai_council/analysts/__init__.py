@@ -1,6 +1,6 @@
 """AI Council Analysts
 
-7 diverse analyst models for multi-perspective analysis.
+8 diverse analyst models for multi-perspective analysis.
 """
 
 from observability.ai_council.analysts.base_analyst import BaseAnalyst, AnalystReport
@@ -11,6 +11,7 @@ from observability.ai_council.analysts.gemini_analyst import GeminiAnalyst
 from observability.ai_council.analysts.grok_analyst import GrokAnalyst
 from observability.ai_council.analysts.llama_analyst import LlamaAnalyst
 from observability.ai_council.analysts.deepseek_analyst import DeepSeekAnalyst
+from observability.ai_council.analysts.perplexity_analyst import PerplexityAnalyst
 
 __all__ = [
     'BaseAnalyst',
@@ -21,5 +22,6 @@ __all__ = [
     'GeminiAnalyst',
     'GrokAnalyst',
     'LlamaAnalyst',
-    'DeepSeekAnalyst'
+    'DeepSeekAnalyst',
+    'PerplexityAnalyst'
 ]
