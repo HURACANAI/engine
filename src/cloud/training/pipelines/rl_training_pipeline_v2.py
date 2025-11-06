@@ -34,7 +34,7 @@ from ..memory.store import MemoryStore
 from ..services.costs import CostModel
 from ..services.exchange import ExchangeClient
 from ..contracts.model_manifest import ModelManifest
-from shared.features.recipe import FeatureRecipe
+from src.shared.features.recipe import FeatureRecipe
 
 # V2 Pipeline Integration
 from ..integrations.v2_pipeline_adapter import (

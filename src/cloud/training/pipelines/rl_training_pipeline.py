@@ -32,7 +32,7 @@ from ..memory.store import MemoryStore
 from ..services.costs import CostModel
 from ..services.exchange import ExchangeClient
 from ..contracts.model_manifest import ModelManifest
-from shared.features.recipe import FeatureRecipe
+from src.shared.features.recipe import FeatureRecipe
 
 logger = structlog.get_logger(__name__)
 

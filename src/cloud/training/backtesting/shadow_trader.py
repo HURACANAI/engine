@@ -34,7 +34,7 @@ from ..models.confidence_scorer import ConfidenceScorer
 from ..models.feature_importance_learner import FeatureImportanceLearner
 from ..models.regime_detector import RegimeDetector
 from ..services.costs import CostBreakdown, CostModel
-from shared.features.recipe import FeatureRecipe
+from src.shared.features.recipe import FeatureRecipe
 
 logger = structlog.get_logger(__name__)
 

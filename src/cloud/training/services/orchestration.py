@@ -38,11 +38,11 @@ from .universe import UniverseSelector
 from ..memory.store import MemoryStore
 from ..pipelines.rl_training_pipeline import RLTrainingPipeline
 # FUTURE/MECHANIC - Not used in Engine (will be used when building Mechanic component)
-from shared.contracts.mechanic import MechanicContract  # NOQA: F401
-from shared.contracts.metrics import MetricsPayload
+from src.shared.contracts.mechanic import MechanicContract  # NOQA: F401
+from src.shared.contracts.metrics import MetricsPayload
 # FUTURE/PILOT - Not used in Engine (will be used when building Pilot component)
-from shared.contracts.pilot import PilotContract  # NOQA: F401
-from shared.features.recipe import FeatureRecipe
+from src.shared.contracts.pilot import PilotContract  # NOQA: F401
+from src.shared.features.recipe import FeatureRecipe
 
 
 logger = structlog.get_logger(__name__)

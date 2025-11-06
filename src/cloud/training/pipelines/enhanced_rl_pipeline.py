@@ -37,8 +37,8 @@ from ..models.regime_transition_predictor import (
 )
 from ..services.costs import CostModel
 from ..services.exchange import ExchangeClient
-from shared.features.higher_order import HigherOrderFeatureBuilder
-from shared.features.recipe import FeatureRecipe
+from src.shared.features.higher_order import HigherOrderFeatureBuilder
+from src.shared.features.recipe import FeatureRecipe
 
 logger = structlog.get_logger(__name__)
 
