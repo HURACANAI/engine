@@ -145,10 +145,11 @@ def run_daily_retrain() -> None:
     universe_selector = UniverseSelector(exchange_client, metadata_loader, settings.universe)
     
     # Get selected symbols for Telegram notification
-    selected_symbols = universe_selector.select_universe()
+    selected_symbols_df = universe_selector.select()
+    selected_symbols = selected_symbols_df.to_dicts() if hasattr(selected_symbols_df, 'to_dicts') else selected_symbols_df
     if telegram_monitor:
         telegram_monitor.notify_system_startup(
-            symbols=[s.symbol for s in selected_symbols],
+            symbols=[s['symbol'] for s in selected_symbols],
             total_coins=len(selected_symbols),
         )
     
