@@ -818,9 +818,13 @@ class FeatureRecipe:
             feature_frame = feature_frame.with_columns(optional_features)
 
         # Compute VWAP and drift after we have typical_price column
-        # cumsum() works on columns, not expressions
+        # cumsum() must be called on column references, not expressions
+        # First compute typical_price * volume, then cumsum it
         feature_frame = feature_frame.with_columns([
-            (pl.col("typical_price") * pl.col("volume")).cumsum().alias("cum_typical_volume"),
+            (pl.col("typical_price") * pl.col("volume")).alias("typical_price_volume"),
+        ])
+        feature_frame = feature_frame.with_columns([
+            pl.col("typical_price_volume").cumsum().alias("cum_typical_volume"),
             pl.col("volume").cumsum().alias("cum_volume"),
         ])
         feature_frame = feature_frame.with_columns([
@@ -829,6 +833,8 @@ class FeatureRecipe:
         feature_frame = feature_frame.with_columns([
             ((pl.col("close") - pl.col("vwap")) / pl.col("vwap")).alias("close_to_vwap"),
         ])
+        # Drop intermediate column
+        feature_frame = feature_frame.drop("typical_price_volume")
 
         filled = feature_frame.fill_null(strategy="forward").fill_null(strategy="backward").fill_nan(0.0)
         return filled
