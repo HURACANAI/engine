@@ -49,35 +49,16 @@ Usage:
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from datetime import datetime
 from enum import Enum
+from typing import Dict, List, Optional, Tuple
+
 import numpy as np
 import pandas as pd
-from datetime import datetime
 import structlog
 
-# Import dual-mode components
-try:
-    from dual_book_manager import DualBookManager, BookType
-except ImportError:
-    DualBookManager = None
-    BookType = None
-
-try:
-    from trading_coordinator import TradingCoordinator
-except ImportError:
-    TradingCoordinator = None
-
-try:
-    from gate_profiles import HybridGateRouter
-except ImportError:
-    HybridGateRouter = None
-
-try:
-    from mode_selector import ModeSelector, PreferredMode
-except ImportError:
-    ModeSelector = None
-    PreferredMode = None
+from .dual_book_manager import DualBookManager, BookType
+from .trading_coordinator import TradingCoordinator
 
 logger = structlog.get_logger(__name__)
 
@@ -116,7 +97,7 @@ class BacktestTrade:
     trade_id: int
     timestamp: float
     symbol: str
-    book: BookType
+    book: Optional[BookType]
     direction: Direction
     entry_price: float
     exit_price: float
@@ -129,15 +110,15 @@ class BacktestTrade:
     pnl_usd: float
     won: bool
 
-    # Gate decisions
-    gates_passed: List[str]
-    gates_failed: List[str]
-
     # Features at entry
     confidence: float
     technique: str
     regime: str
     edge_hat_bps: float
+    gates_passed: int
+    gates_blocked: int
+    edge_net_bps: float
+    win_probability: float
 
 
 @dataclass
@@ -528,14 +509,14 @@ class Backtester:
         confidence = features.get('confidence', 0.5)
 
         # Process through coordinator
-        result = self.coordinator.process_signal(
+        decision = self.coordinator.process_signal(
             symbol=symbol,
             price=price,
             features=features,
             regime=regime,
         )
 
-        if not result.should_trade:
+        if decision is None or not decision.approved or decision.book is None:
             return
 
         # Determine direction (for simulation, alternate or use feature)
@@ -558,6 +539,9 @@ class Backtester:
         if entry_result.status != OrderFillStatus.FILLED:
             return
 
+        if entry_result.fill_price is None:
+            return
+
         # Simulate exit (use actual outcome)
         exit_price = entry_result.fill_price * (1 + actual_outcome_bps / 10000)
         if direction == Direction.SHORT:
@@ -571,6 +555,9 @@ class Backtester:
             spread_bps=spread_bps,
             is_stop_loss=(actual_outcome_bps < -20),
         )
+
+        if exit_result.fill_price is None:
+            return
 
         # Calculate P&L
         if direction == Direction.LONG:
@@ -591,7 +578,7 @@ class Backtester:
             trade_id=len(self.trades) + 1,
             timestamp=timestamp,
             symbol=symbol,
-            book=result.book,
+            book=decision.book,
             direction=direction,
             entry_price=entry_result.fill_price,
             exit_price=exit_result.fill_price,
@@ -602,12 +589,14 @@ class Backtester:
             pnl_bps=pnl_bps,
             pnl_usd=pnl_usd,
             won=(pnl_bps > 0),
-            gates_passed=result.gates_passed,
-            gates_failed=result.gates_failed,
             confidence=confidence,
             technique=technique,
             regime=regime,
-            edge_hat_bps=result.edge_hat_bps,
+            edge_hat_bps=decision.edge_hat_bps,
+            gates_passed=decision.gates_passed,
+            gates_blocked=decision.gates_blocked,
+            edge_net_bps=decision.edge_net_bps,
+            win_probability=decision.win_probability,
         )
 
         self.trades.append(trade)
@@ -643,8 +632,8 @@ class Backtester:
             )
 
         # Overall metrics
-        total_pnl = sum(t.pnl_usd for t in self.trades)
-        total_return = (self.capital - self.initial_capital) / self.initial_capital * 100
+        total_pnl = float(sum(t.pnl_usd for t in self.trades))
+        total_return = float((self.capital - self.initial_capital) / self.initial_capital * 100)
 
         winning_trades = [t for t in self.trades if t.won]
         losing_trades = [t for t in self.trades if not t.won]
@@ -658,31 +647,33 @@ class Backtester:
         scalp_wr = len([t for t in scalp_trades if t.won]) / len(scalp_trades) if scalp_trades else 0.0
         runner_wr = len([t for t in runner_trades if t.won]) / len(runner_trades) if runner_trades else 0.0
 
-        scalp_pnl = sum(t.pnl_usd for t in scalp_trades)
-        runner_pnl = sum(t.pnl_usd for t in runner_trades)
+        scalp_pnl = float(sum(t.pnl_usd for t in scalp_trades))
+        runner_pnl = float(sum(t.pnl_usd for t in runner_trades))
 
         # Risk metrics
-        avg_winner = np.mean([t.pnl_usd for t in winning_trades]) if winning_trades else 0.0
-        avg_loser = np.mean([t.pnl_usd for t in losing_trades]) if losing_trades else 0.0
+        avg_winner = float(np.mean([t.pnl_usd for t in winning_trades])) if winning_trades else 0.0
+        avg_loser = float(np.mean([t.pnl_usd for t in losing_trades])) if losing_trades else 0.0
         win_loss_ratio = abs(avg_winner / avg_loser) if avg_loser != 0 else 0.0
 
-        gross_profit = sum(t.pnl_usd for t in winning_trades)
-        gross_loss = abs(sum(t.pnl_usd for t in losing_trades))
+        gross_profit = float(sum(t.pnl_usd for t in winning_trades))
+        gross_loss = float(abs(sum(t.pnl_usd for t in losing_trades)))
         profit_factor = gross_profit / gross_loss if gross_loss > 0 else 0.0
 
         # Sharpe ratio
         returns = [t.pnl_usd / self.initial_capital for t in self.trades]
-        sharpe = np.mean(returns) / np.std(returns) * np.sqrt(252) if len(returns) > 1 else 0.0
+        sharpe = float(np.mean(returns) / np.std(returns) * np.sqrt(252)) if len(returns) > 1 else 0.0
 
         # Max drawdown
         equity = np.array(self.equity_curve)
         running_max = np.maximum.accumulate(equity)
         drawdown = (equity - running_max) / running_max * 100
-        max_dd = abs(np.min(drawdown))
+        max_dd = float(abs(np.min(drawdown)))
 
         # Time-based
         if self.timestamps:
             total_days = (self.timestamps[-1] - self.timestamps[0]) / 86400
+            if total_days <= 0:
+                total_days = 1.0
         else:
             total_days = 1.0
 
@@ -704,7 +695,7 @@ class Backtester:
             runner_trades=len(runner_trades),
             runner_win_rate=runner_wr,
             runner_pnl_usd=runner_pnl,
-            avg_trade_pnl_usd=total_pnl / len(self.trades),
+            avg_trade_pnl_usd=float(total_pnl / len(self.trades)),
             avg_winner_usd=avg_winner,
             avg_loser_usd=avg_loser,
             win_loss_ratio=win_loss_ratio,
@@ -766,26 +757,28 @@ class Backtester:
 
     def export_results(self, results: BacktestResults, path: str) -> None:
         """Export results to CSV."""
-        trades_df = pd.DataFrame([
-            {
-                'trade_id': t.trade_id,
-                'timestamp': t.timestamp,
-                'symbol': t.symbol,
-                'book': t.book.value,
-                'direction': t.direction.value,
-                'entry_price': t.entry_price,
-                'exit_price': t.exit_price,
-                'size': t.size,
-                'pnl_bps': t.pnl_bps,
-                'pnl_usd': t.pnl_usd,
-                'won': t.won,
-                'confidence': t.confidence,
-                'technique': t.technique,
-                'regime': t.regime,
-                'edge_hat_bps': t.edge_hat_bps,
-            }
-            for t in results.trades
-        ])
+        trades_df = pd.DataFrame(
+            [
+                {
+                    'trade_id': t.trade_id,
+                    'timestamp': t.timestamp,
+                    'symbol': t.symbol,
+                    'book': t.book.value if t.book else None,
+                    'direction': t.direction.value,
+                    'entry_price': t.entry_price,
+                    'exit_price': t.exit_price,
+                    'size': t.size,
+                    'pnl_bps': t.pnl_bps,
+                    'pnl_usd': t.pnl_usd,
+                    'won': t.won,
+                    'confidence': t.confidence,
+                    'technique': t.technique,
+                    'regime': t.regime,
+                    'edge_hat_bps': t.edge_hat_bps,
+                }
+                for t in results.trades
+            ]
+        )
 
         trades_df.to_csv(path, index=False)
         logger.info("backtest_results_exported", path=path, trades=len(results.trades))

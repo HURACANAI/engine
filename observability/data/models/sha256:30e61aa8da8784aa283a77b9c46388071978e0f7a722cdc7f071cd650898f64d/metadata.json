@@ -1,0 +1,13 @@
+{
+  "model_id": "sha256:30e61aa8da8784aa283a77b9c46388071978e0f7a722cdc7f071cd650898f64d",
+  "created_at": "2025-11-06T09:52:27.131924",
+  "code_git_sha": "e5f6g7h8",
+  "data_snapshot_id": "snap_20251106_v2",
+  "metrics": {
+    "auc": 0.71,
+    "ece": 0.061,
+    "wr": 0.75
+  },
+  "n_samples": 1047,
+  "notes": "Retrained with 47 new trades"
+}

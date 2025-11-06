@@ -1,0 +1,411 @@
+# Gate Configurations for Huracan Trading Engine
+# Tracks current thresholds, historical changes, and pass rate targets
+
+# ============================================================================
+# CURRENT GATE CONFIGURATIONS
+# ============================================================================
+
+gates:
+  # Meta-Label Gate
+  # Purpose: Filter trades based on predicted probability of success
+  meta_label:
+    enabled: true
+    description: "Uses meta-label model to predict if signal will be profitable"
+
+    thresholds:
+      scalp:
+        probability: 0.45  # Must have >45% predicted win probability
+        description: "Scalp trades need lower threshold (more trades, faster)"
+      runner:
+        probability: 0.65  # Must have >65% predicted win probability
+        description: "Runner trades need higher threshold (fewer, higher quality)"
+
+    behavior:
+      calibration: "platt_scaling"  # How probabilities are calibrated
+      fallback: "reject"  # What to do if model unavailable
+
+    pass_rate_targets:
+      scalp: {min: 0.15, ideal: 0.25, max: 0.40}
+      runner: {min: 0.05, ideal: 0.10, max: 0.20}
+
+  # Cost Gate
+  # Purpose: Ensure expected return exceeds trading costs
+  cost_gate:
+    enabled: true
+    description: "Reject trades where costs eat too much into expected return"
+
+    thresholds:
+      scalp:
+        buffer_bps: 3.0  # Need +3 bps above break-even
+        description: "Small buffer for high-frequency scalps"
+      runner:
+        buffer_bps: 8.0  # Need +8 bps above break-even
+        description: "Larger buffer for longer-hold runners"
+
+    cost_components:
+      - fee_entry_bps
+      - fee_exit_bps
+      - expected_slippage_bps
+      - spread_bps
+
+    behavior:
+      dynamic_adjustment: true  # Adjust buffer based on market conditions
+      high_volatility_multiplier: 1.5  # Increase buffer in volatile markets
+
+    pass_rate_targets:
+      scalp: {min: 0.60, ideal: 0.75, max: 0.90}
+      runner: {min: 0.70, ideal: 0.85, max: 0.95}
+
+  # Confidence Gate
+  # Purpose: Only trade when model is confident in its prediction
+  confidence_gate:
+    enabled: true
+    description: "Reject trades when model confidence is too low"
+
+    thresholds:
+      scalp:
+        min_confidence: 0.55  # 55% minimum confidence
+        description: "Lower bar for faster scalps"
+      runner:
+        min_confidence: 0.70  # 70% minimum confidence
+        description: "Higher bar for longer runners"
+
+    behavior:
+      source: "model_output"  # Where confidence comes from
+      calibrated: true  # Use calibrated confidence
+
+    pass_rate_targets:
+      scalp: {min: 0.30, ideal: 0.50, max: 0.70}
+      runner: {min: 0.40, ideal: 0.60, max: 0.80}
+
+  # Regime Gate
+  # Purpose: Only trade in favorable market regimes
+  regime_gate:
+    enabled: true
+    description: "Reject trades in unfavorable regimes"
+
+    allowed_regimes:
+      scalp: ["TREND", "CHOP"]  # Scalp works in trending and choppy
+      runner: ["TREND"]  # Runner only in strong trends
+
+    behavior:
+      regime_detector: "volatility_clustering"
+      lookback_minutes: 60
+
+    pass_rate_targets:
+      scalp: {min: 0.50, ideal: 0.70, max: 0.90}
+      runner: {min: 0.20, ideal: 0.40, max: 0.60}
+
+  # Spread Gate
+  # Purpose: Avoid trading when spreads are too wide
+  spread_gate:
+    enabled: true
+    description: "Reject trades when bid-ask spread is excessive"
+
+    thresholds:
+      scalp:
+        max_spread_bps: 5.0  # Max 5 bps spread
+        description: "Tight spread needed for scalps"
+      runner:
+        max_spread_bps: 10.0  # Max 10 bps spread
+        description: "Can tolerate wider spread for runners"
+
+    behavior:
+      dynamic: true  # Adjust based on average spread
+      percentile_threshold: 0.90  # Block if spread > 90th percentile
+
+    pass_rate_targets:
+      scalp: {min: 0.70, ideal: 0.85, max: 0.95}
+      runner: {min: 0.80, ideal: 0.90, max: 0.98}
+
+  # Volume Gate
+  # Purpose: Ensure sufficient liquidity
+  volume_gate:
+    enabled: true
+    description: "Reject trades when volume is too low"
+
+    thresholds:
+      scalp:
+        min_volume_ratio: 0.50  # At least 50% of avg volume
+        description: "Need decent liquidity for scalps"
+      runner:
+        min_volume_ratio: 0.30  # At least 30% of avg volume
+        description: "Can tolerate lower volume for runners"
+
+    behavior:
+      lookback_hours: 24  # Compare to 24h average
+      exchanges: ["binance", "coinbase"]  # Check multiple sources
+
+    pass_rate_targets:
+      scalp: {min: 0.60, ideal: 0.80, max: 0.95}
+      runner: {min: 0.70, ideal: 0.85, max: 0.95}
+
+# ============================================================================
+# GATE EXECUTION ORDER
+# ============================================================================
+
+execution:
+  order:
+    - spread_gate      # Check spreads first (cheapest)
+    - volume_gate      # Check volume (cheap)
+    - regime_gate      # Check regime (cheap)
+    - cost_gate        # Check costs (medium)
+    - confidence_gate  # Check confidence (medium)
+    - meta_label       # Run model last (expensive)
+
+  short_circuit: true  # Stop at first rejection
+  log_all_gates: true  # Even if short-circuited, log what would have happened
+
+# ============================================================================
+# HISTORICAL GATE CHANGES
+# ============================================================================
+
+history:
+  # Track all threshold changes over time
+  changes:
+    - date: "2025-11-01"
+      gate: "meta_label"
+      mode: "scalp"
+      parameter: "probability"
+      old_value: 0.50
+      new_value: 0.45
+      reason: "Lowering threshold to increase trade frequency"
+      changed_by: "manual"
+      impact:
+        pass_rate_before: 0.12
+        pass_rate_after: 0.23
+        wr_before: 0.76
+        wr_after: 0.74
+        notes: "Slight WR drop, but more trades compensate"
+
+    - date: "2025-11-02"
+      gate: "cost_gate"
+      mode: "runner"
+      parameter: "buffer_bps"
+      old_value: 10.0
+      new_value: 8.0
+      reason: "Spreads tightened, can lower buffer"
+      changed_by: "auto_tuner"
+      impact:
+        pass_rate_before: 0.78
+        pass_rate_after: 0.87
+        wr_before: 0.91
+        wr_after: 0.89
+        notes: "Small WR drop acceptable for more opportunities"
+
+    - date: "2025-11-04"
+      gate: "regime_gate"
+      mode: "scalp"
+      parameter: "allowed_regimes"
+      old_value: ["TREND"]
+      new_value: ["TREND", "CHOP"]
+      reason: "Scalp performs well in chop markets"
+      changed_by: "manual"
+      impact:
+        pass_rate_before: 0.35
+        pass_rate_after: 0.68
+        wr_before: 0.77
+        wr_after: 0.73
+        notes: "More trades with acceptable WR"
+
+# ============================================================================
+# AUTO-TUNING CONFIGURATION
+# ============================================================================
+
+auto_tuning:
+  enabled: false  # Manual tuning only for now
+
+  # Future: Auto-tune based on performance
+  rules:
+    - name: "Lower meta-label threshold if WR too high"
+      condition: "wr > target_max AND pass_rate < target_min"
+      action: "decrease threshold by 0.05"
+      max_adjustment: 0.10
+
+    - name: "Raise meta-label threshold if WR too low"
+      condition: "wr < target_min"
+      action: "increase threshold by 0.05"
+      max_adjustment: 0.15
+
+    - name: "Adjust cost buffer based on market"
+      condition: "avg_spread > historical_90th_percentile"
+      action: "increase buffer by 1.0 bps"
+      max_adjustment: 5.0
+
+  safety:
+    min_samples: 100  # Need 100 trades before auto-tuning
+    max_change_per_day: 0.10  # Max 10% change per day
+    require_approval: true  # Send notification, wait for approval
+
+# ============================================================================
+# SHADOW TRADE TRACKING
+# ============================================================================
+
+shadow_trades:
+  enabled: true
+  description: "Track what would have happened if gate didn't block trade"
+
+  tracking:
+    duration_hours: 24  # Track for 24 hours
+    compute_pnl: true  # Calculate counterfactual P&L
+    compute_outcome: true  # Would it have hit TP/SL?
+
+  analysis:
+    good_block: "cf_pnl_bps < 0"  # Gate blocked a loser
+    bad_block: "cf_pnl_bps > 10"  # Gate blocked a winner (>10 bps)
+    neutral_block: "abs(cf_pnl_bps) <= 10"  # Marginal trade
+
+  targets:
+    gate_accuracy: 0.70  # 70% of blocks should be "good blocks"
+    missed_pnl_bps: -50  # Shadow trades should sum to <-50 bps (net losers)
+
+# ============================================================================
+# GATE HEALTH MONITORING
+# ============================================================================
+
+monitoring:
+  # Check gate health every N minutes
+  check_interval_minutes: 60
+
+  health_checks:
+    - name: "Pass rate in target range"
+      check: "target_min <= pass_rate <= target_max"
+      severity: "warning"
+      action: "alert"
+
+    - name: "Gate accuracy acceptable"
+      check: "gate_accuracy >= target_accuracy"
+      severity: "warning"
+      action: "alert"
+
+    - name: "Shadow trade P&L not too positive"
+      check: "shadow_pnl_bps < 100"
+      severity: "critical"
+      action: "alert + suggest_loosening"
+
+    - name: "No excessive rejections"
+      check: "pass_rate > 0.01"
+      severity: "critical"
+      action: "alert + suggest_disabling"
+
+# ============================================================================
+# GATE EXPLAINABILITY
+# ============================================================================
+
+explainability:
+  # For each rejection, log:
+  log_rejections: true
+  include:
+    - gate_name
+    - rejection_reason
+    - actual_values
+    - threshold_values
+    - margin  # How far from passing
+    - counterfactual  # What would have happened
+
+  # Generate explanations
+  explanations:
+    meta_label:
+      template: "Meta-label predicted {probability:.1%} win probability (threshold: {threshold:.1%})"
+      show_features: true  # Show which features drove prediction
+
+    cost_gate:
+      template: "Expected return {expected_return_bps:.1f} bps < costs {total_cost_bps:.1f} bps + buffer {buffer_bps:.1f} bps"
+      show_breakdown: true  # Break down cost components
+
+    confidence_gate:
+      template: "Model confidence {confidence:.1%} below threshold {threshold:.1%}"
+      show_uncertainty: true  # Show model uncertainty sources
+
+    regime_gate:
+      template: "Current regime {current_regime} not in allowed list {allowed_regimes}"
+      show_regime_metrics: true  # Show regime detection metrics
+
+    spread_gate:
+      template: "Spread {spread_bps:.1f} bps > max {max_spread_bps:.1f} bps"
+      show_historical: true  # Compare to historical spreads
+
+    volume_gate:
+      template: "Volume ratio {volume_ratio:.2f} < min {min_ratio:.2f}"
+      show_exchanges: true  # Show volume by exchange
+
+# ============================================================================
+# GATE OPTIMIZATION TARGETS
+# ============================================================================
+
+optimization:
+  # What to optimize for
+  objectives:
+    primary: "maximize_sharpe"  # Main goal
+    secondary: "maximize_wr"  # Secondary goal
+    constraint: "min_trades_per_day >= 20"  # Must have min activity
+
+  # Hyperparameter search space
+  search_space:
+    meta_label_scalp_prob: [0.35, 0.40, 0.45, 0.50, 0.55]
+    meta_label_runner_prob: [0.60, 0.65, 0.70, 0.75, 0.80]
+    cost_gate_scalp_buffer: [2.0, 3.0, 4.0, 5.0]
+    cost_gate_runner_buffer: [6.0, 8.0, 10.0, 12.0]
+    confidence_scalp: [0.50, 0.55, 0.60, 0.65]
+    confidence_runner: [0.65, 0.70, 0.75, 0.80]
+
+  # How to search
+  method: "grid_search"  # or "bayesian_optimization"
+  cv_folds: 5  # Use 5-fold cross-validation
+  min_samples_per_fold: 50
+
+# ============================================================================
+# ALERT RULES FOR GATES
+# ============================================================================
+
+alerts:
+  # When to send alerts about gate performance
+  rules:
+    - name: "Gate too strict"
+      condition: "pass_rate < target_min"
+      severity: "warning"
+      message: "{gate_name} blocking too many signals ({pass_rate:.1%} < {target_min:.1%})"
+
+    - name: "Gate too loose"
+      condition: "pass_rate > target_max"
+      severity: "warning"
+      message: "{gate_name} passing too many signals ({pass_rate:.1%} > {target_max:.1%})"
+
+    - name: "Gate accuracy low"
+      condition: "gate_accuracy < 0.60"
+      severity: "critical"
+      message: "{gate_name} accuracy only {gate_accuracy:.1%} - consider retraining"
+
+    - name: "Missing profitable trades"
+      condition: "shadow_pnl_bps > 100"
+      severity: "critical"
+      message: "{gate_name} blocked trades worth {shadow_pnl_bps:.0f} bps - consider loosening"
+
+# ============================================================================
+# INTEGRATION WITH OBSERVABILITY
+# ============================================================================
+
+integration:
+  # Link to observability system
+  event_logging:
+    log_all_decisions: true
+    log_gate_inputs: true
+    log_counterfactuals: true
+
+  # Metrics to track
+  metrics:
+    - gate_pass_rate
+    - gate_accuracy
+    - shadow_trade_pnl
+    - gate_latency_ms
+
+  # Dashboards
+  dashboards:
+    - name: "Gate Health"
+      metrics: [pass_rate, accuracy, shadow_pnl]
+      refresh_seconds: 60
+
+    - name: "Gate Inspector"
+      show_recent_rejections: 100
+      show_counterfactuals: true
+      show_explanations: true

@@ -82,6 +82,13 @@ class MemoryStore:
             self._conn = psycopg2.connect(self._dsn)
             logger.info("memory_store_connected")
 
+    def _ensure_connection(self) -> psycopg2.extensions.connection:
+        """Return an active database connection or raise if unavailable."""
+        self.connect()
+        if self._conn is None or self._conn.closed:
+            raise RuntimeError("Memory store database connection is not available")
+        return self._conn
+
     def close(self) -> None:
         """Close database connection."""
         if self._conn and not self._conn.closed:
@@ -95,8 +102,8 @@ class MemoryStore:
         Returns:
             trade_id: The inserted trade ID
         """
-        self.connect()
-        with self._conn.cursor() as cur:
+        conn = self._ensure_connection()
+        with conn.cursor() as cur:
             cur.execute(
                 """
                 INSERT INTO trade_memory (
@@ -136,8 +143,11 @@ class MemoryStore:
                     trade.model_confidence,
                 ),
             )
-            trade_id = cur.fetchone()[0]
-            self._conn.commit()
+            returned = cur.fetchone()
+            if returned is None:
+                raise RuntimeError("Failed to retrieve inserted trade_id")
+            trade_id = int(returned[0])
+            conn.commit()
             logger.info("trade_stored", trade_id=trade_id, symbol=trade.symbol)
             return trade_id
 
@@ -172,7 +182,7 @@ class MemoryStore:
             - Patterns from different regimes still returned but with lower scores
             This prevents over-filtering while favoring contextually similar trades
         """
-        self.connect()
+        conn = self._ensure_connection()
 
         where_clauses = ["1 - (entry_embedding <=> %s::vector) >= %s"]
         params: List[Any] = [embedding.tolist(), min_similarity]
@@ -215,7 +225,7 @@ class MemoryStore:
             query_params.append(top_k)
             order_clause = "entry_embedding <=> %s::vector"
 
-        with self._conn.cursor(cursor_factory=RealDictCursor) as cur:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
             if use_regime_boost and market_regime:
                 cur.execute(
                     f"""
@@ -292,8 +302,8 @@ class MemoryStore:
     def sample_replay_experiences(self, limit: int = 256) -> List[Dict[str, Any]]:
         """Randomly sample historical trades for replay seeding."""
 
-        self.connect()
-        with self._conn.cursor(cursor_factory=RealDictCursor) as cur:
+        conn = self._ensure_connection()
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
                 """
                 SELECT
@@ -334,7 +344,7 @@ class MemoryStore:
     def record_model_performance(self, model_version: str, evaluation_date: date, metrics: Dict[str, Any]) -> None:
         """Persist aggregate model metrics for cross-module consumption."""
 
-        self.connect()
+        conn = self._ensure_connection()
         payload = {
             "model_version": model_version,
             "evaluation_date": evaluation_date,
@@ -358,7 +368,7 @@ class MemoryStore:
         placeholders = ",".join(["%s"] * len(payload))
         updates = ",".join([f"{col} = EXCLUDED.{col}" for col in list(payload.keys())[2:]])
 
-        with self._conn.cursor() as cur:
+        with conn.cursor() as cur:
             cur.execute(
                 f"""
                 INSERT INTO model_performance ({columns})
@@ -368,7 +378,7 @@ class MemoryStore:
                 """,
                 list(payload.values()),
             )
-            self._conn.commit()
+            conn.commit()
             logger.info("model_performance_recorded", model_version=model_version)
 
     def get_pattern_stats(self, similar_patterns: List[SimilarPattern]) -> PatternStats:
@@ -389,26 +399,26 @@ class MemoryStore:
         losses = len(similar_patterns) - wins
         win_rate = wins / len(similar_patterns)
 
-        profits = [p.net_profit_gbp for p in similar_patterns]
-        avg_profit = np.mean(profits)
-        avg_hold = int(np.mean([p.hold_duration_minutes for p in similar_patterns]))
+        profits = [float(p.net_profit_gbp) for p in similar_patterns]
+        avg_profit = float(np.mean(profits)) if profits else 0.0
+        avg_hold = int(np.mean([p.hold_duration_minutes for p in similar_patterns])) if similar_patterns else 0
 
         # Sharpe calculation (simplified)
         if len(profits) > 1:
-            sharpe = np.mean(profits) / (np.std(profits) + 1e-6)
+            sharpe = float(np.mean(profits) / (np.std(profits) + 1e-6))
         else:
             sharpe = 0.0
 
         # Reliability: combination of win rate and sample size
         sample_size_factor = min(1.0, len(similar_patterns) / 50.0)
-        reliability = win_rate * sample_size_factor
+        reliability = float(win_rate * sample_size_factor)
 
         return PatternStats(
             total_occurrences=len(similar_patterns),
             wins=wins,
             losses=losses,
             win_rate=win_rate,
-            avg_profit_gbp=avg_profit,
+            avg_profit_gbp=float(avg_profit),
             avg_hold_minutes=avg_hold,
             sharpe_ratio=sharpe,
             reliability_score=reliability,
@@ -428,8 +438,8 @@ class MemoryStore:
         win_quality: str,
     ) -> None:
         """Update a trade with exit information."""
-        self.connect()
-        with self._conn.cursor() as cur:
+        conn = self._ensure_connection()
+        with conn.cursor() as cur:
             cur.execute(
                 """
                 UPDATE trade_memory
@@ -458,13 +468,13 @@ class MemoryStore:
                     trade_id,
                 ),
             )
-            self._conn.commit()
+            conn.commit()
             logger.info("trade_exit_updated", trade_id=trade_id, is_winner=is_winner)
 
     def get_symbol_performance(self, symbol: str, days: int = 30) -> Dict[str, Any]:
         """Get recent performance metrics for a symbol."""
-        self.connect()
-        with self._conn.cursor(cursor_factory=RealDictCursor) as cur:
+        conn = self._ensure_connection()
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
                 """
                 SELECT
@@ -480,10 +490,10 @@ class MemoryStore:
                 """,
                 (symbol, days),
             )
-            row = cur.fetchone()
+            row = cur.fetchone() or {}
 
-            total = row["total_trades"] or 0
-            wins = row["wins"] or 0
+            total = int(row.get("total_trades") or 0)
+            wins = int(row.get("wins") or 0)
 
             return {
                 "symbol": symbol,
@@ -491,9 +501,9 @@ class MemoryStore:
                 "wins": wins,
                 "losses": total - wins,
                 "win_rate": wins / total if total > 0 else 0.0,
-                "avg_profit_gbp": float(row["avg_profit"] or 0.0),
-                "total_profit_gbp": float(row["total_profit"] or 0.0),
-                "avg_hold_minutes": int(row["avg_hold_minutes"] or 0),
+                "avg_profit_gbp": float(row.get("avg_profit") or 0.0),
+                "total_profit_gbp": float(row.get("total_profit") or 0.0),
+                "avg_hold_minutes": int(row.get("avg_hold_minutes") or 0),
             }
 
     @staticmethod

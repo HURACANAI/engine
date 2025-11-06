@@ -1,0 +1,13 @@
+{
+  "model_id": "sha256:a9d9a0e2ccc9bbba980b8724eadc54ddb54a054e56c54f619e0c1c83545c4ede",
+  "created_at": "2025-11-06T09:52:27.131015",
+  "code_git_sha": "a1b2c3d4",
+  "data_snapshot_id": "snap_20251106_v1",
+  "metrics": {
+    "auc": 0.68,
+    "ece": 0.064,
+    "wr": 0.72
+  },
+  "n_samples": 1000,
+  "notes": "Initial meta-label model"
+}

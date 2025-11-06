@@ -1,0 +1,491 @@
+# Observability Metrics Configuration
+# Defines all metrics, targets, and alert rules for Huracan trading engine
+
+# ============================================================================
+# PERFORMANCE METRICS
+# ============================================================================
+
+performance:
+  # Win Rate (WR)
+  win_rate:
+    description: "Percentage of trades that were profitable"
+    formula: "wins / total_trades"
+    unit: "percentage"
+    targets:
+      overall: {min: 0.72, ideal: 0.75, max: 0.80}
+      scalp: {min: 0.70, ideal: 0.74, max: 0.78}
+      runner: {min: 0.87, ideal: 0.90, max: 0.95}
+    alerts:
+      - condition: "current < target_min"
+        severity: "warning"
+        message: "Win rate below target"
+      - condition: "current < target_min - 0.05"
+        severity: "critical"
+        message: "Win rate critically low"
+
+  # Return per Trade (bps)
+  return_per_trade:
+    description: "Average return per trade in basis points"
+    formula: "sum(return_bps) / total_trades"
+    unit: "bps"
+    targets:
+      overall: {min: 15, ideal: 20, max: 30}
+      scalp: {min: 8, ideal: 12, max: 18}
+      runner: {min: 35, ideal: 50, max: 80}
+    alerts:
+      - condition: "current < target_min"
+        severity: "warning"
+        message: "Returns below target"
+
+  # Sharpe Ratio
+  sharpe_ratio:
+    description: "Risk-adjusted return metric"
+    formula: "mean_return / std_return * sqrt(252)"
+    unit: "ratio"
+    targets:
+      overall: {min: 2.0, ideal: 3.0, max: 5.0}
+      scalp: {min: 1.5, ideal: 2.5, max: 4.0}
+      runner: {min: 2.5, ideal: 3.5, max: 6.0}
+    alerts:
+      - condition: "current < target_min"
+        severity: "warning"
+        message: "Sharpe ratio below target"
+
+  # Max Drawdown (bps)
+  max_drawdown:
+    description: "Maximum peak-to-trough decline"
+    formula: "max(peak - trough)"
+    unit: "bps"
+    targets:
+      overall: {max: 100}  # Never exceed -100 bps
+      scalp: {max: 50}
+      runner: {max: 150}
+    alerts:
+      - condition: "current > target_max"
+        severity: "critical"
+        message: "Drawdown exceeds limit"
+
+  # Total P&L (GBP)
+  total_pnl:
+    description: "Cumulative profit/loss in GBP"
+    formula: "sum(pnl_gbp)"
+    unit: "GBP"
+    targets:
+      daily: {min: 50, ideal: 100, max: 200}
+      weekly: {min: 350, ideal: 700, max: 1400}
+      monthly: {min: 1500, ideal: 3000, max: 6000}
+    alerts:
+      - condition: "daily_pnl < 0"
+        severity: "info"
+        message: "Negative daily P&L"
+      - condition: "daily_pnl < -100"
+        severity: "warning"
+        message: "Large daily loss"
+
+# ============================================================================
+# TRADING ACTIVITY METRICS
+# ============================================================================
+
+activity:
+  # Trade Count
+  trade_count:
+    description: "Number of trades executed"
+    formula: "count(trades)"
+    unit: "count"
+    targets:
+      daily: {min: 20, ideal: 40, max: 100}
+      scalp: {min: 15, ideal: 30, max: 80}
+      runner: {min: 5, ideal: 10, max: 20}
+    alerts:
+      - condition: "daily_count < target_min"
+        severity: "info"
+        message: "Low trading activity"
+      - condition: "daily_count > target_max"
+        severity: "warning"
+        message: "Excessive trading activity"
+
+  # Signal Count
+  signal_count:
+    description: "Number of signals received"
+    formula: "count(signals)"
+    unit: "count"
+    targets:
+      daily: {min: 100, ideal: 300, max: 1000}
+    alerts:
+      - condition: "daily_count < target_min"
+        severity: "warning"
+        message: "Low signal volume"
+
+  # Trade Duration (seconds)
+  trade_duration:
+    description: "Average time trades are held"
+    formula: "mean(ts_close - ts_open)"
+    unit: "seconds"
+    targets:
+      scalp: {min: 300, ideal: 900, max: 3600}  # 5-60 min
+      runner: {min: 3600, ideal: 14400, max: 86400}  # 1-24 hours
+
+# ============================================================================
+# GATE METRICS
+# ============================================================================
+
+gates:
+  # Gate Pass Rate
+  gate_pass_rate:
+    description: "Percentage of signals that pass each gate"
+    formula: "passed / total_signals"
+    unit: "percentage"
+    targets:
+      meta_label:
+        scalp: {min: 0.15, ideal: 0.25, max: 0.40}
+        runner: {min: 0.05, ideal: 0.10, max: 0.20}
+      cost_gate:
+        scalp: {min: 0.60, ideal: 0.75, max: 0.90}
+        runner: {min: 0.70, ideal: 0.85, max: 0.95}
+      confidence_gate:
+        scalp: {min: 0.30, ideal: 0.50, max: 0.70}
+        runner: {min: 0.40, ideal: 0.60, max: 0.80}
+    alerts:
+      - condition: "pass_rate < target_min"
+        severity: "warning"
+        message: "Gate too strict - blocking too many signals"
+      - condition: "pass_rate > target_max"
+        severity: "warning"
+        message: "Gate too loose - passing too many signals"
+
+  # Gate Accuracy
+  gate_accuracy:
+    description: "How often gate decisions are correct (shadow trades)"
+    formula: "good_blocks / total_blocks"
+    unit: "percentage"
+    targets:
+      meta_label: {min: 0.60, ideal: 0.70, max: 1.0}
+      cost_gate: {min: 0.55, ideal: 0.65, max: 1.0}
+    alerts:
+      - condition: "accuracy < target_min"
+        severity: "warning"
+        message: "Gate accuracy below target - consider retraining"
+
+  # Shadow Trade P&L
+  shadow_pnl:
+    description: "P&L from trades blocked by gates (counterfactual)"
+    formula: "sum(cf_pnl_bps)"
+    unit: "bps"
+    targets:
+      daily: {max: -50}  # Should be negative (good blocks)
+    alerts:
+      - condition: "shadow_pnl > 100"
+        severity: "critical"
+        message: "Gates blocking profitable trades - losing opportunity"
+
+# ============================================================================
+# MODEL METRICS
+# ============================================================================
+
+models:
+  # Meta-Label Model AUC
+  meta_label_auc:
+    description: "Area under ROC curve for meta-label model"
+    formula: "roc_auc_score(y_true, y_pred)"
+    unit: "ratio"
+    targets:
+      overall: {min: 0.65, ideal: 0.70, max: 0.80}
+    alerts:
+      - condition: "current < target_min"
+        severity: "warning"
+        message: "Meta-label model underperforming"
+      - condition: "current < 0.55"
+        severity: "critical"
+        message: "Meta-label model barely better than random"
+
+  # Expected Calibration Error (ECE)
+  ece:
+    description: "Calibration quality of probability predictions"
+    formula: "expected_calibration_error(y_true, y_pred_proba)"
+    unit: "ratio"
+    targets:
+      overall: {max: 0.10}  # Lower is better
+    alerts:
+      - condition: "current > target_max"
+        severity: "warning"
+        message: "Model poorly calibrated - consider recalibration"
+
+  # Brier Score
+  brier_score:
+    description: "Accuracy of probabilistic predictions"
+    formula: "brier_score_loss(y_true, y_pred_proba)"
+    unit: "ratio"
+    targets:
+      overall: {max: 0.20}  # Lower is better
+    alerts:
+      - condition: "current > target_max"
+        severity: "warning"
+        message: "Model predictions inaccurate"
+
+  # Model Improvement (Delta AUC)
+  model_delta_auc:
+    description: "AUC improvement from previous model version"
+    formula: "auc_new - auc_old"
+    unit: "ratio"
+    targets:
+      per_update: {min: 0.005}  # At least +0.5% improvement
+    alerts:
+      - condition: "delta < 0"
+        severity: "critical"
+        message: "Model regressed - rollback recommended"
+      - condition: "delta < target_min"
+        severity: "info"
+        message: "Model improvement marginal"
+
+# ============================================================================
+# LEARNING METRICS
+# ============================================================================
+
+learning:
+  # Training Data Size
+  training_samples:
+    description: "Number of samples used for model training"
+    formula: "count(training_data)"
+    unit: "count"
+    targets:
+      min_for_training: 1000
+      ideal: 5000
+    alerts:
+      - condition: "current < target_min"
+        severity: "warning"
+        message: "Insufficient training data"
+
+  # Model Update Frequency
+  update_frequency:
+    description: "Days between model updates"
+    formula: "days_since_last_update"
+    unit: "days"
+    targets:
+      max: 7  # Update at least weekly
+    alerts:
+      - condition: "current > target_max"
+        severity: "warning"
+        message: "Model not updated recently"
+
+  # Feature Importance Drift
+  feature_drift:
+    description: "How much feature importance changed"
+    formula: "sum(abs(importance_new - importance_old))"
+    unit: "ratio"
+    targets:
+      per_update: {max: 0.30}  # <30% change
+    alerts:
+      - condition: "current > target_max"
+        severity: "info"
+        message: "Significant feature importance shift"
+
+# ============================================================================
+# SYSTEM HEALTH METRICS
+# ============================================================================
+
+system:
+  # Event Queue Fill
+  queue_fill:
+    description: "Percentage of event queue filled"
+    formula: "queue_size / queue_max"
+    unit: "percentage"
+    targets:
+      warning: 0.80
+      critical: 0.95
+    alerts:
+      - condition: "current > 0.80"
+        severity: "warning"
+        message: "Event queue filling up"
+      - condition: "current > 0.95"
+        severity: "critical"
+        message: "Event queue critical - kill switch triggered"
+
+  # Writer Lag
+  writer_lag:
+    description: "Time lag between event creation and write to disk"
+    formula: "ts_write - ts_event"
+    unit: "milliseconds"
+    targets:
+      warning: 1000  # 1 second
+      critical: 5000  # 5 seconds
+    alerts:
+      - condition: "current > 1000"
+        severity: "warning"
+        message: "Writer lag high"
+      - condition: "current > 5000"
+        severity: "critical"
+        message: "Writer cannot keep up - kill switch triggered"
+
+  # Event Drop Rate
+  event_drop_rate:
+    description: "Percentage of events dropped (queue full)"
+    formula: "dropped / (enqueued + dropped)"
+    unit: "percentage"
+    targets:
+      max: 0.01  # <1% drops acceptable
+    alerts:
+      - condition: "current > 0.01"
+        severity: "warning"
+        message: "Events being dropped"
+
+  # Error Rate
+  error_rate:
+    description: "Percentage of operations that error"
+    formula: "errors / total_operations"
+    unit: "percentage"
+    targets:
+      max: 0.001  # <0.1% errors
+    alerts:
+      - condition: "current > 0.001"
+        severity: "warning"
+        message: "Elevated error rate"
+      - condition: "current > 0.01"
+        severity: "critical"
+        message: "High error rate - investigate immediately"
+
+# ============================================================================
+# COST METRICS
+# ============================================================================
+
+costs:
+  # Total Fees (GBP)
+  total_fees:
+    description: "Cumulative trading fees paid"
+    formula: "sum(fee_entry_gbp + fee_exit_gbp)"
+    unit: "GBP"
+    targets:
+      daily: {max: 20}
+      monthly: {max: 600}
+
+  # Fee Percentage
+  fee_percentage:
+    description: "Fees as percentage of total P&L"
+    formula: "total_fees / abs(total_pnl)"
+    unit: "percentage"
+    targets:
+      max: 0.15  # <15% of P&L
+    alerts:
+      - condition: "current > 0.15"
+        severity: "warning"
+        message: "Fees eating into profits"
+
+  # Slippage
+  slippage:
+    description: "Average slippage per trade"
+    formula: "mean(actual_price - expected_price)"
+    unit: "bps"
+    targets:
+      scalp: {max: 2.0}
+      runner: {max: 3.0}
+    alerts:
+      - condition: "current > target_max"
+        severity: "warning"
+        message: "High slippage - check execution quality"
+
+# ============================================================================
+# MARKET CONDITION METRICS
+# ============================================================================
+
+market:
+  # Volatility
+  volatility_1h:
+    description: "1-hour rolling volatility"
+    formula: "std(returns_1h) * sqrt(252)"
+    unit: "ratio"
+    context_only: true  # Not alerted, just for context
+
+  # Spread
+  spread_bps:
+    description: "Bid-ask spread in basis points"
+    formula: "(ask - bid) / mid * 10000"
+    unit: "bps"
+    context_only: true
+
+  # Volume
+  volume_vs_avg:
+    description: "Current volume vs 24h average"
+    formula: "volume_now / volume_24h_avg"
+    unit: "ratio"
+    context_only: true
+
+# ============================================================================
+# REGIME-SPECIFIC METRICS
+# ============================================================================
+
+regimes:
+  # Performance by Regime
+  regime_performance:
+    description: "Win rate and P&L by detected regime"
+    formula: "group_by(regime).mean(wr, pnl)"
+    unit: "mixed"
+    targets:
+      TREND: {wr_min: 0.85}
+      CHOP: {wr_min: 0.65}
+      VOLATILE: {wr_min: 0.70}
+    alerts:
+      - condition: "regime_wr < target_min"
+        severity: "info"
+        message: "Underperforming in specific regime"
+
+# ============================================================================
+# ALERT RULES
+# ============================================================================
+
+alert_rules:
+  # Global alert settings
+  cooldown_minutes: 5  # Don't spam same alert
+  priority_levels:
+    - critical  # Immediate action required
+    - warning   # Should investigate soon
+    - info      # FYI only
+
+  # Alert channels
+  channels:
+    telegram:
+      enabled: true
+      critical: true
+      warning: true
+      info: false
+    discord:
+      enabled: false
+      critical: true
+      warning: true
+      info: false
+    email:
+      enabled: false
+      critical: true
+      warning: false
+      info: false
+
+# ============================================================================
+# REPORTING SCHEDULE
+# ============================================================================
+
+reporting:
+  # Daily summary
+  daily:
+    schedule: "0 23 * * *"  # 11 PM daily
+    include:
+      - performance
+      - activity
+      - gates
+      - models
+      - system
+    ai_summary: true
+
+  # Weekly deep dive
+  weekly:
+    schedule: "0 23 * * 0"  # 11 PM Sunday
+    include:
+      - all
+    ai_summary: true
+    ai_council: true  # Use full AI council
+
+  # Real-time dashboard
+  realtime:
+    refresh_seconds: 5
+    include:
+      - current_trades
+      - recent_signals
+      - queue_health
+      - live_pnl

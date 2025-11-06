@@ -10,17 +10,19 @@ Usage:
 import sys
 from pathlib import Path
 
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+# Ensure project root and src are on the path for imports
+ROOT_DIR = Path(__file__).resolve().parent.parent
+SRC_DIR = ROOT_DIR / "src"
+sys.path.insert(0, str(ROOT_DIR))
+sys.path.insert(0, str(SRC_DIR))
 
-from datetime import datetime, timezone
-
-from src.cloud.training.pipelines.enhanced_rl_pipeline import EnhancedRLPipeline
-from src.cloud.training.pipelines.progressive_training import (
+from cloud.training.config.settings import EngineSettings
+from cloud.training.pipelines.enhanced_rl_pipeline import EnhancedRLPipeline
+from cloud.training.pipelines.progressive_training import (
     ProgressiveHistoricalTrainer,
     ProgressiveTrainingConfig,
 )
-from src.exchanges.exchange_factory import ExchangeFactory
+from cloud.training.services.exchange import ExchangeClient
 
 
 def main():
@@ -45,16 +47,33 @@ def main():
     print(f"Symbols: {', '.join(symbols)}")
     print()
 
+    # Load settings
+    print("Loading engine settings...")
+    settings = EngineSettings.load()
+
+    if not settings.postgres or not settings.postgres.dsn:
+        raise RuntimeError("PostgreSQL DSN is required for training but was not configured.")
+
+    dsn = settings.postgres.dsn
+
     # Create exchange client
     print("Connecting to exchange...")
-    exchange = ExchangeFactory.create(
-        exchange_name="hyperliquid",
-        config={
-            "testnet": False,
-            "private_key": None,  # Read-only for training
-        },
+    primary_exchange = settings.exchange.primary
+    creds_model = settings.exchange.credentials.get(primary_exchange)
+    credentials = None
+    if creds_model:
+        credentials = {
+            "api_key": creds_model.api_key,
+            "api_secret": creds_model.api_secret,
+            "api_passphrase": creds_model.api_passphrase,
+        }
+
+    exchange = ExchangeClient(
+        exchange_id=primary_exchange,
+        credentials=credentials,
+        sandbox=settings.exchange.sandbox,
     )
-    print(f"Connected to: {exchange.name}")
+    print(f"Connected to: {exchange.exchange_id}")
     print()
 
     # Configure progressive training
@@ -79,7 +98,7 @@ def main():
 
     # Create base pipeline
     print("Initializing base training pipeline...")
-    base_pipeline = EnhancedRLPipeline()
+    base_pipeline = EnhancedRLPipeline(settings=settings, dsn=dsn)
     print("Base pipeline ready")
     print()
 

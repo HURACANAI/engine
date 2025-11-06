@@ -561,3 +561,7 @@ class DualBookManager:
             self._realized_history[mode].clear()
 
         logger.info("dual_book_manager_cleared")
+
+
+# Backwards compatibility alias for legacy imports
+BookType = TradingMode

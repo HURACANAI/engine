@@ -5,6 +5,7 @@ Standalone health monitoring script.
 Runs continuous health monitoring with comprehensive logging.
 """
 
+import logging
 import sys
 from pathlib import Path
 
@@ -26,7 +27,7 @@ def configure_logging():
             structlog.processors.format_exc_info,
             structlog.processors.JSONRenderer(),
         ],
-        wrapper_class=structlog.make_filtering_bound_logger(structlog.INFO),
+        wrapper_class=structlog.make_filtering_bound_logger(logging.INFO),
     )
 
 
