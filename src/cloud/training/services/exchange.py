@@ -109,8 +109,9 @@ class ExchangeClient:
 	def fetch_tickers(self, symbols: Optional[Iterable[str]] = None) -> Dict[str, Dict[str, Any]]:
 		"""Fetch ticker data with retry logic.
 		
-		For Binance, symbols must be of the same type (spot or swap).
-		This method automatically separates symbols by type and fetches them separately.
+		For Binance, symbols must be of the same type (spot or swap) and requests
+		must be batched to avoid URL length limits (413 errors).
+		This method automatically separates symbols by type and batches them.
 		"""
 		try:
 			if not symbols:
@@ -118,7 +119,7 @@ class ExchangeClient:
 			
 			symbols_list = list(symbols)
 			
-			# For Binance, we need to separate spot and swap symbols
+			# For Binance, we need to separate spot and swap symbols and batch requests
 			if self.exchange_id == "binance":
 				# Get market types for each symbol
 				markets = self._client.markets
@@ -140,14 +141,24 @@ class ExchangeClient:
 						# If market not found, default to spot
 						spot_symbols.append(symbol)
 				
-				# Fetch tickers separately for each type
+				# Batch size to avoid 413 errors (Binance has URL length limits)
+				# Using 50 symbols per batch to be safe
+				batch_size = 50
 				result = {}
+				
+				# Fetch spot tickers in batches
 				if spot_symbols:
-					spot_tickers = self._client.fetch_tickers(spot_symbols)
-					result.update(spot_tickers)
+					for i in range(0, len(spot_symbols), batch_size):
+						batch = spot_symbols[i:i + batch_size]
+						batch_tickers = self._client.fetch_tickers(batch)
+						result.update(batch_tickers)
+				
+				# Fetch swap tickers in batches
 				if swap_symbols:
-					swap_tickers = self._client.fetch_tickers(swap_symbols)
-					result.update(swap_tickers)
+					for i in range(0, len(swap_symbols), batch_size):
+						batch = swap_symbols[i:i + batch_size]
+						batch_tickers = self._client.fetch_tickers(batch)
+						result.update(batch_tickers)
 				
 				return result
 			else:
