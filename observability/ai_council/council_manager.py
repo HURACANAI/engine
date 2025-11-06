@@ -1,16 +1,16 @@
 """
 AI Council Manager
 
-Coordinates 7 analyst models + 1 judge to produce verified daily summaries.
+Coordinates 8 analyst models + 1 judge to produce verified daily summaries.
 
 Architecture:
-- 7 Analysts: Each analyzes metrics independently (diverse reasoning)
+- 8 Analysts: Each analyzes metrics independently (diverse reasoning)
 - 1 Judge: Synthesizes verified claims into final summary
 - Number Verifier: Prevents hallucination by checking every number
 
 This ensures:
 - No hallucinated numbers (4-layer verification)
-- Diverse perspectives (7 different models)
+- Diverse perspectives (8 different models)
 - Synthesis quality (judge model combines insights)
 
 Usage:
@@ -22,7 +22,8 @@ Usage:
         'google': 'AIza...',
         'xai': '...',
         'groq': '...',
-        'deepseek': '...'
+        'deepseek': '...',
+        'perplexity': '...'
     })
 
     # Get daily summary
@@ -77,7 +78,7 @@ class CouncilManager:
     Manage AI Council for daily summaries.
 
     Coordinates:
-    - 7 analyst models (diverse reasoning)
+    - 8 analyst models (diverse reasoning)
     - 1 judge model (synthesis)
     - Number verification (anti-hallucination)
     """
@@ -92,7 +93,7 @@ class CouncilManager:
         Initialize AI Council.
 
         Args:
-            api_keys: Dict with keys: openai, anthropic, google, xai, groq, deepseek
+            api_keys: Dict with keys: openai, anthropic, google, xai, groq, deepseek, perplexity
             cache_dir: Directory for caching summaries
             enable_cache: Whether to cache summaries (avoid re-running)
         """
@@ -124,6 +125,7 @@ class CouncilManager:
         from observability.ai_council.analysts.llama_analyst import LlamaAnalyst
         from observability.ai_council.analysts.deepseek_analyst import DeepSeekAnalyst
         from observability.ai_council.analysts.claude_opus_analyst import ClaudeOpusAnalyst
+        from observability.ai_council.analysts.perplexity_analyst import PerplexityAnalyst
 
         analysts = []
 
@@ -154,6 +156,10 @@ class CouncilManager:
         # Claude Opus (as analyst, not judge)
         if 'anthropic' in self.api_keys:
             analysts.append(ClaudeOpusAnalyst(api_key=self.api_keys['anthropic']))
+
+        # Perplexity AI
+        if 'perplexity' in self.api_keys:
+            analysts.append(PerplexityAnalyst(api_key=self.api_keys['perplexity']))
 
         return analysts
 
@@ -377,14 +383,15 @@ if __name__ == '__main__':
         'google': os.getenv('GOOGLE_API_KEY', 'demo-key'),
         'xai': os.getenv('XAI_API_KEY', 'demo-key'),
         'groq': os.getenv('GROQ_API_KEY', 'demo-key'),
-        'deepseek': os.getenv('DEEPSEEK_API_KEY', 'demo-key')
+        'deepseek': os.getenv('DEEPSEEK_API_KEY', 'demo-key'),
+        'perplexity': os.getenv('PERPLEXITY_API_KEY', 'demo-key')
     }
 
     print("\nNote: This is a demo. Real API keys required for actual use.")
-    print("Set environment variables: OPENAI_API_KEY, ANTHROPIC_API_KEY, etc.")
+    print("Set environment variables: OPENAI_API_KEY, ANTHROPIC_API_KEY, PERPLEXITY_API_KEY, etc.")
     print("\nAI Council would:")
     print("  1. Pre-compute metrics (anti-hallucination)")
-    print("  2. Run 7 analysts in parallel")
+    print("  2. Run 8 analysts in parallel")
     print("  3. Verify all numbers cited")
     print("  4. Judge synthesizes verified claims")
     print("  5. Cache result for fast access")
