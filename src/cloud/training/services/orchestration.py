@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import pickle
 from dataclasses import asdict, dataclass
+import time as time_module
 from datetime import date, datetime, time, timezone, timedelta
 from io import BytesIO
 from statistics import median
@@ -209,8 +210,6 @@ class TrainingOrchestrator:
         self._run_date = datetime.now(tz=timezone.utc).date()
 
     def run(self) -> List[TrainingTaskResult]:
-        import time
-        from typing import List as TypingList
         
         universe = self._universe_selector.select()
         rows = list(universe.iter_rows(named=True))
@@ -274,7 +273,7 @@ class TrainingOrchestrator:
                             action="skipping_coin_will_retry_later",
                         )
                         # Wait a bit before continuing
-                        time.sleep(5)
+                        time_module.sleep(5)
                     
                     # Check if it's a data quality issue
                     if "Coverage" in error_msg and "below threshold" in error_msg:
@@ -334,7 +333,7 @@ class TrainingOrchestrator:
             # Delay between batches to avoid rate limiting
             if batch_end < len(rows):
                 logger.info("batch_complete_waiting", delay_seconds=batch_delay)
-                time.sleep(batch_delay)
+                time_module.sleep(batch_delay)
         
         self._notifier.send_summary(results, run_date=self._run_date)
         return results
