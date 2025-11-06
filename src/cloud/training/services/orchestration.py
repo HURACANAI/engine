@@ -218,9 +218,12 @@ class TrainingOrchestrator:
         
         # Process coins in batches to avoid rate limiting
         # Binance limit: 2400 requests/minute = 40 requests/second
-        # Process 5 coins at a time with 2 second delay between batches
-        batch_size = 5
-        batch_delay = 2.0  # seconds
+        # Each coin needs ~216 requests for 150 days of 1m data (1000 candles per request)
+        # To stay under 2400/min, we need to process fewer coins in parallel
+        # Process 2 coins at a time with 5 second delay between batches
+        # This gives ~432 requests per batch, well under the 2400/min limit
+        batch_size = 2  # Reduced from 5 to avoid rate limits
+        batch_delay = 5.0  # Increased delay between batches
         
         for batch_start in range(0, len(rows), batch_size):
             batch_end = min(batch_start + batch_size, len(rows))
@@ -245,8 +248,21 @@ class TrainingOrchestrator:
             ]
             
             # Handle tasks individually to allow graceful failure handling
+            # Add small delay between tasks within batch to avoid simultaneous API calls
             for i, task in enumerate(batch_tasks):
                 symbol = batch_rows[i]["symbol"] if i < len(batch_rows) else "unknown"
+                
+                # Add delay between tasks in same batch to stagger API calls
+                if i > 0:
+                    delay_seconds = 2.0  # 2 second delay between tasks in same batch
+                    logger.info(
+                        "delaying_task_start",
+                        symbol=symbol,
+                        delay_seconds=delay_seconds,
+                        reason="Staggering API calls to avoid rate limits",
+                    )
+                    time_module.sleep(delay_seconds)
+                
                 logger.info(
                     "starting_training_task",
                     symbol=symbol,
