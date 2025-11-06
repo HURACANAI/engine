@@ -24,6 +24,7 @@ Entry Point:
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -53,7 +54,7 @@ def configure_logging() -> None:
             structlog.processors.format_exc_info,
             structlog.processors.JSONRenderer(),
         ],
-        wrapper_class=structlog.make_filtering_bound_logger(structlog.INFO),
+        wrapper_class=structlog.make_filtering_bound_logger(logging.INFO),
     )
 
 
