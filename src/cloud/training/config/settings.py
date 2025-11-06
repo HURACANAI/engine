@@ -195,8 +195,8 @@ class NotificationSettings(BaseModel):
 
 
 class DropboxSettings(BaseModel):
-    enabled: bool = False
-    access_token: Optional[str] = None
+    enabled: bool = True  # Enabled by default
+    access_token: Optional[str] = "sl.u.AGHQ-QqhV0EtQCouDihfL34xdAWDNKKYGpDL08AyO2iKef94KW8zMv0DRWrIM508LPdOSkLQhwksqHH-9alha89fx46EVnWK77ViBZbmjM6g"
     app_folder: str = "Runpodhuracan"
     sync_logs: bool = True
     sync_models: bool = True
