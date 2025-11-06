@@ -21,6 +21,13 @@ echo "📁 Project root: $PROJECT_ROOT"
 echo "🐍 Python path: $PYTHONPATH"
 echo ""
 
+# Install missing dependencies if needed
+echo "📦 Checking dependencies..."
+python3 -c "import boto3, matplotlib" 2>/dev/null || {
+    echo "⚠️  Installing missing dependencies (boto3, matplotlib)..."
+    pip install -q boto3 matplotlib || echo "⚠️  Some dependencies may be missing, continuing anyway..."
+}
+
 # Check if PostgreSQL is running
 echo "🔍 Checking PostgreSQL..."
 if ! pg_isready -h localhost -p 5432 >/dev/null 2>&1; then
