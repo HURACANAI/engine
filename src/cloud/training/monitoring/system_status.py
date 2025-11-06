@@ -129,8 +129,9 @@ class SystemStatusReporter:
                     else:
                         logger.warning("table_missing", table=table, status="MISSING")
                         details[f"table_{table}"] = "MISSING"
-                        issues.append(f"Table {table} does not exist")
-                        healthy = False
+                        # Don't mark as unhealthy for missing tables - this is expected for fresh installs
+                        # Only add to issues for informational purposes
+                        issues.append(f"Table {table} does not exist (expected for fresh install)")
 
             # Check data counts (only for tables that exist)
             trade_count = 0
@@ -167,6 +168,10 @@ class SystemStatusReporter:
             if trade_count == 0:
                 logger.warning("no_trades_in_memory", message="Database empty - no historical data")
                 issues.append("No trades in memory - system not trained yet")
+            
+            # Database is healthy if it can connect - missing tables are expected for fresh installs
+            # Only mark as unhealthy if connection fails
+            healthy = True
 
             return ServiceStatus(
                 name="Database",
@@ -302,13 +307,45 @@ class SystemStatusReporter:
         try:
             self.connect()
             with self._conn.cursor() as cur:
+                # Check if table exists first
+                cur.execute(
+                    """
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables
+                        WHERE table_name = 'pattern_library'
+                    )
+                    """
+                )
+                table_exists = cur.fetchone()[0]
+                
+                if not table_exists:
+                    # Table doesn't exist yet - this is OK for fresh installs
+                    logger.info("pattern_monitoring_check", active_patterns=0, table_exists=False, status="OK")
+                    return True  # Service is healthy, just no data yet
+                
+                # Table exists, check active patterns
                 cur.execute("SELECT COUNT(*) FROM pattern_library WHERE reliability_score > 0")
                 active_patterns = cur.fetchone()[0]
 
-            logger.info("pattern_monitoring_check", active_patterns=active_patterns)
-            return active_patterns >= 0  # Always true if query succeeds
+            logger.info("pattern_monitoring_check", active_patterns=active_patterns, table_exists=True)
+            return True  # Service is functional if query succeeds
 
-        except Exception:
+        except psycopg2.errors.UndefinedTable:
+            # Table doesn't exist - this is OK for fresh installs
+            logger.debug("pattern_monitoring_check", table_exists=False, status="OK")
+            if self._conn:
+                try:
+                    self._conn.rollback()
+                except Exception:
+                    pass
+            return True  # Service is healthy, just no data yet
+        except Exception as e:
+            logger.warning("pattern_monitoring_check_failed", error=str(e))
+            if self._conn:
+                try:
+                    self._conn.rollback()
+                except Exception:
+                    pass
             return False
 
     def _check_telegram_config(self) -> bool:
@@ -383,10 +420,25 @@ class SystemStatusReporter:
                         logger.info("feature_active", feature="HISTORICAL_TRAINING_DATA")
             except psycopg2.errors.UndefinedTable:
                 logger.debug("table_trade_memory_not_exists", message="Table doesn't exist yet")
-                self._conn.rollback()
+                if self._conn:
+                    try:
+                        self._conn.rollback()
+                    except Exception:
+                        pass
+            except psycopg2.errors.InFailedSqlTransaction:
+                logger.debug("transaction_aborted_resetting", message="Resetting transaction")
+                if self._conn:
+                    try:
+                        self._conn.rollback()
+                    except Exception:
+                        pass
             except Exception as e:
                 logger.warning("trade_memory_check_failed", error=str(e))
-                self._conn.rollback()
+                if self._conn:
+                    try:
+                        self._conn.rollback()
+                    except Exception:
+                        pass
 
             # Check if patterns exist (only if table exists)
             try:
@@ -397,10 +449,25 @@ class SystemStatusReporter:
                         logger.info("feature_active", feature="PATTERN_LIBRARY")
             except psycopg2.errors.UndefinedTable:
                 logger.debug("table_pattern_library_not_exists", message="Table doesn't exist yet")
-                self._conn.rollback()
+                if self._conn:
+                    try:
+                        self._conn.rollback()
+                    except Exception:
+                        pass
+            except psycopg2.errors.InFailedSqlTransaction:
+                logger.debug("transaction_aborted_resetting", message="Resetting transaction")
+                if self._conn:
+                    try:
+                        self._conn.rollback()
+                    except Exception:
+                        pass
             except Exception as e:
                 logger.warning("pattern_library_check_failed", error=str(e))
-                self._conn.rollback()
+                if self._conn:
+                    try:
+                        self._conn.rollback()
+                    except Exception:
+                        pass
 
             # Check if win/loss analysis tables have data (only if table exists)
             try:
@@ -411,10 +478,25 @@ class SystemStatusReporter:
                         logger.info("feature_active", feature="WIN_LOSS_ANALYSIS")
             except psycopg2.errors.UndefinedTable:
                 logger.debug("table_win_analysis_not_exists", message="Table doesn't exist yet")
-                self._conn.rollback()
+                if self._conn:
+                    try:
+                        self._conn.rollback()
+                    except Exception:
+                        pass
+            except psycopg2.errors.InFailedSqlTransaction:
+                logger.debug("transaction_aborted_resetting", message="Resetting transaction")
+                if self._conn:
+                    try:
+                        self._conn.rollback()
+                    except Exception:
+                        pass
             except Exception as e:
                 logger.warning("win_analysis_check_failed", error=str(e))
-                self._conn.rollback()
+                if self._conn:
+                    try:
+                        self._conn.rollback()
+                    except Exception:
+                        pass
 
             # Check if post-exit tracking has data (only if table exists)
             try:
@@ -425,10 +507,25 @@ class SystemStatusReporter:
                         logger.info("feature_active", feature="POST_EXIT_TRACKING")
             except psycopg2.errors.UndefinedTable:
                 logger.debug("table_post_exit_tracking_not_exists", message="Table doesn't exist yet")
-                self._conn.rollback()
+                if self._conn:
+                    try:
+                        self._conn.rollback()
+                    except Exception:
+                        pass
+            except psycopg2.errors.InFailedSqlTransaction:
+                logger.debug("transaction_aborted_resetting", message="Resetting transaction")
+                if self._conn:
+                    try:
+                        self._conn.rollback()
+                    except Exception:
+                        pass
             except Exception as e:
                 logger.warning("post_exit_tracking_check_failed", error=str(e))
-                self._conn.rollback()
+                if self._conn:
+                    try:
+                        self._conn.rollback()
+                    except Exception:
+                        pass
 
             logger.info(
                 "active_features_detected",
@@ -484,12 +581,29 @@ class SystemStatusReporter:
                 logger.debug("table_trade_memory_not_exists", message="Table doesn't exist yet")
                 activity["trades_24h"] = 0
                 activity["last_trade_time"] = None
-                self._conn.rollback()
+                if self._conn:
+                    try:
+                        self._conn.rollback()
+                    except Exception:
+                        pass
+            except psycopg2.errors.InFailedSqlTransaction:
+                logger.debug("transaction_aborted_resetting", message="Resetting transaction")
+                activity["trades_24h"] = 0
+                activity["last_trade_time"] = None
+                if self._conn:
+                    try:
+                        self._conn.rollback()
+                    except Exception:
+                        pass
             except Exception as e:
                 logger.warning("recent_trades_check_failed", error=str(e))
                 activity["trades_24h"] = 0
                 activity["last_trade_time"] = None
-                self._conn.rollback()
+                if self._conn:
+                    try:
+                        self._conn.rollback()
+                    except Exception:
+                        pass
 
             # Recent pattern updates (only if table exists)
             try:
@@ -506,11 +620,27 @@ class SystemStatusReporter:
             except psycopg2.errors.UndefinedTable:
                 logger.debug("table_pattern_library_not_exists", message="Table doesn't exist yet")
                 activity["patterns_updated_24h"] = 0
-                self._conn.rollback()
+                if self._conn:
+                    try:
+                        self._conn.rollback()
+                    except Exception:
+                        pass
+            except psycopg2.errors.InFailedSqlTransaction:
+                logger.debug("transaction_aborted_resetting", message="Resetting transaction")
+                activity["patterns_updated_24h"] = 0
+                if self._conn:
+                    try:
+                        self._conn.rollback()
+                    except Exception:
+                        pass
             except Exception as e:
                 logger.warning("pattern_updates_check_failed", error=str(e))
                 activity["patterns_updated_24h"] = 0
-                self._conn.rollback()
+                if self._conn:
+                    try:
+                        self._conn.rollback()
+                    except Exception:
+                        pass
 
         except Exception as exc:
             logger.exception("activity_check_failed", error=str(exc))
