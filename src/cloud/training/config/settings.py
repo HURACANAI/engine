@@ -254,7 +254,7 @@ class EngineSettings(BaseSettings):
 
     @classmethod
     def load(cls, environment: Optional[str] = None, config_dir: Optional[Path] = None) -> "EngineSettings":
-        base_dir = config_dir or Path(__file__).resolve().parent.parent.parent.parent / "config"
+        base_dir = config_dir or Path(__file__).resolve().parent.parent.parent.parent.parent / "config"
         env_name = environment or os.getenv("HURACAN_ENV", "local")
         merged: Dict[str, Any] = cls._load_yaml(base_dir / "base.yaml")
         env_file = base_dir / f"{env_name}.yaml"
