@@ -1,0 +1,14 @@
+{
+  "model_id": "sha256:cff7c09ee205713946f418a5a9bb6fe3964c72555096423ef8225bb931e3f803",
+  "created_at": "2025-11-06T11:38:22.456142",
+  "code_git_sha": "abc123",
+  "data_snapshot_id": "snapshot_v1",
+  "metrics": {
+    "auc": 0.7,
+    "ece": 0.08,
+    "brier": 0.19,
+    "wr": 0.72
+  },
+  "n_samples": 0,
+  "notes": "Initial model"
+}

@@ -1,0 +1,14 @@
+{
+  "model_id": "sha256:037e80f2f381ee892b866f9c8f39f4878e593d5197b711554005231cb79f402d",
+  "created_at": "2025-11-06T11:38:22.457563",
+  "code_git_sha": "def456",
+  "data_snapshot_id": "snapshot_v2",
+  "metrics": {
+    "auc": 0.74,
+    "ece": 0.055,
+    "brier": 0.17,
+    "wr": 0.75
+  },
+  "n_samples": 0,
+  "notes": "Improved model with more training data"
+}

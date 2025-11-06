@@ -60,6 +60,8 @@ def main():
     print("Connecting to exchange...")
     primary_exchange = settings.exchange.primary
     creds_model = settings.exchange.credentials.get(primary_exchange)
+    # Training workflows never require authenticated trading credentials.
+    # Force read-only mode to eliminate any possibility of live order placement.
     credentials = None
     if creds_model:
         credentials = {
@@ -67,11 +69,18 @@ def main():
             "api_secret": creds_model.api_secret,
             "api_passphrase": creds_model.api_passphrase,
         }
+        if any(credentials.values()):
+            print("⚠️  Warning: Credentials detected but will be ignored during training (read-only mode).")
+        credentials = None
+
+    sandbox_mode = True
+    if not settings.exchange.sandbox:
+        print("ℹ️  Forcing sandbox mode for training to avoid live trading.")
 
     exchange = ExchangeClient(
         exchange_id=primary_exchange,
         credentials=credentials,
-        sandbox=settings.exchange.sandbox,
+        sandbox=sandbox_mode,
     )
     print(f"Connected to: {exchange.exchange_id}")
     print()
