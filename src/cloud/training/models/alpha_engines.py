@@ -701,11 +701,9 @@ class AlphaEngineCoordinator:
             performance: Performance metric (0-1)
             regime: Market regime
             won: Whether the trade won (for bandit)
-
-        Args:
-            technique: Which engine
-            performance: Win rate (0-1)
         """
+        if technique not in self.engine_performance:
+            self.engine_performance[technique] = []
         self.engine_performance[technique].append(performance)
 
         # Keep recent history

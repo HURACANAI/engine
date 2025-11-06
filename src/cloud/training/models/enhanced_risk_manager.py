@@ -11,7 +11,7 @@ Based on modern portfolio theory and Kelly betting.
 """
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import structlog
@@ -34,13 +34,16 @@ class PositionSizingResult:
 
 class EnhancedRiskManager:
     """
-    Advanced risk management with dynamic position sizing.
+    Advanced risk management with dynamic position sizing and volatility targeting.
 
     Key features:
     1. Confidence-based sizing (more confident = larger position)
     2. Volatility-adjusted sizing (more volatile = smaller position)
     3. Drawdown-aware sizing (in drawdown = smaller positions)
     4. Kelly Criterion optimization
+    5. Volatility targeting (maintain target portfolio volatility)
+    6. Drawdown control (reduce size when drawdown exceeds limits)
+    7. Portfolio limits (max positions, max exposure per asset)
     """
 
     def __init__(
@@ -51,6 +54,9 @@ class EnhancedRiskManager:
         kelly_fraction: float = 0.25,  # Use 25% of full Kelly (Kelly / 4)
         volatility_target_bps: float = 200.0,  # Target 200 bps daily volatility
         max_portfolio_volatility: float = 0.03,  # Max 3% daily portfolio vol
+        max_drawdown_pct: float = 15.0,  # Max 15% drawdown before shutdown
+        max_positions: int = 5,  # Maximum number of positions
+        max_exposure_per_asset_pct: float = 40.0,  # Max 40% exposure per asset
     ):
         """
         Initialize enhanced risk manager.
@@ -69,12 +75,22 @@ class EnhancedRiskManager:
         self.kelly_fraction = kelly_fraction
         self.volatility_target_bps = volatility_target_bps
         self.max_portfolio_vol = max_portfolio_volatility
+        self.max_drawdown_pct = max_drawdown_pct
+        self.max_positions = max_positions
+        self.max_exposure_per_asset_pct = max_exposure_per_asset_pct
+        
+        # Portfolio tracking
+        self.portfolio_value_history: List[float] = []
+        self.peak_portfolio_value: float = 0.0
+        self.current_positions: Dict[str, float] = {}  # symbol -> size_gbp
 
         logger.info(
             "enhanced_risk_manager_initialized",
             base_size_gbp=base_position_size_gbp,
             max_multiplier=max_position_multiplier,
             kelly_fraction=kelly_fraction,
+            max_drawdown_pct=max_drawdown_pct,
+            max_positions=max_positions,
         )
 
     def calculate_position_size(
@@ -357,3 +373,108 @@ class EnhancedRiskManager:
         portfolio_vol = np.sqrt(portfolio_var)
 
         return float(portfolio_vol)
+    
+    def check_drawdown_limit(
+        self,
+        current_portfolio_value: float,
+    ) -> Tuple[bool, float]:
+        """
+        Check if drawdown exceeds limit.
+        
+        Args:
+            current_portfolio_value: Current portfolio value
+        
+        Returns:
+            (exceeds_limit, current_drawdown_pct)
+        """
+        # Update portfolio history
+        self.portfolio_value_history.append(current_portfolio_value)
+        
+        # Keep only last 1000 values
+        if len(self.portfolio_value_history) > 1000:
+            self.portfolio_value_history = self.portfolio_value_history[-1000:]
+        
+        # Update peak
+        if current_portfolio_value > self.peak_portfolio_value:
+            self.peak_portfolio_value = current_portfolio_value
+        
+        # Calculate drawdown
+        if self.peak_portfolio_value > 0:
+            current_drawdown_pct = ((self.peak_portfolio_value - current_portfolio_value) / self.peak_portfolio_value) * 100.0
+        else:
+            current_drawdown_pct = 0.0
+        
+        # Check if exceeds limit
+        exceeds_limit = current_drawdown_pct > self.max_drawdown_pct
+        
+        if exceeds_limit:
+            logger.warning(
+                "drawdown_limit_exceeded",
+                current_drawdown_pct=current_drawdown_pct,
+                max_drawdown_pct=self.max_drawdown_pct,
+            )
+        
+        return (exceeds_limit, current_drawdown_pct)
+    
+    def check_portfolio_limits(
+        self,
+        symbol: str,
+        proposed_size_gbp: float,
+        total_portfolio_value: float,
+    ) -> Tuple[bool, float]:
+        """
+        Check if proposed position exceeds portfolio limits.
+        
+        Args:
+            symbol: Trading symbol
+            proposed_size_gbp: Proposed position size
+            total_portfolio_value: Total portfolio value
+        
+        Returns:
+            (exceeds_limit, adjusted_size_gbp)
+        """
+        # Check max positions
+        if len(self.current_positions) >= self.max_positions and symbol not in self.current_positions:
+            logger.warning("max_positions_reached", current_positions=len(self.current_positions), max_positions=self.max_positions)
+            return (True, 0.0)
+        
+        # Check max exposure per asset
+        max_exposure_gbp = total_portfolio_value * (self.max_exposure_per_asset_pct / 100.0)
+        
+        if proposed_size_gbp > max_exposure_gbp:
+            logger.warning(
+                "max_exposure_exceeded",
+                symbol=symbol,
+                proposed_size_gbp=proposed_size_gbp,
+                max_exposure_gbp=max_exposure_gbp,
+            )
+            return (True, max_exposure_gbp)
+        
+        return (False, proposed_size_gbp)
+    
+    def update_position(
+        self,
+        symbol: str,
+        size_gbp: float,
+    ) -> None:
+        """Update current position for a symbol."""
+        if size_gbp == 0:
+            # Close position
+            if symbol in self.current_positions:
+                del self.current_positions[symbol]
+        else:
+            # Update position
+            self.current_positions[symbol] = size_gbp
+    
+    def get_portfolio_status(self) -> Dict[str, float]:
+        """Get current portfolio status."""
+        total_exposure = sum(self.current_positions.values())
+        n_positions = len(self.current_positions)
+        
+        return {
+            "total_exposure_gbp": total_exposure,
+            "n_positions": n_positions,
+            "max_positions": self.max_positions,
+            "peak_portfolio_value": self.peak_portfolio_value,
+            "current_positions": self.current_positions.copy(),
+        }

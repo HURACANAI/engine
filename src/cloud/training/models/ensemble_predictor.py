@@ -136,7 +136,7 @@ class EnsemblePredictor:
         # Run Alpha Engines (Revuelto) if features available
         if features:
             alpha_signal = self.alpha_engines.generate_all_signals(features, current_regime)
-            best_alpha = self.alpha_engines.select_best_technique(alpha_signal)
+            best_alpha = self.alpha_engines.select_best_technique(alpha_signal, current_regime=current_regime)
 
             # Convert AlphaSignal to PredictionSource
             alpha_prediction = PredictionSource(

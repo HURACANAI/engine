@@ -35,6 +35,13 @@ import structlog
 
 logger = structlog.get_logger(__name__)
 
+# Optional: Import reliable pattern detector for enhanced pattern detection
+try:
+    from .reliable_pattern_detector import ReliablePatternDetector
+    HAS_RELIABLE_PATTERNS = True
+except ImportError:
+    HAS_RELIABLE_PATTERNS = False
+
 
 @dataclass
 class CorrelationMetrics:
@@ -130,6 +137,7 @@ class CorrelationAnalyzer:
         very_high_correlation_threshold: float = 0.90,
         min_periods: int = 30,
         systemic_event_threshold: float = 0.80,
+        use_reliable_patterns: bool = True,  # Use reliable pattern detector
     ):
         """
         Initialize correlation analyzer.
@@ -141,6 +149,7 @@ class CorrelationAnalyzer:
             very_high_correlation_threshold: Threshold for VERY_HIGH correlation
             min_periods: Minimum periods needed for valid correlation
             systemic_event_threshold: Threshold for detecting market-wide events
+            use_reliable_patterns: Whether to use reliable pattern detector (>90% reliability)
         """
         self.lookback_periods = lookback_periods
         self.rolling_window = rolling_window
@@ -148,6 +157,7 @@ class CorrelationAnalyzer:
         self.very_high_corr_threshold = very_high_correlation_threshold
         self.min_periods = min_periods
         self.systemic_threshold = systemic_event_threshold
+        self.use_reliable_patterns = use_reliable_patterns and HAS_RELIABLE_PATTERNS
 
         # Store returns history per symbol
         self.returns_history: Dict[str, List[float]] = {}
@@ -155,11 +165,21 @@ class CorrelationAnalyzer:
 
         # Cached correlations (updated on each new return)
         self.correlation_matrix: Dict[Tuple[str, str], CorrelationMetrics] = {}
+        
+        # Reliable pattern detector (optional)
+        self.pattern_detector: Optional[ReliablePatternDetector] = None
+        if self.use_reliable_patterns:
+            self.pattern_detector = ReliablePatternDetector(
+                min_reliability=0.90,
+                min_observations=100,
+            )
+            logger.info("reliable_pattern_detector_enabled")
 
         logger.info(
             "correlation_analyzer_initialized",
             lookback_periods=lookback_periods,
             high_corr_threshold=high_correlation_threshold,
+            use_reliable_patterns=self.use_reliable_patterns,
         )
 
     def update_returns(
@@ -532,6 +552,53 @@ class CorrelationAnalyzer:
 
         # Calculate lead-lag relationship using cross-correlation
         lead_lag_minutes = self._calculate_lead_lag(symbol1, symbol2)
+        
+        # If using reliable patterns, validate lead-lag relationship
+        if self.use_reliable_patterns and self.pattern_detector and lead_lag_minutes is not None:
+            # Check if this lead-lag pattern is reliable (>90%)
+            pattern_id = self.pattern_detector._generate_pattern_id(symbol1, symbol2, "lead_lag")
+            active_patterns = self.pattern_detector.get_active_patterns(
+                coin1=symbol1,
+                coin2=symbol2,
+                pattern_type="lead_lag",
+            )
+            
+            # If pattern exists and is active, use it; otherwise, validate it
+            if active_patterns:
+                # Pattern is already validated and reliable
+                pattern = active_patterns[0]
+                if pattern.is_active:
+                    # Use validated lead-lag
+                    lead_lag_minutes = pattern.pattern_details.get('lead_lag_minutes', lead_lag_minutes)
+                    logger.debug("using_reliable_lead_lag", pattern_id=pattern_id, lead_lag_minutes=lead_lag_minutes)
+            else:
+                # Validate pattern on full history
+                if len(returns1) >= self.pattern_detector.min_observations and len(returns2) >= self.pattern_detector.min_observations:
+                    timestamps = np.array(self.timestamps_history.get(symbol1, []))
+                    if len(timestamps) == 0:
+                        timestamps = np.arange(len(returns1))
+                    
+                    historical_data = {
+                        f"{symbol1}_returns": np.array(returns1),
+                        f"{symbol2}_returns": np.array(returns2),
+                        "timestamps": timestamps,
+                    }
+                    
+                    pattern = self.pattern_detector.validate_pattern_on_full_history(
+                        coin1=symbol1,
+                        coin2=symbol2,
+                        pattern_type="lead_lag",
+                        historical_data=historical_data,
+                    )
+                    
+                    if pattern and pattern.is_active:
+                        # Pattern is reliable, use it
+                        lead_lag_minutes = pattern.pattern_details.get('lead_lag_minutes', lead_lag_minutes)
+                        logger.info("validated_reliable_lead_lag", pattern_id=pattern_id, lead_lag_minutes=lead_lag_minutes)
+                    else:
+                        # Pattern not reliable, don't use lead-lag
+                        lead_lag_minutes = None
+                        logger.debug("lead_lag_not_reliable", pattern_id=pattern_id)
 
         return CorrelationMetrics(
             asset1=symbol1,

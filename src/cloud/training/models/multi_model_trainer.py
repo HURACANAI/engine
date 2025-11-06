@@ -715,6 +715,59 @@ class MultiModelTrainer:
             pickle.dump(metadata, f)
         
         logger.info("models_saved", path=path)
+    
+    def load_models(self, path: str) -> bool:
+        """
+        Load saved models from disk.
+        
+        Args:
+            path: Directory containing saved models
+        
+        Returns:
+            True if models loaded successfully, False otherwise
+        """
+        import os
+        from pathlib import Path
+        
+        model_path = Path(path)
+        if not model_path.exists():
+            logger.warning("model_path_not_found", path=path)
+            return False
+        
+        try:
+            # Load models
+            for model_file in model_path.glob("*_model.pkl"):
+                technique = model_file.stem.replace("_model", "")
+                with open(model_file, 'rb') as f:
+                    self.models[technique] = pickle.load(f)
+            
+            # Load scalers
+            for scaler_file in model_path.glob("*_scaler.pkl"):
+                technique = scaler_file.stem.replace("_scaler", "")
+                with open(scaler_file, 'rb') as f:
+                    self.scalers[technique] = pickle.load(f)
+            
+            # Load meta-model
+            meta_path = model_path / "meta_model.pkl"
+            if meta_path.exists():
+                with open(meta_path, 'rb') as f:
+                    self.meta_model = pickle.load(f)
+            
+            # Load ensemble metadata
+            metadata_path = model_path / "ensemble_metadata.pkl"
+            if metadata_path.exists():
+                with open(metadata_path, 'rb') as f:
+                    metadata = pickle.load(f)
+                    self.model_weights = metadata.get('model_weights', {})
+                    self.performance_by_regime = metadata.get('performance_by_regime', {})
+                    self.ensemble_method = metadata.get('ensemble_method', 'weighted_voting')
+                    self.is_classification = metadata.get('is_classification', False)
+            
+            logger.info("models_loaded", path=path, n_models=len(self.models))
+            return True
+        except Exception as e:
+            logger.error("failed_to_load_models", path=path, error=str(e))
+            return False
 
 
 # Ray remote function for parallel training
