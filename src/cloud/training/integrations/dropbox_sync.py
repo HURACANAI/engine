@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -348,4 +350,66 @@ class DropboxSync:
         except Exception as e:
             logger.error("list_files_failed", path=remote_dir, error=str(e))
             return []
+    
+    def start_continuous_sync(
+        self,
+        interval_seconds: int = 60,
+        logs_dir: str | Path = "logs",
+        models_dir: str | Path = "models",
+        learning_dir: str | Path = "logs/learning",
+        monitoring_dir: str | Path = "logs",
+    ) -> threading.Thread:
+        """Start continuous sync in background thread.
+        
+        Args:
+            interval_seconds: Sync interval in seconds (default: 60 = 1 minute)
+            logs_dir: Local logs directory
+            models_dir: Local models directory
+            learning_dir: Local learning data directory
+            monitoring_dir: Local monitoring data directory
+            
+        Returns:
+            Background thread running continuous sync
+        """
+        if not self._enabled:
+            logger.warning("continuous_sync_disabled")
+            return None
+        
+        def sync_loop():
+            logger.info(
+                "continuous_sync_started",
+                interval_seconds=interval_seconds,
+            )
+            
+            while True:
+                try:
+                    # Sync all data
+                    self.sync_all(
+                        logs_dir=logs_dir,
+                        models_dir=models_dir,
+                        monitoring_dir=monitoring_dir,
+                    )
+                    
+                    # Sync learning data
+                    if Path(learning_dir).exists():
+                        self.sync_directory(
+                            local_dir=learning_dir,
+                            remote_dir="/learning",
+                            pattern="*.json",
+                            recursive=True,
+                        )
+                    
+                    logger.debug("continuous_sync_complete", interval_seconds=interval_seconds)
+                    
+                except Exception as e:
+                    logger.error("continuous_sync_error", error=str(e))
+                
+                # Wait for next interval
+                time.sleep(interval_seconds)
+        
+        thread = threading.Thread(target=sync_loop, daemon=True, name="DropboxSync")
+        thread.start()
+        
+        logger.info("continuous_sync_thread_started", interval_seconds=interval_seconds)
+        return thread
 

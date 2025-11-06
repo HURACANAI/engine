@@ -42,6 +42,7 @@ from ..datasets.data_loader import MarketMetadataLoader
 from ..monitoring.health_monitor import HealthMonitorOrchestrator
 from ..monitoring.system_status import SystemStatusReporter
 from ..monitoring.comprehensive_telegram_monitor import ComprehensiveTelegramMonitor, NotificationLevel
+from ..monitoring.learning_tracker import LearningTracker, LearningCategory
 from ..integrations.dropbox_sync import DropboxSync
 from pathlib import Path
 
@@ -99,6 +100,9 @@ def run_daily_retrain() -> None:
     # Initialize comprehensive Telegram monitoring
     telegram_monitor = None
     log_file = Path("logs") / f"engine_monitoring_{start_ts.strftime('%Y%m%d_%H%M%S')}.log"
+    
+    # Initialize learning tracker
+    learning_tracker = LearningTracker(output_dir=Path("logs/learning"))
     
     if settings.notifications.telegram_enabled and settings.notifications.telegram_chat_id:
         # Get bot token from environment or use default

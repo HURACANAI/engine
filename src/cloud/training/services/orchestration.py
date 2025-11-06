@@ -199,6 +199,7 @@ class TrainingOrchestrator:
         notifier: NotificationClient,
         artifact_publisher: ArtifactPublisher,
         telegram_monitor: Optional["ComprehensiveTelegramMonitor"] = None,
+        learning_tracker: Optional["LearningTracker"] = None,
     ) -> None:
         self._settings = settings
         self._exchange = exchange_client
