@@ -23,31 +23,58 @@
 ### Step 1: Create RunPod Pod
 
 1. Go to https://www.runpod.io/
-2. **Create Pod**:
-   - **Template**: `RunPod PyTorch 2.1.0`
-   - **GPU**: RTX 3090 (24GB) or RTX 4090 (24GB)
+2. **Click "Pods"** → **"Create Pod"**
+3. **Select Configuration**:
+   - **Template**: `RunPod PyTorch 2.1.0` (or latest PyTorch)
+   - **GPU**: RTX 3090 (24GB) or RTX 4090 (24GB) - **1 GPU is optimal**
    - **CPU**: 8-16 cores
    - **RAM**: 32GB
    - **Storage**: 100GB SSD
+   - **Pricing**: **Interruptible/Spot** (50-70% cheaper!)
+4. **Click "Deploy"** and wait for pod to start (~2-3 minutes)
 
 ### Step 2: Connect to Pod
 
+**Option A: SSH (Recommended)**
 ```bash
-# SSH into your RunPod instance
+# Get SSH command from RunPod dashboard
+# Click on your pod → Copy SSH command
 ssh root@<your-pod-ip>
+
+# Or use RunPod Web Terminal
+# Click on pod → "Connect" → "Web Terminal"
 ```
+
+**Option B: RunPod Web Terminal**
+- In RunPod dashboard, click on your pod
+- Click **"Connect"** → **"Web Terminal"**
+- Opens browser-based terminal
 
 ### Step 3: Upload Your Code
 
-**Option A: Git Clone**
+**Option A: Git Clone (Recommended)**
 ```bash
+# Install git if needed
+apt-get update && apt-get install -y git
+
+# Clone your repository
+cd /workspace
 git clone <your-repo-url>
 cd engine
 ```
 
 **Option B: Upload via RunPod File Manager**
-- Upload your code via RunPod's web interface
-- Extract to `/workspace/engine`
+- In RunPod dashboard, click on your pod
+- Click **"Connect"** → **"File Manager"**
+- Navigate to `/workspace`
+- Upload your code (zip file or individual files)
+- Extract if needed: `cd /workspace && unzip your-code.zip`
+
+**Option C: SCP (From Your Local Machine)**
+```bash
+# From your local machine
+scp -r /path/to/engine root@<your-pod-ip>:/workspace/engine
+```
 
 ### Step 4: Run Setup Script
 

@@ -21,16 +21,17 @@
 #### **Option 2: GPU-Enabled (Recommended for RL)**
 - **CPU**: 8-16 cores
 - **RAM**: 32GB
-- **GPU**: 1x RTX 3090 (24GB VRAM) or RTX 4090 (24GB VRAM)
+- **GPU**: **1x RTX 3090 (24GB VRAM)** or RTX 4090 (24GB VRAM) ⭐ **1 GPU is optimal**
 - **Storage**: 100GB SSD
 - **Network**: Good connection
 - **Cost**: ~$0.50-1.00/hour
 
 **Why:**
-- RL agent uses PyTorch (can use GPU)
+- RL agent uses PyTorch (single GPU per coin)
 - Neural networks (Transformer, Mixture of Experts)
-- Faster training for deep learning models
-- Better performance for 20+ coins
+- Ray handles parallelization (20 coins in parallel)
+- **1 GPU is sufficient** - 2-3 GPUs add cost without significant speedup
+- **GPU utilization: 60-80%** (good utilization with 1 GPU)
 
 #### **Option 3: High-Performance (All Coins)**
 - **CPU**: 16-32 cores
