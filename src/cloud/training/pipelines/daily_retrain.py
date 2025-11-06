@@ -334,13 +334,17 @@ def run_daily_retrain() -> None:
             print(f"\n📝 Monitoring log saved to: {log_file}")
             print(f"   You can copy/paste this file to share with support.\n")
         
-        # Sync to Dropbox if enabled
-        if settings.dropbox.enabled and settings.dropbox.access_token:
+        # Sync to Dropbox if enabled (hardcoded credentials)
+        # Use hardcoded credentials if not set in config
+        dropbox_token = settings.dropbox.access_token or "sl.u.AGHQ-QqhV0EtQCouDihfL34xdAWDNKKYGpDL08AyO2iKef94KW8zMv0DRWrIM508LPdOSkLQhwksqHH-9alha89fx46EVnWK77ViBZbmjM6g"
+        dropbox_folder = settings.dropbox.app_folder or "Runpodhuracan"
+        
+        if settings.dropbox.enabled and dropbox_token:
             try:
                 logger.info("dropbox_sync_starting")
                 dropbox_sync = DropboxSync(
-                    access_token=settings.dropbox.access_token,
-                    app_folder=settings.dropbox.app_folder,
+                    access_token=dropbox_token,
+                    app_folder=dropbox_folder,
                     enabled=True,
                 )
                 
