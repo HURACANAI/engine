@@ -2,8 +2,17 @@
 # Super simple script to run the engine
 # Usage: ./run.sh
 
-cd "$(dirname "$0")"
-export PYTHONPATH="$(pwd):$PYTHONPATH"
+set -e  # Exit on error
+
+# Get script directory and project root
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_ROOT="$SCRIPT_DIR"
+
+# Change to project root
+cd "$PROJECT_ROOT"
+
+# Set PYTHONPATH to project root (so Python can find 'src' package)
+export PYTHONPATH="$PROJECT_ROOT:$PYTHONPATH"
 
 # Install missing dependencies if needed
 python3 -c "import boto3, matplotlib, pydantic_settings" 2>/dev/null || {
@@ -12,5 +21,6 @@ python3 -c "import boto3, matplotlib, pydantic_settings" 2>/dev/null || {
 }
 
 # Run the engine as a module (required for relative imports)
+# PYTHONPATH must point to directory containing 'src', not 'src' itself
 python3 -m src.cloud.training.pipelines.daily_retrain
 
