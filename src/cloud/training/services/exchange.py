@@ -226,8 +226,8 @@ class ExchangeClient:
 			raise
 
 	@retry(
-		stop=stop_after_attempt(5),
-		wait=wait_exponential(multiplier=2, min=5, max=60),
+		stop=stop_after_attempt(10),  # Increased from 5 to 10 for rate limit handling
+		wait=wait_exponential(multiplier=2, min=10, max=120),  # Longer backoff: 10s, 20s, 40s, 80s, 120s max
 		retry=retry_if_exception_type((ccxt.NetworkError, ccxt.ExchangeError, ccxt.DDoSProtection, ConnectionError, TimeoutError)),
 		reraise=True,
 	)
