@@ -216,12 +216,14 @@ def run_daily_retrain() -> None:
             if telegram_monitor:
                 status_reporter = SystemStatusReporter(dsn=settings.postgres.dsn)
                 status_report = status_reporter.generate_full_report()
+                healthy_count = sum(1 for s in status_report.services if s.healthy)
+                total_count = len(status_report.services)
                 telegram_monitor.notify_health_check(
-                    status=status_report.get("overall_status", "UNKNOWN"),
+                    status=status_report.overall_status,
                     alerts=[{"message": a.message, "severity": a.severity.value} for a in critical_alerts],
                     warnings=[{"message": a.message, "severity": a.severity.value} for a in warnings],
-                    healthy_services=status_report.get("services_healthy", 0),
-                    total_services=status_report.get("services_total", 0),
+                    healthy_services=healthy_count,
+                    total_services=total_count,
                 )
 
         # Run main training
@@ -263,12 +265,14 @@ def run_daily_retrain() -> None:
             if telegram_monitor:
                 status_reporter = SystemStatusReporter(dsn=settings.postgres.dsn)
                 status_report = status_reporter.generate_full_report()
+                healthy_count = sum(1 for s in status_report.services if s.healthy)
+                total_count = len(status_report.services)
                 telegram_monitor.notify_health_check(
-                    status=status_report.get("overall_status", "UNKNOWN"),
+                    status=status_report.overall_status,
                     alerts=[{"message": a.message, "severity": a.severity.value} for a in critical_alerts],
                     warnings=[{"message": a.message, "severity": a.severity.value} for a in warnings],
-                    healthy_services=status_report.get("services_healthy", 0),
-                    total_services=status_report.get("services_total", 0),
+                    healthy_services=healthy_count,
+                    total_services=total_count,
                 )
 
     except Exception as exc:  # noqa: BLE001
@@ -299,12 +303,14 @@ def run_daily_retrain() -> None:
                 if telegram_monitor:
                     status_reporter = SystemStatusReporter(dsn=settings.postgres.dsn)
                     status_report = status_reporter.generate_full_report()
+                    healthy_count = sum(1 for s in status_report.services if s.healthy)
+                    total_count = len(status_report.services)
                     telegram_monitor.notify_health_check(
                         status="CRITICAL",
                         alerts=[{"message": a.message, "severity": a.severity.value} for a in critical_alerts],
                         warnings=[{"message": a.message, "severity": a.severity.value} for a in warnings],
-                        healthy_services=status_report.get("services_healthy", 0),
-                        total_services=status_report.get("services_total", 0),
+                        healthy_services=healthy_count,
+                        total_services=total_count,
                     )
             except Exception as health_exc:  # noqa: BLE001
                 logger.exception("emergency_health_check_failed", error=str(health_exc))
