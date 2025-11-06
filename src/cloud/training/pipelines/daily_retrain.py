@@ -42,6 +42,7 @@ from ..datasets.data_loader import MarketMetadataLoader
 from ..monitoring.health_monitor import HealthMonitorOrchestrator
 from ..monitoring.system_status import SystemStatusReporter
 from ..monitoring.comprehensive_telegram_monitor import ComprehensiveTelegramMonitor, NotificationLevel
+from ..integrations.dropbox_sync import DropboxSync
 from pathlib import Path
 
 
@@ -327,6 +328,47 @@ def run_daily_retrain() -> None:
             logger.info("monitoring_log_available", log_file=str(log_file))
             print(f"\n📝 Monitoring log saved to: {log_file}")
             print(f"   You can copy/paste this file to share with support.\n")
+        
+        # Sync to Dropbox if enabled
+        if settings.dropbox.enabled and settings.dropbox.access_token:
+            try:
+                logger.info("dropbox_sync_starting")
+                dropbox_sync = DropboxSync(
+                    access_token=settings.dropbox.access_token,
+                    app_folder=settings.dropbox.app_folder,
+                    enabled=True,
+                )
+                
+                sync_results = {}
+                if settings.dropbox.sync_logs:
+                    sync_results["logs"] = dropbox_sync.upload_logs("logs")
+                if settings.dropbox.sync_models:
+                    sync_results["models"] = dropbox_sync.upload_models("models")
+                if settings.dropbox.sync_monitoring:
+                    sync_results["monitoring"] = dropbox_sync.upload_monitoring_data("logs")
+                
+                logger.info(
+                    "dropbox_sync_complete",
+                    **sync_results,
+                    total_files=sum(sync_results.values()),
+                )
+                
+                if telegram_monitor:
+                    telegram_monitor.notify_system_event(
+                        level=NotificationLevel.LOW,
+                        title="Dropbox Sync Complete",
+                        message=f"Synced {sum(sync_results.values())} files to Dropbox",
+                        action_required=False,
+                    )
+            except Exception as sync_error:
+                logger.error("dropbox_sync_failed", error=str(sync_error))
+                if telegram_monitor:
+                    telegram_monitor.notify_system_event(
+                        level=NotificationLevel.MEDIUM,
+                        title="Dropbox Sync Failed",
+                        message=f"Error: {str(sync_error)}",
+                        action_required=False,
+                    )
         
         if ray.is_initialized():
             ray.shutdown()

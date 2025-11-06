@@ -194,6 +194,15 @@ class NotificationSettings(BaseModel):
     telegram_chat_id: Optional[str] = None
 
 
+class DropboxSettings(BaseModel):
+    enabled: bool = False
+    access_token: Optional[str] = None
+    app_folder: str = "Runpodhuracan"
+    sync_logs: bool = True
+    sync_models: bool = True
+    sync_monitoring: bool = True
+
+
 class ExchangeCredential(BaseModel):
     api_key: Optional[str] = None
     api_secret: Optional[str] = None
@@ -241,6 +250,7 @@ class EngineSettings(BaseSettings):
     postgres: Optional[PostgresSettings] = None
     ray: RaySettings = Field(default_factory=RaySettings)
     notifications: NotificationSettings = Field(default_factory=NotificationSettings)
+    dropbox: DropboxSettings = Field(default_factory=DropboxSettings)
     exchange: ExchangeSettings = Field(default_factory=ExchangeSettings)
 
     config_dir: Path = Field(Path(__file__).resolve().parent.parent.parent.parent / "config", alias="HURACAN_CONFIG_DIR")

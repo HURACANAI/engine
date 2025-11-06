@@ -1,0 +1,351 @@
+"""Dropbox sync service for automatic cloud backup of logs, models, and training data."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Optional
+
+import structlog
+
+try:
+    import dropbox
+    from dropbox.exceptions import ApiError, AuthError
+    DROPBOX_AVAILABLE = True
+except ImportError:
+    DROPBOX_AVAILABLE = False
+    dropbox = None  # type: ignore
+
+logger = structlog.get_logger(__name__)
+
+
+class DropboxSync:
+    """Automatic Dropbox sync for engine data.
+    
+    Syncs:
+    - Training logs
+    - Trained models
+    - Monitoring data
+    - Training results
+    - Configuration files
+    
+    Usage:
+        sync = DropboxSync(
+            access_token="your_access_token",
+            app_folder="Runpodhuracan"
+        )
+        sync.upload_file("logs/engine.log", "/logs/engine.log")
+        sync.sync_directory("models/", "/models/")
+    """
+    
+    def __init__(
+        self,
+        access_token: str,
+        app_folder: str = "Runpodhuracan",
+        enabled: bool = True,
+    ) -> None:
+        """Initialize Dropbox sync.
+        
+        Args:
+            access_token: Dropbox access token
+            app_folder: App folder name in Dropbox
+            enabled: Whether sync is enabled
+        """
+        if not DROPBOX_AVAILABLE:
+            raise ImportError(
+                "dropbox package not installed. Install with: pip install dropbox"
+            )
+        
+        if not enabled:
+            logger.info("dropbox_sync_disabled")
+            self._enabled = False
+            return
+        
+        self._enabled = True
+        self._access_token = access_token
+        self._app_folder = app_folder
+        self._dbx = dropbox.Dropbox(access_token)
+        
+        # Test connection
+        try:
+            account_info = self._dbx.users_get_current_account()
+            logger.info(
+                "dropbox_sync_initialized",
+                account_email=account_info.email,
+                app_folder=app_folder,
+            )
+        except AuthError as e:
+            logger.error("dropbox_auth_failed", error=str(e))
+            raise
+        except Exception as e:
+            logger.error("dropbox_connection_failed", error=str(e))
+            raise
+    
+    def upload_file(
+        self,
+        local_path: str | Path,
+        remote_path: str,
+        overwrite: bool = True,
+    ) -> bool:
+        """Upload a single file to Dropbox.
+        
+        Args:
+            local_path: Local file path
+            remote_path: Remote Dropbox path (relative to app folder)
+            overwrite: Whether to overwrite existing files
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self._enabled:
+            return False
+        
+        local_path = Path(local_path)
+        if not local_path.exists():
+            logger.warning("file_not_found", path=str(local_path))
+            return False
+        
+        # Normalize remote path
+        remote_path = self._normalize_path(remote_path)
+        
+        try:
+            with open(local_path, "rb") as f:
+                file_data = f.read()
+            
+            # Check if file exists and is same
+            if not overwrite:
+                try:
+                    existing = self._dbx.files_get_metadata(remote_path)
+                    if isinstance(existing, dropbox.files.FileMetadata):
+                        # Compare hashes
+                        local_hash = hashlib.sha256(file_data).hexdigest()
+                        if existing.content_hash == local_hash:
+                            logger.debug(
+                                "file_unchanged",
+                                path=remote_path,
+                                message="Skipping upload - file unchanged",
+                            )
+                            return True
+                except ApiError:
+                    # File doesn't exist, proceed with upload
+                    pass
+            
+            # Upload file
+            mode = dropbox.files.WriteMode.overwrite if overwrite else dropbox.files.WriteMode.add
+            self._dbx.files_upload(
+                file_data,
+                remote_path,
+                mode=mode,
+            )
+            
+            logger.info(
+                "file_uploaded",
+                local_path=str(local_path),
+                remote_path=remote_path,
+                size_bytes=len(file_data),
+            )
+            return True
+            
+        except Exception as e:
+            logger.error(
+                "file_upload_failed",
+                local_path=str(local_path),
+                remote_path=remote_path,
+                error=str(e),
+            )
+            return False
+    
+    def sync_directory(
+        self,
+        local_dir: str | Path,
+        remote_dir: str,
+        pattern: str = "*",
+        recursive: bool = True,
+    ) -> int:
+        """Sync a directory to Dropbox.
+        
+        Args:
+            local_dir: Local directory path
+            remote_dir: Remote Dropbox directory (relative to app folder)
+            pattern: File pattern to match (e.g., "*.log", "*.pkl")
+            recursive: Whether to sync recursively
+            
+        Returns:
+            Number of files synced
+        """
+        if not self._enabled:
+            return 0
+        
+        local_dir = Path(local_dir)
+        if not local_dir.exists() or not local_dir.is_dir():
+            logger.warning("directory_not_found", path=str(local_dir))
+            return 0
+        
+        remote_dir = self._normalize_path(remote_dir)
+        
+        # Ensure remote directory exists
+        try:
+            self._dbx.files_get_metadata(remote_dir)
+        except ApiError:
+            # Directory doesn't exist, create it
+            try:
+                self._dbx.files_create_folder_v2(remote_dir)
+                logger.info("directory_created", path=remote_dir)
+            except ApiError as e:
+                logger.warning("directory_creation_failed", path=remote_dir, error=str(e))
+        
+        synced_count = 0
+        
+        # Find files matching pattern
+        if recursive:
+            files = list(local_dir.rglob(pattern))
+        else:
+            files = list(local_dir.glob(pattern))
+        
+        for local_file in files:
+            if not local_file.is_file():
+                continue
+            
+            # Calculate relative path
+            rel_path = local_file.relative_to(local_dir)
+            remote_path = f"{remote_dir}/{rel_path.as_posix()}"
+            
+            if self.upload_file(local_file, remote_path):
+                synced_count += 1
+        
+        logger.info(
+            "directory_synced",
+            local_dir=str(local_dir),
+            remote_dir=remote_dir,
+            files_synced=synced_count,
+            total_files=len(files),
+        )
+        
+        return synced_count
+    
+    def upload_logs(self, logs_dir: str | Path = "logs") -> int:
+        """Upload all log files to Dropbox.
+        
+        Args:
+            logs_dir: Local logs directory
+            
+        Returns:
+            Number of log files uploaded
+        """
+        return self.sync_directory(
+            local_dir=logs_dir,
+            remote_dir="/logs",
+            pattern="*.log",
+            recursive=True,
+        )
+    
+    def upload_models(self, models_dir: str | Path = "models") -> int:
+        """Upload all model files to Dropbox.
+        
+        Args:
+            models_dir: Local models directory
+            
+        Returns:
+            Number of model files uploaded
+        """
+        return self.sync_directory(
+            local_dir=models_dir,
+            remote_dir="/models",
+            pattern="*.pkl",
+            recursive=True,
+        )
+    
+    def upload_monitoring_data(self, monitoring_dir: str | Path = "logs") -> int:
+        """Upload monitoring data to Dropbox.
+        
+        Args:
+            monitoring_dir: Local monitoring data directory
+            
+        Returns:
+            Number of files uploaded
+        """
+        return self.sync_directory(
+            local_dir=monitoring_dir,
+            remote_dir="/monitoring",
+            pattern="*.json",
+            recursive=True,
+        )
+    
+    def sync_all(
+        self,
+        logs_dir: str | Path = "logs",
+        models_dir: str | Path = "models",
+        monitoring_dir: str | Path = "logs",
+    ) -> dict[str, int]:
+        """Sync all data to Dropbox.
+        
+        Args:
+            logs_dir: Local logs directory
+            models_dir: Local models directory
+            monitoring_dir: Local monitoring data directory
+            
+        Returns:
+            Dictionary with sync counts
+        """
+        results = {
+            "logs": self.upload_logs(logs_dir),
+            "models": self.upload_models(models_dir),
+            "monitoring": self.upload_monitoring_data(monitoring_dir),
+        }
+        
+        logger.info(
+            "dropbox_sync_complete",
+            **results,
+            total_files=sum(results.values()),
+        )
+        
+        return results
+    
+    def _normalize_path(self, path: str) -> str:
+        """Normalize Dropbox path.
+        
+        Args:
+            path: Path to normalize
+            
+        Returns:
+            Normalized path
+        """
+        # Remove leading slash if present
+        if path.startswith("/"):
+            path = path[1:]
+        
+        # Ensure path starts with app folder
+        if not path.startswith(f"/{self._app_folder}/"):
+            path = f"/{self._app_folder}/{path}"
+        
+        return path
+    
+    def list_files(self, remote_dir: str = "/") -> list[str]:
+        """List files in Dropbox directory.
+        
+        Args:
+            remote_dir: Remote directory path
+            
+        Returns:
+            List of file paths
+        """
+        if not self._enabled:
+            return []
+        
+        remote_dir = self._normalize_path(remote_dir)
+        
+        try:
+            result = self._dbx.files_list_folder(remote_dir)
+            files = []
+            
+            for entry in result.entries:
+                if isinstance(entry, dropbox.files.FileMetadata):
+                    files.append(entry.path_display)
+            
+            return files
+        except Exception as e:
+            logger.error("list_files_failed", path=remote_dir, error=str(e))
+            return []
+
