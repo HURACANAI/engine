@@ -316,3 +316,7 @@ def run_daily_retrain() -> None:
         if ray.is_initialized():
             ray.shutdown()
 
+
+if __name__ == "__main__":
+    run_daily_retrain()
+
