@@ -667,10 +667,9 @@ class FeatureRecipe:
         range_feature = ((pl.col("high") - pl.col("low")) / pl.col("close")).alias("range_pct")
 
         typical_price = (pl.col("high") + pl.col("low") + pl.col("close")) / 3.0
-        cum_typical_volume = (typical_price * pl.col("volume")).cumsum()
-        cum_volume = pl.col("volume").cumsum()
-        vwap = (cum_typical_volume / (cum_volume + 1e-9)).alias("vwap")
-        drift = ((pl.col("close") - vwap) / vwap).alias("close_to_vwap")
+        # Note: cumsum() needs to be computed within DataFrame context
+        # We'll add typical_price first, then compute cumsum in a separate step
+        typical_price_col = typical_price.alias("typical_price")
 
         slope_feature = (
             pl.col("close").pct_change().rolling_mean(window_size=15, min_periods=10).alias("micro_trend")
@@ -758,8 +757,7 @@ class FeatureRecipe:
                 bb_lower,
                 bb_width,
                 range_feature,
-                vwap,
-                drift,
+                typical_price_col,
                 slope_feature,
                 tod_fraction,
                 tod_sin,
@@ -818,6 +816,19 @@ class FeatureRecipe:
 
         if optional_features:
             feature_frame = feature_frame.with_columns(optional_features)
+
+        # Compute VWAP and drift after we have typical_price column
+        # cumsum() works on columns, not expressions
+        feature_frame = feature_frame.with_columns([
+            (pl.col("typical_price") * pl.col("volume")).cumsum().alias("cum_typical_volume"),
+            pl.col("volume").cumsum().alias("cum_volume"),
+        ])
+        feature_frame = feature_frame.with_columns([
+            (pl.col("cum_typical_volume") / (pl.col("cum_volume") + 1e-9)).alias("vwap"),
+        ])
+        feature_frame = feature_frame.with_columns([
+            ((pl.col("close") - pl.col("vwap")) / pl.col("vwap")).alias("close_to_vwap"),
+        ])
 
         filled = feature_frame.fill_null(strategy="forward").fill_null(strategy="backward").fill_nan(0.0)
         return filled
