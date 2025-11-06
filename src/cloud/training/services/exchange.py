@@ -123,52 +123,99 @@ class ExchangeClient:
 			if self.exchange_id == "binance":
 				# Get market types for each symbol
 				markets = self._client.markets
-				spot_symbols = []
-				swap_symbols = []
-				future_symbols = []
+				# Group symbols by their actual market type
+				# Use a dict to store symbols by type to ensure proper separation
+				symbols_by_type: Dict[str, List[str]] = {}
 				
 				for symbol in symbols_list:
 					market = markets.get(symbol)
 					if market:
+						# Get the actual market type from ccxt
 						market_type = market.get("type", "spot")
+						# Also check 'contract' field which indicates if it's a derivative
+						is_contract = market.get("contract", False)
+						
+						# Binance uses different type values:
+						# - "spot" for spot markets
+						# - "swap" for perpetual swaps (USDT-M and COIN-M)
+						# - "future" for futures contracts
+						# - "delivery" for delivery futures
+						# We need to ensure swap and future are kept separate
 						if market_type == "spot":
-							spot_symbols.append(symbol)
+							type_key = "spot"
 						elif market_type == "swap":
-							swap_symbols.append(symbol)
-						elif market_type == "future":
-							future_symbols.append(symbol)
+							type_key = "swap"
+						elif market_type in ("future", "delivery"):
+							type_key = "future"
 						else:
-							# Default to spot for unknown types
-							spot_symbols.append(symbol)
+							# For unknown types, try to infer from contract field
+							if is_contract:
+								# If it's a contract but type is unknown, check if it's perpetual
+								settle = market.get("settle", "")
+								if settle:
+									type_key = "swap"  # Perpetual swaps have a settle currency
+								else:
+									type_key = "future"
+							else:
+								type_key = "spot"
 					else:
 						# If market not found, default to spot
-						spot_symbols.append(symbol)
+						type_key = "spot"
+					
+					if type_key not in symbols_by_type:
+						symbols_by_type[type_key] = []
+					symbols_by_type[type_key].append(symbol)
 				
 				# Batch size to avoid 413 errors (Binance has URL length limits)
 				# Using 50 symbols per batch to be safe
 				batch_size = 50
 				result = {}
 				
-				# Fetch spot tickers in batches
-				if spot_symbols:
-					for i in range(0, len(spot_symbols), batch_size):
-						batch = spot_symbols[i:i + batch_size]
-						batch_tickers = self._client.fetch_tickers(batch)
-						result.update(batch_tickers)
-				
-				# Fetch swap tickers in batches
-				if swap_symbols:
-					for i in range(0, len(swap_symbols), batch_size):
-						batch = swap_symbols[i:i + batch_size]
-						batch_tickers = self._client.fetch_tickers(batch)
-						result.update(batch_tickers)
-				
-				# Fetch future tickers in batches
-				if future_symbols:
-					for i in range(0, len(future_symbols), batch_size):
-						batch = future_symbols[i:i + batch_size]
-						batch_tickers = self._client.fetch_tickers(batch)
-						result.update(batch_tickers)
+				# Fetch tickers for each type in batches
+				for market_type, type_symbols in symbols_by_type.items():
+					if not type_symbols:
+						continue
+					
+					# Verify all symbols in the list are actually of the same type
+					# This is a safety check to prevent mixing types
+					for i in range(0, len(type_symbols), batch_size):
+						batch = type_symbols[i:i + batch_size]
+						
+						# Double-check that all symbols in this batch are of the same type
+						batch_types = set()
+						for symbol in batch:
+							market = markets.get(symbol)
+							if market:
+								symbol_type = market.get("type", "spot")
+								if symbol_type in ("future", "delivery"):
+									batch_types.add("future")
+								elif symbol_type == "swap":
+									batch_types.add("swap")
+								else:
+									batch_types.add("spot")
+						
+						# If we have mixed types in a batch, fetch individually
+						if len(batch_types) > 1:
+							for symbol in batch:
+								try:
+									ticker = self._client.fetch_ticker(symbol)
+									result[symbol] = ticker
+								except Exception as e:
+									logger.warning("ticker_fetch_failed", symbol=symbol, error=str(e))
+						else:
+							# All symbols are the same type, fetch as batch
+							try:
+								batch_tickers = self._client.fetch_tickers(batch)
+								result.update(batch_tickers)
+							except Exception as e:
+								# If batch fails, try fetching individually
+								logger.warning("batch_fetch_failed", error=str(e), batch_size=len(batch))
+								for symbol in batch:
+									try:
+										ticker = self._client.fetch_ticker(symbol)
+										result[symbol] = ticker
+									except Exception as e2:
+										logger.warning("ticker_fetch_failed", symbol=symbol, error=str(e2))
 				
 				return result
 			else:
