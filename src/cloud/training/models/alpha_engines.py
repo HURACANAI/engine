@@ -956,19 +956,94 @@ class AlphaEngineCoordinator:
                 return self._convert_flow_prediction(flow_prediction, technique)
             
             elif technique == TradingTechnique.CORRELATION and HAS_CORRELATION:
-                # Correlation engine needs two symbols - skip for now (needs special handling)
+                # Correlation engine needs two symbols - try to extract from features
+                # If correlation features are available, use them
+                if "correlation_pair" in features and "correlation_spread_bps" in features:
+                    # Use correlation features if available
+                    spread_bps = features.get("correlation_spread_bps", 0.0)
+                    spread_zscore = features.get("correlation_spread_zscore", 0.0)
+                    correlation = features.get("correlation", 0.0)
+                    
+                    # Generate signal based on spread
+                    if abs(spread_zscore) > 1.0 and abs(correlation) > 0.7:
+                        direction = "buy" if spread_zscore < -1.0 else "sell"
+                        confidence = min(0.8, abs(spread_zscore) / 2.0)
+                        return AlphaSignal(
+                            technique=technique,
+                            direction=direction,
+                            confidence=confidence,
+                            reasoning=f"Correlation spread detected (z={spread_zscore:.2f}, corr={correlation:.2f})",
+                            key_features={"spread_bps": spread_bps, "spread_zscore": spread_zscore, "correlation": correlation},
+                            regime_affinity=1.0 if current_regime == "RANGE" else 0.5,
+                        )
                 return None
             
             elif technique == TradingTechnique.LATENCY and HAS_LATENCY:
-                # Latency engine needs symbol - skip for now (needs special handling)
+                # Latency engine needs symbol - try to extract from features
+                # If latency features are available, use them
+                if "latency_diff_ms" in features and "price_diff_bps" in features:
+                    latency_diff = features.get("latency_diff_ms", 0.0)
+                    price_diff = features.get("price_diff_bps", 0.0)
+                    
+                    # Generate signal based on latency arbitrage
+                    if latency_diff > 10.0 and price_diff > 2.0:
+                        direction = "buy" if price_diff > 0 else "sell"
+                        confidence = min(0.8, (latency_diff / 100.0) * 0.5 + (price_diff / 50.0) * 0.5)
+                        return AlphaSignal(
+                            technique=technique,
+                            direction=direction,
+                            confidence=confidence,
+                            reasoning=f"Latency arbitrage detected (latency_diff={latency_diff:.1f}ms, price_diff={price_diff:.1f}bps)",
+                            key_features={"latency_diff_ms": latency_diff, "price_diff_bps": price_diff},
+                            regime_affinity=1.0,  # Works in all regimes
+                        )
                 return None
             
             elif technique == TradingTechnique.MARKET_MAKER and HAS_MARKET_MAKER:
-                # Market maker engine needs mid_price - skip for now (needs special handling)
+                # Market maker engine needs mid_price - try to extract from features
+                mid_price = features.get("mid_price") or features.get("close") or features.get("price")
+                if mid_price:
+                    quote = engine.generate_quotes(
+                        symbol="UNKNOWN",  # Symbol not available
+                        mid_price=mid_price,
+                        features=features,
+                        current_regime=current_regime,
+                    )
+                    if quote:
+                        # Convert quote to signal (buy if spread is wide enough)
+                        if quote.spread_bps > 5.0:
+                            direction = "buy"  # Provide liquidity
+                            confidence = min(0.7, quote.confidence)
+                            return AlphaSignal(
+                                technique=technique,
+                                direction=direction,
+                                confidence=confidence,
+                                reasoning=f"Market maker quote: {quote.reasoning}",
+                                key_features=quote.key_features,
+                                regime_affinity=1.0,  # Works in all regimes
+                            )
                 return None
             
             elif technique == TradingTechnique.REGIME and HAS_REGIME:
-                # Regime detector returns regime, not signal - skip for now
+                # Regime detector returns regime, not signal - convert to signal
+                # Use regime confidence as signal confidence
+                # This is a meta-signal that indicates regime quality
+                regime_confidence = features.get("regime_confidence", 0.5)
+                regime_score = features.get("regime_score", 0.5)
+                
+                # High regime confidence = good market conditions = buy signal
+                # Low regime confidence = uncertain = hold
+                if regime_confidence > 0.7:
+                    direction = "buy" if regime_score > 0.5 else "sell"
+                    confidence = regime_confidence * 0.8  # Scale down
+                    return AlphaSignal(
+                        technique=technique,
+                        direction=direction,
+                        confidence=confidence,
+                        reasoning=f"Strong regime detected (confidence={regime_confidence:.2f}, score={regime_score:.2f})",
+                        key_features={"regime_confidence": regime_confidence, "regime_score": regime_score},
+                        regime_affinity=1.0,
+                    )
                 return None
             
             else:
@@ -1018,7 +1093,10 @@ class AlphaEngineCoordinator:
         )
 
     def generate_all_signals_batch(
-        self, symbols_features: Dict[str, Dict[str, float]], current_regimes: Dict[str, str]
+        self,
+        symbols_features: Dict[str, Dict[str, float]],
+        current_regimes: Dict[str, str],
+        order_book_data: Optional[Dict[str, Dict]] = None,
     ) -> Dict[str, Dict[TradingTechnique, AlphaSignal]]:
         """
         Generate signals for multiple symbols in batch (more efficient).
@@ -1026,6 +1104,7 @@ class AlphaEngineCoordinator:
         Args:
             symbols_features: Dict of {symbol: features}
             current_regimes: Dict of {symbol: regime}
+            order_book_data: Optional dict of {symbol: order_book_data}
             
         Returns:
             Dict of {symbol: {technique: signal}}
@@ -1035,7 +1114,8 @@ class AlphaEngineCoordinator:
         # Process all symbols
         for symbol, features in symbols_features.items():
             regime = current_regimes.get(symbol, 'UNKNOWN')
-            signals = self.generate_all_signals(features, regime)
+            symbol_order_book = order_book_data.get(symbol) if order_book_data else None
+            signals = self.generate_all_signals(features, regime, symbol_order_book)
             all_signals[symbol] = signals
         
         return all_signals
@@ -1130,25 +1210,36 @@ class AlphaEngineCoordinator:
             reasoning = "No clear consensus among engines"
         
         # Use bandit if enabled (for additional confidence adjustment)
-        if self.use_bandit and self.bandit:
-            best_technique, best_signal, bandit_confidence = self.bandit.select_engine(
-                current_regime=current_regime,
-                all_signals=signals,
-            )
-            # Blend bandit confidence with weighted confidence
-            confidence = (confidence + bandit_confidence) / 2.0
+        if self.use_bandit and self.bandit and active_signals:
+            try:
+                best_technique_bandit, best_signal_bandit, bandit_confidence = self.bandit.select_engine(
+                    current_regime=current_regime,
+                    all_signals=signals,
+                )
+                # Blend bandit confidence with weighted confidence
+                if direction != "hold":
+                    confidence = (confidence + bandit_confidence) / 2.0
+            except Exception as e:
+                logger.warning("bandit_selection_failed", error=str(e))
         
         # Combine key features from top signals
-        top_signals = sorted(active_signals.items(), key=lambda x: technique_weights.get(x[0], 0.0), reverse=True)[:3]
         combined_features = {}
-        for technique, signal in top_signals:
-            combined_features.update(signal.key_features)
+        avg_regime_affinity = 0.0
+        best_technique = TradingTechnique.TREND
         
-        # Calculate average regime affinity
-        avg_regime_affinity = np.mean([sig.regime_affinity for sig in active_signals.values()])
-        
-        # Select most weighted technique as representative
-        best_technique = max(technique_weights.items(), key=lambda x: x[1])[0] if technique_weights else TradingTechnique.TREND
+        if active_signals and technique_weights:
+            top_signals = sorted(active_signals.items(), key=lambda x: technique_weights.get(x[0], 0.0), reverse=True)[:3]
+            for technique, signal in top_signals:
+                combined_features.update(signal.key_features)
+            
+            # Calculate average regime affinity
+            regime_affinities = [sig.regime_affinity for sig in active_signals.values()]
+            if regime_affinities:
+                avg_regime_affinity = float(np.mean(regime_affinities))
+            
+            # Select most weighted technique as representative
+            if technique_weights:
+                best_technique = max(technique_weights.items(), key=lambda x: x[1])[0]
         
         logger.debug(
             "signals_combined",
@@ -1320,3 +1411,18 @@ class AlphaEngineCoordinator:
             "alpha_engine_coordinator_state_loaded",
             num_engines=len(self.engine_performance),
         )
+    
+    def shutdown(self) -> None:
+        """Shutdown coordinator and cleanup resources."""
+        if self.executor:
+            self.executor.shutdown(wait=True)
+            logger.info("alpha_engine_coordinator_shutdown")
+    
+    def __enter__(self):
+        """Context manager entry."""
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit - cleanup resources."""
+        self.shutdown()
+        return False

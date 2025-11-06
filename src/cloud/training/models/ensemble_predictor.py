@@ -135,26 +135,27 @@ class EnsemblePredictor:
 
         # Run Alpha Engines (Revuelto) if features available
         if features:
-            alpha_signal = self.alpha_engines.generate_all_signals(features, current_regime)
-            best_alpha = self.alpha_engines.select_best_technique(alpha_signal, current_regime=current_regime)
+            alpha_signals = self.alpha_engines.generate_all_signals(features, current_regime)
+            # Use combine_signals for weighted voting (better than select_best_technique)
+            combined_alpha = self.alpha_engines.combine_signals(alpha_signals, current_regime)
 
             # Convert AlphaSignal to PredictionSource
             alpha_prediction = PredictionSource(
                 source_name="alpha_engines",
-                prediction=best_alpha.direction,
-                confidence=best_alpha.confidence,
-                reasoning=f"{best_alpha.technique.value}: {best_alpha.reasoning}",
+                prediction=combined_alpha.direction,
+                confidence=combined_alpha.confidence,
+                reasoning=f"{combined_alpha.technique.value}: {combined_alpha.reasoning}",
                 weight=self.source_weights.get("alpha_engines", 0.95),
             )
 
-            if best_alpha.direction != "hold":
+            if combined_alpha.direction != "hold":
                 predictions.append(alpha_prediction)
 
             logger.debug(
                 "alpha_engines_signal",
-                technique=best_alpha.technique.value,
-                direction=best_alpha.direction,
-                confidence=best_alpha.confidence,
+                technique=combined_alpha.technique.value,
+                direction=combined_alpha.direction,
+                confidence=combined_alpha.confidence,
             )
 
         if not predictions:

@@ -8,7 +8,10 @@ from dataclasses import asdict, dataclass
 from datetime import date, datetime, time, timezone, timedelta
 from io import BytesIO
 from statistics import median
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ..monitoring.comprehensive_telegram_monitor import ComprehensiveTelegramMonitor
 from uuid import uuid4
 
 import matplotlib
@@ -194,6 +197,7 @@ class TrainingOrchestrator:
         model_registry: ModelRegistry,
         notifier: NotificationClient,
         artifact_publisher: ArtifactPublisher,
+        telegram_monitor: Optional["ComprehensiveTelegramMonitor"] = None,
     ) -> None:
         self._settings = settings
         self._exchange = exchange_client
@@ -201,6 +205,7 @@ class TrainingOrchestrator:
         self._registry = model_registry
         self._notifier = notifier
         self._artifact_publisher = artifact_publisher
+        self._telegram_monitor = telegram_monitor
         self._run_date = datetime.now(tz=timezone.utc).date()
 
     def run(self) -> List[TrainingTaskResult]:
@@ -219,6 +224,16 @@ class TrainingOrchestrator:
         for result in ray_results:
             results.append(result)
             self._finalize_result(result)
+            
+            # Notify Telegram about validation failures (from main process)
+            if self._telegram_monitor and not result.published and "validation" in result.reason.lower():
+                self._telegram_monitor.notify_validation_failure(
+                    validation_type="Model Validation",
+                    reason=result.reason,
+                    symbol=result.symbol,
+                    details=result.metrics,
+                )
+        
         self._notifier.send_summary(results, run_date=self._run_date)
         return results
 
@@ -458,6 +473,10 @@ def _train_symbol(
                     symbol=symbol,
                     blocking_issues=validation_result.blocking_issues,
                 )
+                
+                # Notify Telegram about validation failure
+                # Note: telegram_monitor is passed via closure in _train_symbol
+                # We'll add it as a parameter to _train_symbol
         except Exception as e:
             logger.warning(
                 "validation_pipeline_error",
