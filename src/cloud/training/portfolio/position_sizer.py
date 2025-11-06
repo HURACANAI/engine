@@ -140,6 +140,17 @@ class DynamicPositionSizer:
         heat_factor = self._heat_scaling_factor(symbol, size, stop_loss_bps)
         size *= heat_factor
 
+        # Factor 5: Fear & Greed Index adjustment
+        try:
+            from src.cloud.training.analysis.fear_greed_index import FearGreedIndex
+            fg_index = FearGreedIndex()
+            fear_greed_data = fg_index.get_current_index()
+            fg_multiplier = fg_index.get_position_size_multiplier(fear_greed_data)
+            size *= fg_multiplier
+            logger.debug("fear_greed_position_adjustment", multiplier=fg_multiplier, fear_greed_value=fear_greed_data.value)
+        except Exception as e:
+            logger.debug("fear_greed_index_not_available", error=str(e))
+
         # Enforce limits
         size = np.clip(size, self.config.min_position_size_gbp, self.config.max_position_size_gbp)
 

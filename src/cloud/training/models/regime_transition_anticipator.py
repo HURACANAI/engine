@@ -86,6 +86,13 @@ class RegimeStability:
     warning_level: str  # 'STABLE', 'WATCH', 'WARNING', 'CRITICAL'
 
 
+# Import BOCD detector
+try:
+    from .bocd_regime_detector import BOCDRegimeDetector
+    HAS_BOCD = True
+except ImportError:
+    HAS_BOCD = False
+
 class RegimeTransitionAnticipator:
     """
     Anticipates regime transitions before they occur.
@@ -185,7 +192,7 @@ class RegimeTransitionAnticipator:
         if len(self.feature_history) > self.lookback:
             self.feature_history = self.feature_history[-self.lookback:]
 
-    def check_transition(self) -> Optional[TransitionSignal]:
+    def check_transition(self, current_return: Optional[float] = None) -> Optional[TransitionSignal]:
         """
         Check for regime transition signals.
 

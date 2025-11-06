@@ -289,8 +289,27 @@ class MultiModelTrainer:
             X_train_final = X_train
             X_val_final = X_val
         
-        # Train model
-        model.fit(X_train_final, y_train)
+        # Train model with early stopping if supported
+        if technique in ['xgboost', 'lightgbm']:
+            # Early stopping for XGBoost/LightGBM
+            if X_val_final is not None and y_val is not None:
+                if technique == 'xgboost':
+                    model.fit(
+                        X_train_final, y_train,
+                        eval_set=[(X_val_final, y_val)],
+                        early_stopping_rounds=50,
+                        verbose=False,
+                    )
+                elif technique == 'lightgbm':
+                    model.fit(
+                        X_train_final, y_train,
+                        eval_set=[(X_val_final, y_val)],
+                        callbacks=[lgb.early_stopping(50), lgb.log_evaluation(0)],
+                    )
+            else:
+                model.fit(X_train_final, y_train)
+        else:
+            model.fit(X_train_final, y_train)
         
         # Evaluate
         train_pred = model.predict(X_train_final)
@@ -331,19 +350,21 @@ class MultiModelTrainer:
                 raise ImportError("XGBoost not available")
             if self.is_classification:
                 return xgb.XGBClassifier(
-                    n_estimators=100,
+                    n_estimators=1000,  # Large number for early stopping
                     max_depth=6,
                     learning_rate=0.1,
                     random_state=42,
                     n_jobs=self.n_jobs,
+                    eval_metric='logloss',
                 )
             else:
                 return xgb.XGBRegressor(
-                    n_estimators=100,
+                    n_estimators=1000,  # Large number for early stopping
                     max_depth=6,
                     learning_rate=0.1,
                     random_state=42,
                     n_jobs=self.n_jobs,
+                    eval_metric='rmse',
                 )
         
         elif technique == 'random_forest':
@@ -371,21 +392,21 @@ class MultiModelTrainer:
                 raise ImportError("LightGBM not available")
             if self.is_classification:
                 return lgb.LGBMClassifier(
-                    n_estimators=100,
+                    n_estimators=1000,  # Large number for early stopping
                     max_depth=6,
                     learning_rate=0.1,
                     random_state=42,
                     n_jobs=self.n_jobs,
-                    verbose=-1,
+                    verbosity=-1,
                 )
             else:
                 return lgb.LGBMRegressor(
-                    n_estimators=100,
+                    n_estimators=1000,  # Large number for early stopping
                     max_depth=6,
                     learning_rate=0.1,
                     random_state=42,
                     n_jobs=self.n_jobs,
-                    verbose=-1,
+                    verbosity=-1,
                 )
         
         elif technique == 'logistic':

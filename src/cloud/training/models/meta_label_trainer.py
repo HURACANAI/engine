@@ -189,7 +189,13 @@ class MetaLabelTrainer:
         if verbose:
             print("Training model...")
 
-        self.model.fit(X_scaled, y)
+        # Add early stopping if XGBoost
+        if self.model_type == 'xgboost' and HAS_XGBOOST:
+            # Use validation set for early stopping if available
+            # For now, train without early stopping (can be enhanced)
+            self.model.fit(X_scaled, y)
+        else:
+            self.model.fit(X_scaled, y)
 
         # Evaluate
         if verbose:

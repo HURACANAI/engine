@@ -125,6 +125,18 @@ class EnhancedRiskManager:
         if win_rate is not None and avg_win_pct is not None and avg_loss_pct is not None:
             kelly_factor = self._calculate_kelly_fraction(win_rate, avg_win_pct, avg_loss_pct)
 
+        # Factor 5: Fear & Greed Index risk adjustment
+        try:
+            from src.cloud.training.analysis.fear_greed_index import FearGreedIndex
+            fg_index = FearGreedIndex()
+            fear_greed_data = fg_index.get_current_index()
+            fg_risk_multiplier = fg_index.get_risk_multiplier(fear_greed_data)
+            # Adjust risk (higher multiplier = more risk)
+            asset_volatility_bps *= fg_risk_multiplier
+            logger.debug("fear_greed_risk_adjustment", multiplier=fg_risk_multiplier, fear_greed_value=fear_greed_data.value)
+        except Exception as e:
+            logger.debug("fear_greed_index_not_available", error=str(e))
+        
         # Combine all factors (multiplicative)
         combined_multiplier = confidence_factor * volatility_factor * drawdown_factor * kelly_factor
 

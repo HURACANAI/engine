@@ -164,6 +164,22 @@ class RegimeDetector:
             for key in regime_scores
         }
 
+        # Get Fear & Greed Index if available (enhances regime detection)
+        fear_greed_adjustment = None
+        try:
+            from src.cloud.training.analysis.fear_greed_index import FearGreedIndex
+            fg_index = FearGreedIndex()
+            fear_greed_data = fg_index.get_current_index()
+            fear_greed_adjustment = fg_index.get_regime_adjustment(fear_greed_data)
+            
+            # Override with sentiment if extreme
+            if fear_greed_adjustment == 'PANIC' and blended_scores.get('panic', 0) < 0.5:
+                blended_scores['panic'] = 0.7  # Boost panic score
+            elif fear_greed_adjustment == 'BUBBLE' and blended_scores.get('trend', 0) > 0.6:
+                blended_scores['trend'] = min(1.0, blended_scores.get('trend', 0) + 0.2)  # Boost trend (bubble)
+        except Exception as e:
+            logger.debug("fear_greed_index_not_available", error=str(e))
+        
         # Determine regime (panic takes priority)
         if blended_scores["panic"] >= self.panic_threshold:
             regime = MarketRegime.PANIC

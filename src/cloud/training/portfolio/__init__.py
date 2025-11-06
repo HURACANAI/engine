@@ -1,37 +1,15 @@
 """
-Portfolio Management Module
-
-Phase 3: Risk & Portfolio optimization components.
+Portfolio management and risk optimization modules.
 """
 
-from .optimizer import (
-    AssetSignal,
-    PortfolioAllocation,
-    PortfolioConstraints,
-    PortfolioOptimizer,
-)
-from .position_sizer import (
-    DynamicPositionSizer,
-    PositionSizeRecommendation,
-    PositionSizingConfig,
-    calculate_optimal_leverage,
-)
-from .risk_manager import (
-    ComprehensiveRiskManager,
-    PortfolioRisk,
-    RiskLimits,
-)
+from .position_sizer import DynamicPositionSizer, PositionSizingConfig, PositionSizeRecommendation
+from .risk_budget_optimizer import PortfolioRiskOptimizer, RiskBudgetAllocation, PortfolioRiskMetrics
 
 __all__ = [
-    "AssetSignal",
-    "PortfolioAllocation",
-    "PortfolioConstraints",
-    "PortfolioOptimizer",
-    "DynamicPositionSizer",
-    "PositionSizeRecommendation",
-    "PositionSizingConfig",
-    "calculate_optimal_leverage",
-    "ComprehensiveRiskManager",
-    "PortfolioRisk",
-    "RiskLimits",
+    'DynamicPositionSizer',
+    'PositionSizingConfig',
+    'PositionSizeRecommendation',
+    'PortfolioRiskOptimizer',
+    'RiskBudgetAllocation',
+    'PortfolioRiskMetrics',
 ]

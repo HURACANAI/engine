@@ -554,7 +554,7 @@ class AlphaEngineCoordinator:
     4. Select best technique dynamically
     """
 
-    def __init__(self):
+    def __init__(self, use_bandit: bool = True):
         """Initialize all engines."""
         self.engines = {
             TradingTechnique.TREND: TrendEngine(),
@@ -569,8 +569,20 @@ class AlphaEngineCoordinator:
         self.engine_performance: Dict[TradingTechnique, List[float]] = {
             technique: [] for technique in TradingTechnique
         }
+        
+        # Multi-armed bandit for engine selection
+        self.use_bandit = use_bandit
+        self.bandit = None
+        if use_bandit:
+            try:
+                from .alpha_engine_bandit import AlphaEngineBandit
+                self.bandit = AlphaEngineBandit()
+                logger.info("alpha_engine_bandit_enabled")
+            except ImportError:
+                logger.warning("alpha_engine_bandit_not_available")
+                self.use_bandit = False
 
-        logger.info("alpha_engine_coordinator_initialized", num_engines=len(self.engines))
+        logger.info("alpha_engine_coordinator_initialized", num_engines=len(self.engines), use_bandit=use_bandit)
 
     def generate_all_signals(
         self, features: Dict[str, float], current_regime: str
@@ -584,14 +596,38 @@ class AlphaEngineCoordinator:
 
         return signals
 
+    def generate_all_signals_batch(
+        self, symbols_features: Dict[str, Dict[str, float]], current_regimes: Dict[str, str]
+    ) -> Dict[str, Dict[TradingTechnique, AlphaSignal]]:
+        """
+        Generate signals for multiple symbols in batch (more efficient).
+        
+        Args:
+            symbols_features: Dict of {symbol: features}
+            current_regimes: Dict of {symbol: regime}
+            
+        Returns:
+            Dict of {symbol: {technique: signal}}
+        """
+        all_signals = {}
+        
+        # Process all symbols
+        for symbol, features in symbols_features.items():
+            regime = current_regimes.get(symbol, 'UNKNOWN')
+            signals = self.generate_all_signals(features, regime)
+            all_signals[symbol] = signals
+        
+        return all_signals
+
     def select_best_technique(
-        self, signals: Dict[TradingTechnique, AlphaSignal]
+        self, signals: Dict[TradingTechnique, AlphaSignal], current_regime: str = 'unknown'
     ) -> AlphaSignal:
         """
         Select best technique based on:
         1. Signal confidence
         2. Regime affinity
         3. Historical performance
+        4. Multi-armed bandit (if enabled)
         """
         # Filter to signals that are not "hold"
         active_signals = {
@@ -609,6 +645,26 @@ class AlphaEngineCoordinator:
                 regime_affinity=0.0,
             )
 
+        # Use bandit if enabled
+        if self.use_bandit and self.bandit:
+            best_technique, best_signal, bandit_confidence = self.bandit.select_engine(
+                current_regime=current_regime,
+                all_signals=signals,
+            )
+            
+            # Update signal confidence with bandit confidence
+            best_signal.confidence = (best_signal.confidence + bandit_confidence) / 2.0
+            
+            logger.debug(
+                "bandit_technique_selected",
+                technique=best_technique.value,
+                confidence=best_signal.confidence,
+                bandit_confidence=bandit_confidence,
+            )
+            
+            return best_signal
+
+        # Fallback to original scoring method
         # Score each signal: confidence * regime_affinity * historical_performance
         scores = {}
         for technique, signal in active_signals.items():
@@ -635,10 +691,16 @@ class AlphaEngineCoordinator:
         return best_signal
 
     def update_engine_performance(
-        self, technique: TradingTechnique, performance: float
+        self, technique: TradingTechnique, performance: float, regime: str = 'unknown', won: bool = False
     ) -> None:
         """
         Update performance tracking for an engine.
+        
+        Args:
+            technique: Trading technique
+            performance: Performance metric (0-1)
+            regime: Market regime
+            won: Whether the trade won (for bandit)
 
         Args:
             technique: Which engine
@@ -651,6 +713,10 @@ class AlphaEngineCoordinator:
             self.engine_performance[technique] = self.engine_performance[technique][
                 -100:
             ]
+        
+        # Update bandit if enabled
+        if self.use_bandit and self.bandit:
+            self.bandit.update_performance(technique=technique, regime=regime, won=won)
 
     def get_engine_stats(self) -> Dict[str, Dict]:
         """Get performance stats for all engines."""

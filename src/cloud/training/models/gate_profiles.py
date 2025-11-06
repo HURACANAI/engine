@@ -62,6 +62,7 @@ import structlog
 # Import our existing gates
 from .cost_gate import CostGate, OrderType
 from .adverse_selection_veto import AdverseSelectionVeto
+from .sentiment_gate import SentimentGate
 from .selection_intelligence import (
     MetaLabelGate,
     RegretProbabilityCalculator,
@@ -136,6 +137,14 @@ class ScalpGateProfile:
             taker_fee_bps=5.0,
             buffer_bps=3.0,  # LOOSE: Only 3 bps buffer
             prefer_maker=True,
+        )
+
+        # Sentiment gate (Fear & Greed Index)
+        self.sentiment_gate = SentimentGate(
+            block_extreme_greed=True,
+            block_extreme_fear=True,
+            extreme_greed_threshold=80,
+            extreme_fear_threshold=20,
         )
 
         # Meta-label gate (loose)
@@ -214,7 +223,21 @@ class ScalpGateProfile:
             gate_results['cost'] = GateResult.BLOCK
             gate_reasons['cost'] = cost_analysis.reason
 
-        # 2. Meta-label gate
+        # 2. Sentiment gate (Fear & Greed Index)
+        direction = 'buy' if features.get('engine_conf', 0.5) > 0.5 else 'sell'  # Infer direction from confidence
+        sentiment_result = self.sentiment_gate.evaluate(
+            direction=direction,
+            confidence=features.get('engine_conf', 0.5),
+        )
+        
+        if sentiment_result.passed:
+            gate_results['sentiment'] = GateResult.PASS
+            gate_reasons['sentiment'] = sentiment_result.reason
+        else:
+            gate_results['sentiment'] = GateResult.BLOCK
+            gate_reasons['sentiment'] = sentiment_result.reason
+
+        # 3. Meta-label gate
         meta_decision = self.meta_label.check_gate(features)
 
         if meta_decision.passes_gate:
@@ -224,7 +247,7 @@ class ScalpGateProfile:
             gate_results['meta_label'] = GateResult.BLOCK
             gate_reasons['meta_label'] = meta_decision.reason
 
-        # 3. Regret probability (if we have runner-up score)
+        # 4. Regret probability (if we have runner-up score)
         if 'best_score' in features and 'runner_up_score' in features:
             regret_analysis = self.regret_calc.analyze_regret(
                 best_score=features['best_score'],
@@ -325,6 +348,14 @@ class RunnerGateProfile:
             prefer_maker=True,
         )
 
+        # Sentiment gate (Fear & Greed Index)
+        self.sentiment_gate = SentimentGate(
+            block_extreme_greed=True,
+            block_extreme_fear=True,
+            extreme_greed_threshold=80,
+            extreme_fear_threshold=20,
+        )
+
         # Meta-label gate (strict)
         self.meta_label = MetaLabelGate(
             threshold=0.65,  # STRICT: Need 65%+ win prob
@@ -417,7 +448,21 @@ class RunnerGateProfile:
             gate_results['cost'] = GateResult.BLOCK
             gate_reasons['cost'] = cost_analysis.reason
 
-        # 2. Meta-label gate
+        # 2. Sentiment gate (Fear & Greed Index)
+        direction = 'buy' if features.get('engine_conf', 0.5) > 0.5 else 'sell'  # Infer direction from confidence
+        sentiment_result = self.sentiment_gate.evaluate(
+            direction=direction,
+            confidence=features.get('engine_conf', 0.5),
+        )
+        
+        if sentiment_result.passed:
+            gate_results['sentiment'] = GateResult.PASS
+            gate_reasons['sentiment'] = sentiment_result.reason
+        else:
+            gate_results['sentiment'] = GateResult.BLOCK
+            gate_reasons['sentiment'] = sentiment_result.reason
+
+        # 3. Meta-label gate
         meta_decision = self.meta_label.check_gate(features)
 
         if meta_decision.passes_gate:
@@ -427,7 +472,7 @@ class RunnerGateProfile:
             gate_results['meta_label'] = GateResult.BLOCK
             gate_reasons['meta_label'] = meta_decision.reason
 
-        # 3. Regret probability
+        # 4. Regret probability
         if 'best_score' in features and 'runner_up_score' in features:
             regret_analysis = self.regret_calc.analyze_regret(
                 best_score=features['best_score'],

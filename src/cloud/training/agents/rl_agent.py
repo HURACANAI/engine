@@ -397,8 +397,38 @@ class RLTradingAgent:
         # Initialize network
         self.network = ActorCritic(state_dim, self.n_actions).to(self.device)
         self.optimizer = optim.Adam(self.network.parameters(), lr=self.config.learning_rate)
+        
+        # Adaptive learning rate scheduler
+        try:
+            from src.cloud.training.optimization.adaptive_lr_scheduler import AdaptiveLRScheduler
+            self.lr_scheduler = AdaptiveLRScheduler(
+                optimizer=self.optimizer,
+                base_lr=self.config.learning_rate,
+                min_lr=1e-5,
+                max_lr=1e-3,
+            )
+            self.use_adaptive_lr = True
+        except ImportError:
+            self.lr_scheduler = None
+            self.use_adaptive_lr = False
+            logger.warning("adaptive_lr_scheduler_not_available")
+        
         self.normalizer = RunningNormalizer(state_dim)
-        self.replay_buffer = ExperienceReplayBuffer(self.config.replay_buffer_size)
+        
+        # Prioritized experience replay (if available)
+        try:
+            from .prioritized_replay_buffer import PrioritizedReplayBuffer
+            self.replay_buffer = PrioritizedReplayBuffer(
+                capacity=self.config.replay_buffer_size,
+                alpha=0.6,  # Priority exponent
+                beta=0.4,  # Importance sampling exponent
+            )
+            self.use_prioritized_replay = True
+            logger.info("prioritized_replay_buffer_enabled")
+        except ImportError:
+            self.replay_buffer = ExperienceReplayBuffer(self.config.replay_buffer_size)
+            self.use_prioritized_replay = False
+            logger.info("using_standard_replay_buffer")
         self.last_update_metrics: Dict[str, Any] = {}
         self._tail_feature_count = 31  # Updated for dual-mode (23 + 8 new fields)
         self.market_feature_dim = max(1, state_dim - self._tail_feature_count)
@@ -618,32 +648,71 @@ class RLTradingAgent:
         )
 
         advantages = torch.zeros_like(rewards_tensor, device=self.device)
+        td_errors = torch.zeros_like(rewards_tensor, device=self.device)  # For prioritized replay
         gae = torch.tensor(0.0, device=self.device)
         for idx in reversed(range(rewards_tensor.shape[0])):
             mask = 1.0 - dones_tensor[idx]
             delta = rewards_tensor[idx] + self.config.gamma * value_targets[idx + 1] * mask - value_targets[idx]
             gae = delta + self.config.gamma * self.config.gae_lambda * mask * gae
             advantages[idx] = gae
+            td_errors[idx] = abs(delta)  # TD-error for prioritized replay
 
         returns_tensor = advantages + value_targets[:-1]
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
         advantages_detached = advantages.detach()
         returns_tensor = returns_tensor.detach()
+        td_errors_detached = td_errors.detach()
 
         # Add latest batch to replay buffer before sampling
-        self.replay_buffer.add_batch(
-            states_tensor.detach().cpu(),
-            actions_tensor.detach().cpu(),
-            old_log_probs_tensor.detach().cpu(),
-            advantages_detached.detach().cpu(),
-            returns_tensor.cpu(),
-            list(self.state_context),
-        )
+        if self.use_prioritized_replay:
+            # Prioritized replay buffer
+            self.replay_buffer.add_batch(
+                states_tensor.detach().cpu(),
+                actions_tensor.detach().cpu(),
+                old_log_probs_tensor.detach().cpu(),
+                advantages_detached.detach().cpu(),
+                returns_tensor.cpu(),
+                list(self.state_context),
+                td_errors=td_errors_detached.detach().cpu(),
+            )
+        else:
+            # Standard replay buffer
+            self.replay_buffer.add_batch(
+                states_tensor.detach().cpu(),
+                actions_tensor.detach().cpu(),
+                old_log_probs_tensor.detach().cpu(),
+                advantages_detached.detach().cpu(),
+                returns_tensor.cpu(),
+                list(self.state_context),
+            )
 
         training_state_context = list(self.state_context)
         if len(self.replay_buffer) >= self.config.replay_min_samples:
             replay_sample_size = int(actions_tensor.shape[0] * self.config.replay_sample_ratio)
-            replay_batch = self.replay_buffer.sample(replay_sample_size)
+            
+            # Get current regime for regime-weighted sampling
+            current_regime = None
+            if self.state_context:
+                last_state = self.state_context[-1]
+                if hasattr(last_state, 'regime_code'):
+                    regime_code = last_state.regime_code
+                    regime_map = {0: 'trend', 1: 'range', 2: 'panic'}
+                    current_regime = regime_map.get(regime_code, 'unknown')
+            
+            # Sample from replay buffer
+            if self.use_prioritized_replay:
+                replay_batch = self.replay_buffer.sample(
+                    count=replay_sample_size,
+                    current_regime=current_regime,
+                    use_regime_weighting=True,
+                )
+            else:
+                replay_batch = self.replay_buffer.sample(
+                    count=replay_sample_size,
+                    current_regime=current_regime,
+                    use_regime_weighting=True,
+                )
+            
             if replay_batch:
                 states_tensor = torch.cat([
                     states_tensor,
@@ -666,6 +735,17 @@ class RLTradingAgent:
                     replay_batch["returns"].to(self.device),
                 ], dim=0)
                 training_state_context.extend(replay_batch["contexts"])
+                
+                # Apply importance sampling weights if using prioritized replay
+                if self.use_prioritized_replay and "importance_weights" in replay_batch:
+                    importance_weights = replay_batch["importance_weights"].to(self.device)
+                    # Apply weights to advantages and returns
+                    if advantages_detached.dim() > 1:
+                        advantages_detached = advantages_detached * importance_weights.unsqueeze(1)
+                        returns_tensor = returns_tensor * importance_weights.unsqueeze(1)
+                    else:
+                        advantages_detached = advantages_detached * importance_weights
+                        returns_tensor = returns_tensor * importance_weights
         else:
             replay_batch = None
 
@@ -700,8 +780,26 @@ class RLTradingAgent:
 
             self.optimizer.zero_grad()
             loss.backward()
-            clip_grad_norm_(self.network.parameters(), self.config.max_grad_norm)
+            torch.nn.utils.clip_grad_norm_(self.network.parameters(), self.config.max_grad_norm)
             self.optimizer.step()
+            
+            # Update adaptive learning rate scheduler (only once per epoch loop)
+            if _ == self.config.n_epochs - 1 and self.use_adaptive_lr and self.lr_scheduler:
+                # Calculate win rate from recent rewards
+                recent_rewards = self.rewards[-100:] if len(self.rewards) >= 100 else self.rewards
+                win_rate = sum(1 for r in recent_rewards if r > 0) / len(recent_rewards) if recent_rewards else 0.0
+                
+                # Get current regime from state context
+                current_regime = None
+                if self.state_context:
+                    last_state = self.state_context[-1]
+                    if hasattr(last_state, 'regime_code'):
+                        regime_code = last_state.regime_code
+                        regime_map = {0: 'trend', 1: 'range', 2: 'panic'}
+                        current_regime = regime_map.get(regime_code, 'unknown')
+                
+                # Step scheduler
+                self.lr_scheduler.step(win_rate=win_rate, current_regime=current_regime)
 
             total_policy_loss += policy_loss.item()
             total_value_loss += value_loss.item()

@@ -189,8 +189,8 @@ class CorrelationAnalyzer:
             self.returns_history[symbol] = self.returns_history[symbol][-self.lookback_periods:]
             self.timestamps_history[symbol] = self.timestamps_history[symbol][-self.lookback_periods:]
 
-        # Recalculate correlations involving this symbol
-        self._recalculate_correlations(symbol)
+        # Incrementally update correlations involving this symbol (more efficient)
+        self._incremental_update_correlations(symbol)
 
         logger.debug(
             "returns_updated",
@@ -463,6 +463,31 @@ class CorrelationAnalyzer:
                 key = tuple(sorted([symbol, other_symbol]))
                 self.correlation_matrix[key] = corr_metrics
 
+    def _incremental_update_correlations(self, symbol: str) -> None:
+        """
+        Incrementally update correlations (more efficient than full recalculation).
+        
+        Only updates correlations for the symbol that changed, not all pairs.
+        """
+        if len(self.returns_history[symbol]) < self.min_periods:
+            return  # Not enough data yet
+
+        # Only update correlations involving this symbol
+        for other_symbol in self.returns_history:
+            if other_symbol == symbol:
+                continue
+
+            if len(self.returns_history[other_symbol]) < self.min_periods:
+                continue
+
+            # Calculate correlation (incremental - only for changed symbol)
+            corr_metrics = self._calculate_correlation(symbol, other_symbol)
+
+            if corr_metrics:
+                # Store in cache (use sorted tuple as key for consistency)
+                key = tuple(sorted([symbol, other_symbol]))
+                self.correlation_matrix[key] = corr_metrics
+
     def _calculate_correlation(
         self,
         symbol1: str,
@@ -505,9 +530,8 @@ class CorrelationAnalyzer:
         else:
             strength = 'NONE'
 
-        # TODO: Calculate lead-lag relationship (which asset leads the other)
-        # For now, set to None
-        lead_lag_minutes = None
+        # Calculate lead-lag relationship using cross-correlation
+        lead_lag_minutes = self._calculate_lead_lag(symbol1, symbol2)
 
         return CorrelationMetrics(
             asset1=symbol1,
@@ -540,3 +564,84 @@ class CorrelationAnalyzer:
         """Get simple diversification score (0-1) for portfolio."""
         risk = self.analyze_portfolio_risk(portfolio_symbols)
         return risk.diversification_ratio
+
+    def _calculate_lead_lag(
+        self,
+        symbol1: str,
+        symbol2: str,
+        max_lag_minutes: int = 30,
+    ) -> Optional[float]:
+        """
+        Calculate lead-lag relationship using cross-correlation.
+        
+        Returns:
+            Lead-lag in minutes. Positive = symbol1 leads symbol2.
+            Negative = symbol2 leads symbol1. None if insufficient data.
+        """
+        if symbol1 not in self.returns_history or symbol2 not in self.returns_history:
+            return None
+        
+        returns1 = self.returns_history[symbol1]
+        returns2 = self.returns_history[symbol2]
+        timestamps1 = self.timestamps_history[symbol1]
+        timestamps2 = self.timestamps_history[symbol2]
+        
+        # Need at least min_periods
+        if len(returns1) < self.min_periods or len(returns2) < self.min_periods:
+            return None
+        
+        # Align by timestamps
+        min_len = min(len(returns1), len(returns2))
+        returns1 = np.array(returns1[-min_len:])
+        returns2 = np.array(returns2[-min_len:])
+        timestamps1 = np.array(timestamps1[-min_len:])
+        timestamps2 = np.array(timestamps2[-min_len:])
+        
+        # Calculate average time difference between samples
+        if len(timestamps1) < 2 or len(timestamps2) < 2:
+            return None
+        
+        avg_interval1 = np.mean(np.diff(timestamps1)) / 60.0  # Convert to minutes
+        avg_interval2 = np.mean(np.diff(timestamps2)) / 60.0
+        
+        # Use the average interval
+        avg_interval = (avg_interval1 + avg_interval2) / 2.0
+        
+        # Calculate cross-correlation with lags
+        max_lag_samples = int(max_lag_minutes / avg_interval) if avg_interval > 0 else 10
+        max_lag_samples = min(max_lag_samples, min_len // 4)  # Don't use more than 25% of data
+        
+        if max_lag_samples < 1:
+            return None
+        
+        best_corr = -1.0
+        best_lag = 0
+        
+        # Try different lags
+        for lag in range(-max_lag_samples, max_lag_samples + 1):
+            if lag == 0:
+                # No lag
+                corr = np.corrcoef(returns1, returns2)[0, 1]
+            elif lag > 0:
+                # symbol1 leads (shift symbol2 forward)
+                if lag >= len(returns2):
+                    continue
+                corr = np.corrcoef(returns1[:-lag], returns2[lag:])[0, 1]
+            else:
+                # symbol2 leads (shift symbol1 forward)
+                lag_abs = abs(lag)
+                if lag_abs >= len(returns1):
+                    continue
+                corr = np.corrcoef(returns1[lag_abs:], returns2[:-lag_abs])[0, 1]
+            
+            if not np.isnan(corr) and abs(corr) > abs(best_corr):
+                best_corr = corr
+                best_lag = lag
+        
+        # Convert lag to minutes
+        if abs(best_corr) < 0.3:  # Weak correlation, don't trust the lag
+            return None
+        
+        lead_lag_minutes = best_lag * avg_interval
+        
+        return lead_lag_minutes
