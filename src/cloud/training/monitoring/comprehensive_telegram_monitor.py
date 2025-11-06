@@ -464,6 +464,93 @@ class ComprehensiveTelegramMonitor:
             action_required=False,
         )
 
+    def notify_training_progress(
+        self,
+        symbol: str,
+        batch_num: int,
+        total_batches: int,
+        task_num: int,
+        total_tasks: int,
+        status: str,  # "started", "downloading", "downloaded", "training", "completed", "failed"
+        details: Optional[Dict[str, Any]] = None,
+    ):
+        """Notify about training progress."""
+        if status == "started":
+            message = f"*📊 Training Started*\n\n"
+            message += f"Symbol: `{symbol}`\n"
+            message += f"Batch: {batch_num}/{total_batches}\n"
+            message += f"Task: {task_num}/{total_tasks}\n"
+            emoji = "📊"
+        elif status == "downloading":
+            message = f"*⬇️ Downloading Data*\n\n"
+            message += f"Symbol: `{symbol}`\n"
+            if details:
+                message += f"Window: {details.get('window_days', 'N/A')} days\n"
+            message += f"This may take several minutes...\n"
+            emoji = "⬇️"
+        elif status == "downloaded":
+            message = f"*✅ Data Downloaded*\n\n"
+            message += f"Symbol: `{symbol}`\n"
+            if details:
+                message += f"Rows: {details.get('rows', 'N/A'):,}\n"
+            message += f"Starting model training...\n"
+            emoji = "✅"
+        elif status == "training":
+            message = f"*🤖 Training Model*\n\n"
+            message += f"Symbol: `{symbol}`\n"
+            message += f"Training ML models...\n"
+            emoji = "🤖"
+        elif status == "completed":
+            message = f"*✅ Training Complete*\n\n"
+            message += f"Symbol: `{symbol}`\n"
+            if details:
+                published = details.get("published", False)
+                reason = details.get("reason", "N/A")
+                message += f"Status: {'✅ Published' if published else '⚠️ Rejected'}\n"
+                message += f"Reason: {reason}\n"
+            emoji = "✅"
+        elif status == "failed":
+            message = f"*❌ Training Failed*\n\n"
+            message += f"Symbol: `{symbol}`\n"
+            if details:
+                message += f"Error: {details.get('error', 'Unknown error')}\n"
+            emoji = "❌"
+        else:
+            return  # Unknown status
+        
+        self._send_notification(
+            NotificationLevel.LOW,
+            f"Training Progress - {symbol}",
+            message,
+            emoji,
+            action_required=False,
+        )
+
+    def notify_batch_progress(
+        self,
+        batch_num: int,
+        total_batches: int,
+        completed_tasks: int,
+        total_tasks: int,
+        symbols: List[str],
+    ):
+        """Notify about batch progress."""
+        progress_pct = int((completed_tasks / total_tasks) * 100) if total_tasks > 0 else 0
+        message = f"*📦 Batch Progress*\n\n"
+        message += f"Batch: {batch_num}/{total_batches}\n"
+        message += f"Progress: {completed_tasks}/{total_tasks} tasks ({progress_pct}%)\n"
+        message += f"Symbols: {', '.join(symbols[:5])}"
+        if len(symbols) > 5:
+            message += f" ... and {len(symbols) - 5} more"
+        
+        self._send_notification(
+            NotificationLevel.LOW,
+            "Batch Progress",
+            message,
+            "📦",
+            action_required=False,
+        )
+
     def _send_notification(
         self,
         level: NotificationLevel,
