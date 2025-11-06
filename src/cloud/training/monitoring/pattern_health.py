@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 import psycopg2
+import psycopg2.errors
 from psycopg2.extras import RealDictCursor
 import structlog
 
@@ -122,27 +123,41 @@ class PatternHealthMonitor:
 
     def check_all_patterns(self) -> List[PatternHealthReport]:
         """Check health of all active patterns."""
-        self.connect()
         reports = []
+        
+        try:
+            self.connect()
+            
+            with self._conn.cursor(cursor_factory=RealDictCursor) as cur:
+                # Get all patterns with sufficient usage
+                cur.execute(
+                    """
+                    SELECT pattern_id
+                    FROM pattern_library
+                    WHERE total_occurrences >= %s
+                      AND reliability_score > 0  -- Not blacklisted
+                    ORDER BY total_occurrences DESC
+                    """,
+                    (self.config.min_trades_for_assessment,),
+                )
+                patterns = cur.fetchall()
 
-        with self._conn.cursor(cursor_factory=RealDictCursor) as cur:
-            # Get all patterns with sufficient usage
-            cur.execute(
-                """
-                SELECT pattern_id
-                FROM pattern_library
-                WHERE total_occurrences >= %s
-                  AND reliability_score > 0  -- Not blacklisted
-                ORDER BY total_occurrences DESC
-                """,
-                (self.config.min_trades_for_assessment,),
-            )
-            patterns = cur.fetchall()
-
-        for row in patterns:
-            report = self.check_pattern_health(row["pattern_id"])
-            if report:
-                reports.append(report)
+            for row in patterns:
+                report = self.check_pattern_health(row["pattern_id"])
+                if report:
+                    reports.append(report)
+        except psycopg2.errors.UndefinedTable:
+            logger.debug("table_pattern_library_not_exists", message="Table doesn't exist yet - skipping pattern check")
+            self._conn.rollback()
+            return reports
+        except Exception as e:
+            logger.warning("pattern_health_check_failed", error=str(e))
+            if self._conn:
+                try:
+                    self._conn.rollback()
+                except Exception:
+                    pass
+            return reports
 
         logger.info("pattern_health_check_complete", patterns_checked=len(reports))
         return reports
@@ -222,21 +237,23 @@ class PatternHealthMonitor:
 
         This suggests overfitting to historical data.
         """
-        self.connect()
         alerts = []
-
-        with self._conn.cursor(cursor_factory=RealDictCursor) as cur:
-            # Find patterns with high stored win rate but poor recent performance
-            cur.execute(
-                """
-                WITH recent_performance AS (
-                    SELECT
-                        model_version,
-                        AVG(CASE WHEN is_winner THEN 1.0 ELSE 0.0 END) as live_win_rate,
-                        COUNT(*) as live_trades
-                    FROM trade_memory
-                    WHERE entry_timestamp >= NOW() - INTERVAL '14 days'
-                      AND is_winner IS NOT NULL
+        
+        try:
+            self.connect()
+            
+            with self._conn.cursor(cursor_factory=RealDictCursor) as cur:
+                # Find patterns with high stored win rate but poor recent performance
+                cur.execute(
+                    """
+                    WITH recent_performance AS (
+                        SELECT
+                            model_version,
+                            AVG(CASE WHEN is_winner THEN 1.0 ELSE 0.0 END) as live_win_rate,
+                            COUNT(*) as live_trades
+                        FROM trade_memory
+                        WHERE entry_timestamp >= NOW() - INTERVAL '14 days'
+                          AND is_winner IS NOT NULL
                     GROUP BY model_version
                 )
                 SELECT
@@ -252,8 +269,20 @@ class PatternHealthMonitor:
                   AND rp.live_trades >= 30  -- Sufficient sample
                   AND pl.reliability_score > 0  -- Not blacklisted
                 """,
-            )
-            overfitted = cur.fetchall()
+                )
+                overfitted = cur.fetchall()
+        except psycopg2.errors.UndefinedTable:
+            logger.debug("table_pattern_library_or_trade_memory_not_exists", message="Tables don't exist yet - skipping overfitting check")
+            self._conn.rollback()
+            return alerts
+        except Exception as e:
+            logger.warning("overfitting_check_failed", error=str(e))
+            if self._conn:
+                try:
+                    self._conn.rollback()
+                except Exception:
+                    pass
+            return alerts
 
         for row in overfitted:
             backtest_wr = float(row["backtest_win_rate"])

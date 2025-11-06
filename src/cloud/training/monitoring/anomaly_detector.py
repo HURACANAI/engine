@@ -8,6 +8,7 @@ from typing import List, Optional
 
 import numpy as np
 import psycopg2
+import psycopg2.errors
 from psycopg2.extras import RealDictCursor
 import structlog
 
@@ -52,39 +53,53 @@ class StatisticalAnomalyDetector:
 
     def check_win_rate(self) -> List[HealthAlert]:
         """Check for win rate anomalies."""
-        self.connect()
         alerts = []
+        
+        try:
+            self.connect()
+            
+            with self._conn.cursor(cursor_factory=RealDictCursor) as cur:
+                # Get baseline win rate (last 7 days)
+                cur.execute(
+                    """
+                    SELECT
+                        AVG(CASE WHEN is_winner THEN 1.0 ELSE 0.0 END) as win_rate,
+                        STDDEV(CASE WHEN is_winner THEN 1.0 ELSE 0.0 END) as stddev,
+                        COUNT(*) as total_trades
+                    FROM trade_memory
+                    WHERE entry_timestamp >= NOW() - INTERVAL '%s days'
+                      AND entry_timestamp < NOW() - INTERVAL '%s hours'
+                      AND is_winner IS NOT NULL
+                    """,
+                    (self.config.baseline_window_days, self.config.comparison_window_hours),
+                )
+                baseline = cur.fetchone()
 
-        with self._conn.cursor(cursor_factory=RealDictCursor) as cur:
-            # Get baseline win rate (last 7 days)
-            cur.execute(
-                """
-                SELECT
-                    AVG(CASE WHEN is_winner THEN 1.0 ELSE 0.0 END) as win_rate,
-                    STDDEV(CASE WHEN is_winner THEN 1.0 ELSE 0.0 END) as stddev,
-                    COUNT(*) as total_trades
-                FROM trade_memory
-                WHERE entry_timestamp >= NOW() - INTERVAL '%s days'
-                  AND entry_timestamp < NOW() - INTERVAL '%s hours'
-                  AND is_winner IS NOT NULL
-                """,
-                (self.config.baseline_window_days, self.config.comparison_window_hours),
-            )
-            baseline = cur.fetchone()
-
-            # Get current win rate (last 24 hours)
-            cur.execute(
-                """
-                SELECT
-                    AVG(CASE WHEN is_winner THEN 1.0 ELSE 0.0 END) as win_rate,
-                    COUNT(*) as total_trades
-                FROM trade_memory
-                WHERE entry_timestamp >= NOW() - INTERVAL '%s hours'
-                  AND is_winner IS NOT NULL
-                """,
-                (self.config.comparison_window_hours,),
-            )
-            current = cur.fetchone()
+                # Get current win rate (last 24 hours)
+                cur.execute(
+                    """
+                    SELECT
+                        AVG(CASE WHEN is_winner THEN 1.0 ELSE 0.0 END) as win_rate,
+                        COUNT(*) as total_trades
+                    FROM trade_memory
+                    WHERE entry_timestamp >= NOW() - INTERVAL '%s hours'
+                      AND is_winner IS NOT NULL
+                    """,
+                    (self.config.comparison_window_hours,),
+                )
+                current = cur.fetchone()
+        except psycopg2.errors.UndefinedTable:
+            logger.debug("table_trade_memory_not_exists", message="Table doesn't exist yet - skipping win rate check")
+            self._conn.rollback()
+            return alerts
+        except Exception as e:
+            logger.warning("win_rate_check_failed", error=str(e))
+            if self._conn:
+                try:
+                    self._conn.rollback()
+                except Exception:
+                    pass
+            return alerts
 
         if not baseline or not current:
             return alerts
@@ -152,41 +167,55 @@ class StatisticalAnomalyDetector:
 
     def check_profit_anomaly(self) -> List[HealthAlert]:
         """Check for unusual profit/loss patterns."""
-        self.connect()
         alerts = []
+        
+        try:
+            self.connect()
+            
+            with self._conn.cursor(cursor_factory=RealDictCursor) as cur:
+                # Baseline P&L statistics
+                cur.execute(
+                    """
+                    SELECT
+                        AVG(net_profit_gbp) as avg_profit,
+                        STDDEV(net_profit_gbp) as stddev_profit,
+                        SUM(net_profit_gbp) as total_profit,
+                        COUNT(*) as total_trades
+                    FROM trade_memory
+                    WHERE entry_timestamp >= NOW() - INTERVAL '%s days'
+                      AND entry_timestamp < NOW() - INTERVAL '%s hours'
+                      AND is_winner IS NOT NULL
+                    """,
+                    (self.config.baseline_window_days, self.config.comparison_window_hours),
+                )
+                baseline = cur.fetchone()
 
-        with self._conn.cursor(cursor_factory=RealDictCursor) as cur:
-            # Baseline P&L statistics
-            cur.execute(
-                """
-                SELECT
-                    AVG(net_profit_gbp) as avg_profit,
-                    STDDEV(net_profit_gbp) as stddev_profit,
-                    SUM(net_profit_gbp) as total_profit,
-                    COUNT(*) as total_trades
-                FROM trade_memory
-                WHERE entry_timestamp >= NOW() - INTERVAL '%s days'
-                  AND entry_timestamp < NOW() - INTERVAL '%s hours'
-                  AND is_winner IS NOT NULL
-                """,
-                (self.config.baseline_window_days, self.config.comparison_window_hours),
-            )
-            baseline = cur.fetchone()
-
-            # Current P&L
-            cur.execute(
-                """
-                SELECT
-                    AVG(net_profit_gbp) as avg_profit,
-                    SUM(net_profit_gbp) as total_profit,
-                    COUNT(*) as total_trades
-                FROM trade_memory
-                WHERE entry_timestamp >= NOW() - INTERVAL '%s hours'
-                  AND is_winner IS NOT NULL
-                """,
-                (self.config.comparison_window_hours,),
-            )
-            current = cur.fetchone()
+                # Current P&L
+                cur.execute(
+                    """
+                    SELECT
+                        AVG(net_profit_gbp) as avg_profit,
+                        SUM(net_profit_gbp) as total_profit,
+                        COUNT(*) as total_trades
+                    FROM trade_memory
+                    WHERE entry_timestamp >= NOW() - INTERVAL '%s hours'
+                      AND is_winner IS NOT NULL
+                    """,
+                    (self.config.comparison_window_hours,),
+                )
+                current = cur.fetchone()
+        except psycopg2.errors.UndefinedTable:
+            logger.debug("table_trade_memory_not_exists", message="Table doesn't exist yet - skipping profit check")
+            self._conn.rollback()
+            return alerts
+        except Exception as e:
+            logger.warning("profit_check_failed", error=str(e))
+            if self._conn:
+                try:
+                    self._conn.rollback()
+                except Exception:
+                    pass
+            return alerts
 
         if not baseline or not current or current["total_trades"] < 20:
             return alerts
@@ -242,37 +271,51 @@ class StatisticalAnomalyDetector:
 
     def check_trade_volume(self) -> List[HealthAlert]:
         """Check for unusual trade volume (too few trades)."""
-        self.connect()
         alerts = []
+        
+        try:
+            self.connect()
+            
+            with self._conn.cursor(cursor_factory=RealDictCursor) as cur:
+                # Baseline trades per hour
+                cur.execute(
+                    """
+                    SELECT COUNT(*) / NULLIF(%s, 0) as trades_per_hour
+                    FROM trade_memory
+                    WHERE entry_timestamp >= NOW() - INTERVAL '%s days'
+                      AND entry_timestamp < NOW() - INTERVAL '%s hours'
+                    """,
+                    (
+                        self.config.baseline_window_days * 24,
+                        self.config.baseline_window_days,
+                        self.config.comparison_window_hours,
+                    ),
+                )
+                baseline = cur.fetchone()
 
-        with self._conn.cursor(cursor_factory=RealDictCursor) as cur:
-            # Baseline trades per hour
-            cur.execute(
-                """
-                SELECT COUNT(*) / NULLIF(%s, 0) as trades_per_hour
-                FROM trade_memory
-                WHERE entry_timestamp >= NOW() - INTERVAL '%s days'
-                  AND entry_timestamp < NOW() - INTERVAL '%s hours'
-                """,
-                (
-                    self.config.baseline_window_days * 24,
-                    self.config.baseline_window_days,
-                    self.config.comparison_window_hours,
-                ),
-            )
-            baseline = cur.fetchone()
-
-            # Current trades per hour
-            cur.execute(
-                """
-                SELECT COUNT(*) / NULLIF(%s, 0) as trades_per_hour,
-                       COUNT(*) as total_trades
-                FROM trade_memory
-                WHERE entry_timestamp >= NOW() - INTERVAL '%s hours'
-                """,
-                (self.config.comparison_window_hours, self.config.comparison_window_hours),
-            )
-            current = cur.fetchone()
+                # Current trades per hour
+                cur.execute(
+                    """
+                    SELECT COUNT(*) / NULLIF(%s, 0) as trades_per_hour,
+                           COUNT(*) as total_trades
+                    FROM trade_memory
+                    WHERE entry_timestamp >= NOW() - INTERVAL '%s hours'
+                    """,
+                    (self.config.comparison_window_hours, self.config.comparison_window_hours),
+                )
+                current = cur.fetchone()
+        except psycopg2.errors.UndefinedTable:
+            logger.debug("table_trade_memory_not_exists", message="Table doesn't exist yet - skipping volume check")
+            self._conn.rollback()
+            return alerts
+        except Exception as e:
+            logger.warning("volume_check_failed", error=str(e))
+            if self._conn:
+                try:
+                    self._conn.rollback()
+                except Exception:
+                    pass
+            return alerts
 
         if not baseline or not current:
             return alerts
