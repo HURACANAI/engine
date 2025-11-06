@@ -35,6 +35,11 @@ from .label_schemas import (
     ScalpLabelConfig
 )
 
+# Type hint for CostEstimator (forward reference to avoid circular import)
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from ..costs import CostEstimator
+
 logger = structlog.get_logger(__name__)
 
 
@@ -107,10 +112,10 @@ class TripleBarrierLabeler:
             if max_labels and len(labeled_trades) >= max_labels:
                 break
 
-            # Get entry candle
-            entry_row = df[entry_idx]
-            entry_time = entry_row['timestamp'][0]
-            entry_price = entry_row['close'][0]
+            # Get entry candle - use proper Polars row access
+            entry_row = df.row(entry_idx, named=True)
+            entry_time = entry_row['timestamp']
+            entry_price = entry_row['close']
 
             # Calculate barriers
             tp_price, sl_price, timeout_time = self._calculate_barriers(
@@ -216,11 +221,11 @@ class TripleBarrierLabeler:
         """
         # Look forward from entry
         for future_idx in range(entry_idx + 1, len(df)):
-            future_row = df[future_idx]
-            future_time = future_row['timestamp'][0]
-            future_high = future_row['high'][0]
-            future_low = future_row['low'][0]
-            future_close = future_row['close'][0]
+            future_row = df.row(future_idx, named=True)
+            future_time = future_row['timestamp']
+            future_high = future_row['high']
+            future_low = future_row['low']
+            future_close = future_row['close']
 
             # Check timeout FIRST (takes precedence)
             if future_time >= timeout_time:
@@ -282,10 +287,10 @@ class TripleBarrierLabeler:
             fee_bps = 8.0
 
         # Spread (from data if available, else estimate)
-        spread_bps = entry_row.get('spread_bps', [3.0])[0] if 'spread_bps' in entry_row else 3.0
+        spread_bps = entry_row.get('spread_bps', 3.0) if isinstance(entry_row.get('spread_bps'), (int, float)) else 3.0
 
         # Slippage (volatility-based)
-        atr_bps = entry_row.get('atr_bps', [10.0])[0] if 'atr_bps' in entry_row else 10.0
+        atr_bps = entry_row.get('atr_bps', 10.0) if isinstance(entry_row.get('atr_bps'), (int, float)) else 10.0
         slippage_bps = 0.5 * atr_bps
 
         # Round-trip costs (entry + exit)

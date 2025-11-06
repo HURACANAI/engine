@@ -1,5 +1,17 @@
 """
+[FUTURE/PILOT - NOT USED IN ENGINE]
+
 Shadow Deployment Framework - Safe Production Validation
+
+This module is for Pilot (Local Trader) live trading deployment.
+The Engine does NOT use this - Engine does shadow trading for LEARNING only.
+
+DO NOT USE in Engine daily training pipeline.
+This will be used when building Pilot component.
+
+IMPORTANT DISTINCTION:
+- Engine shadow trading = LEARNING (paper trades to train models, no deployment)
+- Pilot shadow deployment = LIVE DEPLOYMENT (testing new models before production)
 
 Purpose:
 Run the new dual-mode system in parallel with existing system without
@@ -29,31 +41,6 @@ Key Features:
    - Phase 2: 10% live (90% shadow)
    - Phase 3: 50% live (50% shadow)
    - Phase 4: 100% live (0% shadow)
-
-Usage:
-    # Initialize shadow deployment
-    shadow = ShadowDeployment(
-        shadow_system=new_dual_mode_coordinator,
-        production_system=existing_single_mode_coordinator,
-    )
-
-    # Process signal through both systems
-    for signal in signals:
-        result = shadow.process_signal(signal)
-
-        if result.production_decision.should_trade:
-            # Execute real trade
-            execute_trade(result.production_decision)
-
-        # Shadow records what it would have done
-        shadow.record_shadow_trade(result.shadow_decision)
-
-    # After 7 days, evaluate
-    report = shadow.generate_comparison_report()
-
-    if report.shadow_is_better and report.passes_safety_checks:
-        print("Shadow system validated! Ready for Phase 2 (10% live)")
-        shadow.promote_to_phase_2()
 """
 
 from dataclasses import dataclass, field

@@ -1,5 +1,16 @@
 """
+[FUTURE/PILOT - NOT USED IN ENGINE]
+
 Trading Coordinator - Integrates Dual-Mode System with Alpha Engines
+
+This module is for Pilot (Local Trader) live trading execution.
+The Engine does NOT use this directly - Engine uses shadow_trader.py for LEARNING.
+
+DO NOT USE in Engine daily training pipeline.
+This will be used when building Pilot component.
+
+NOTE: This is used by backtesting_framework.py for validation/testing,
+but the primary use case is live trading in Pilot.
 
 This is the main orchestration layer that ties everything together:
 1. Alpha engines generate signals
@@ -29,25 +40,6 @@ Key Features:
 - Independent gate profiles per mode
 - Heat management across both books
 - Comprehensive metrics and monitoring
-
-Usage:
-    coordinator = TradingCoordinator(
-        total_capital=10000.0,
-        asset_symbols=['ETH-USD', 'SOL-USD', 'BTC-USD'],
-    )
-
-    # Process market data
-    coordinator.process_market_data(
-        symbol='ETH-USD',
-        price=2000.0,
-        features={...},
-        regime='TREND',
-    )
-
-    # Get metrics
-    metrics = coordinator.get_metrics()
-    print(f"Scalp P&L: ${metrics['scalp_book']['pnl']:.2f}")
-    print(f"Runner P&L: ${metrics['runner_book']['pnl']:.2f}")
 """
 
 from dataclasses import dataclass
@@ -56,6 +48,15 @@ import time
 
 import numpy as np
 import structlog
+
+from ..validation.validators import (
+    validate_symbol,
+    validate_price,
+    validate_confidence,
+    validate_features,
+    validate_regime,
+    validate_size,
+)
 
 # Import all our components
 from .alpha_engines import (
@@ -240,7 +241,25 @@ class TradingCoordinator:
 
         Returns:
             TradeDecision if trade generated, None otherwise
+            
+        Raises:
+            ValueError: If inputs are invalid
         """
+        # Validate all inputs
+        try:
+            symbol = validate_symbol(symbol)
+            price = validate_price(price)
+            features = validate_features(features)
+            regime = validate_regime(regime)
+            
+            if not isinstance(spread_bps, (int, float)) or spread_bps < 0:
+                raise ValueError(f"Invalid spread_bps: must be non-negative, got {spread_bps}")
+            if not isinstance(liquidity_score, (int, float)) or not 0 <= liquidity_score <= 1:
+                raise ValueError(f"Invalid liquidity_score: must be between 0 and 1, got {liquidity_score}")
+        except ValueError as e:
+            logger.error("invalid_input", error=str(e), symbol=symbol, price=price)
+            raise
+        
         self.total_signals_processed += 1
         self.current_prices[symbol] = price
 
@@ -333,20 +352,25 @@ class TradingCoordinator:
 
         # Check if approved
         if not routing_decision.approved:
-            if routing_decision.heat_limit_hit:
+            # Safely check heat_limit_hit attribute
+            if hasattr(routing_decision, 'heat_limit_hit') and routing_decision.heat_limit_hit:
                 self.trades_blocked_by_heat += 1
             else:
                 self.trades_blocked_by_gates += 1
 
                 # Record counterfactual for blocked trade
-                if routing_decision.gate_decision:
+                if hasattr(routing_decision, 'gate_decision') and routing_decision.gate_decision:
+                    blocked_reason = "Gates blocked"
+                    if hasattr(routing_decision.gate_decision, 'gates_blocked'):
+                        blocked_reason = f"Gates blocked: {routing_decision.gate_decision.gates_blocked}"
+                    
                     self.counterfactual_tracker.record_blocked_trade(
                         gate_name='combined_gates',
                         symbol=symbol,
                         direction='long' if primary_signal.direction == 'buy' else 'short',
                         entry_price=price,
-                        size=200.0 / price,  # Convert USD to asset units
-                        blocked_reason=f"Gates blocked: {routing_decision.gate_decision.gates_blocked}",
+                        size=200.0 / price if price > 0 else 0,  # Convert USD to asset units
+                        blocked_reason=blocked_reason,
                         gate_features=gate_features,
                         technique=primary_signal.technique.value,
                         regime=regime,
@@ -359,11 +383,19 @@ class TradingCoordinator:
         direction_map = {'buy': 'long', 'sell': 'short'}
         direction = direction_map.get(primary_signal.direction, 'long')
 
+        # Safely calculate position size (avoid division by zero)
+        if price <= 0:
+            logger.warning("invalid_price_for_trade", symbol=symbol, price=price)
+            return None
+        
+        recommended_size = routing_decision.recommended_size if hasattr(routing_decision, 'recommended_size') else 200.0
+        position_size = recommended_size / price  # Convert to asset units
+
         position = self.book_manager.add_position(
             symbol=symbol,
-            book=routing_decision.recommended_book,
+            book=routing_decision.recommended_book if hasattr(routing_decision, 'recommended_book') else None,
             entry_price=price,
-            size=routing_decision.recommended_size / price,  # Convert to asset units
+            size=position_size,
             direction=direction,
             technique=primary_signal.technique.value,
             regime=regime,
@@ -373,35 +405,56 @@ class TradingCoordinator:
         if position:
             self.trades_executed += 1
 
+            edge_net = 0
+            if hasattr(routing_decision, 'gate_decision') and routing_decision.gate_decision:
+                if hasattr(routing_decision.gate_decision, 'edge_net_bps'):
+                    edge_net = routing_decision.gate_decision.edge_net_bps
+            
             logger.info(
                 "trade_executed",
                 symbol=symbol,
-                book=routing_decision.recommended_book.value,
+                book=routing_decision.recommended_book.value if hasattr(routing_decision.recommended_book, 'value') else str(routing_decision.recommended_book),
                 technique=primary_signal.technique.value,
                 confidence=adjusted_confidence,
-                edge_net=routing_decision.gate_decision.edge_net_bps if routing_decision.gate_decision else 0,
-                size_usd=routing_decision.recommended_size,
+                edge_net=edge_net,
+                size_usd=routing_decision.recommended_size if hasattr(routing_decision, 'recommended_size') else 0,
             )
 
+            # Safely extract gate decision attributes
+            gates_passed = 0
+            gates_blocked = 0
+            edge_net_bps = 0
+            win_probability = 0
+            
+            if hasattr(routing_decision, 'gate_decision') and routing_decision.gate_decision:
+                if hasattr(routing_decision.gate_decision, 'gates_passed'):
+                    gates_passed = routing_decision.gate_decision.gates_passed
+                if hasattr(routing_decision.gate_decision, 'gates_blocked'):
+                    gates_blocked = routing_decision.gate_decision.gates_blocked
+                if hasattr(routing_decision.gate_decision, 'edge_net_bps'):
+                    edge_net_bps = routing_decision.gate_decision.edge_net_bps
+                if hasattr(routing_decision.gate_decision, 'win_probability'):
+                    win_probability = routing_decision.gate_decision.win_probability
+            
             # Create trade decision record
             return TradeDecision(
                 approved=True,
                 symbol=symbol,
                 direction=direction,
-                book=routing_decision.recommended_book,
-                size_usd=routing_decision.recommended_size,
+                book=routing_decision.recommended_book if hasattr(routing_decision, 'recommended_book') else None,
+                size_usd=routing_decision.recommended_size if hasattr(routing_decision, 'recommended_size') else 0,
                 technique=primary_signal.technique.value,
                 confidence=adjusted_confidence,
                 regime=regime,
                 edge_hat_bps=edge_hat_bps,
-                consensus_level=consensus_result.consensus_level.value,
+                consensus_level=consensus_result.consensus_level.value if hasattr(consensus_result.consensus_level, 'value') else str(consensus_result.consensus_level),
                 agreement_score=consensus_result.agreement_score,
-                preferred_mode=routing_decision.preferred_mode.value,
-                mode_reason=routing_decision.mode_reason,
-                gates_passed=routing_decision.gate_decision.gates_passed if routing_decision.gate_decision else 0,
-                gates_blocked=routing_decision.gate_decision.gates_blocked if routing_decision.gate_decision else 0,
-                edge_net_bps=routing_decision.gate_decision.edge_net_bps if routing_decision.gate_decision else 0,
-                win_probability=routing_decision.gate_decision.win_probability if routing_decision.gate_decision else 0,
+                preferred_mode=routing_decision.preferred_mode.value if hasattr(routing_decision, 'preferred_mode') and hasattr(routing_decision.preferred_mode, 'value') else 'unknown',
+                mode_reason=routing_decision.mode_reason if hasattr(routing_decision, 'mode_reason') else '',
+                gates_passed=gates_passed,
+                gates_blocked=gates_blocked,
+                edge_net_bps=edge_net_bps,
+                win_probability=win_probability,
                 timestamp=time.time(),
                 reasoning=primary_signal.reasoning,
             )
@@ -457,12 +510,14 @@ class TradingCoordinator:
         for book_type in [BookType.SHORT_HOLD, BookType.LONG_HOLD]:
             positions = self.book_manager._get_book_positions(book_type, open_only=True)
 
-            for position in positions:
-                if position.symbol == symbol:
-                    self.book_manager.update_position_price(
-                        position.position_id,
-                        current_price,
-                    )
+            if positions:  # Check if positions list is not None/empty
+                for position in positions:
+                    if position and hasattr(position, 'symbol') and position.symbol == symbol:
+                        if hasattr(position, 'position_id'):
+                            self.book_manager.update_position_price(
+                                position.position_id,
+                                current_price,
+                            )
 
     def simulate_pending_counterfactuals(self) -> int:
         """Simulate all pending counterfactuals with current prices."""

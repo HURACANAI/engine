@@ -1,5 +1,13 @@
 """
+[FUTURE/MECHANIC - NOT USED IN ENGINE]
+
 Incremental Labeling System
+
+This module is for Mechanic (Cloud Updater Box) hourly incremental updates.
+The Engine does NOT use this - it does full daily retraining instead.
+
+DO NOT USE in Engine daily training pipeline.
+This will be used when building Mechanic component.
 
 Enables efficient hourly updates by:
 1. Caching previously labeled trades

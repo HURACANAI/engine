@@ -7,6 +7,16 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, Optional
 
 import ccxt
+import structlog
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type,
+    RetryError,
+)
+
+logger = structlog.get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -64,24 +74,52 @@ class ExchangeClient:
 	def format_symbol(self, base: str, quote: str) -> str:
 		return f"{base}/{quote}" if "/" not in base else base
 
+	@retry(
+		stop=stop_after_attempt(3),
+		wait=wait_exponential(multiplier=1, min=1, max=10),
+		retry=retry_if_exception_type((ccxt.NetworkError, ccxt.ExchangeError, ConnectionError, TimeoutError)),
+		reraise=True,
+	)
 	def fetch_markets(self) -> Dict[str, ExchangeMarket]:
-		markets = self._client.load_markets(reload=False)
-		return {
-			symbol: ExchangeMarket(
-				symbol=symbol,
-				base=data.get("base"),
-				quote=data.get("quote"),
-				maker=data.get("maker", 0.0) or 0.0,
-				taker=data.get("taker", 0.0) or 0.0,
-				active=data.get("active", False),
-				info=data.get("info", {}),
-			)
-			for symbol, data in markets.items()
-		}
+		"""Fetch market information with retry logic."""
+		try:
+			markets = self._client.load_markets(reload=False)
+			return {
+				symbol: ExchangeMarket(
+					symbol=symbol,
+					base=data.get("base"),
+					quote=data.get("quote"),
+					maker=data.get("maker", 0.0) or 0.0,
+					taker=data.get("taker", 0.0) or 0.0,
+					active=data.get("active", False),
+					info=data.get("info", {}),
+				)
+				for symbol, data in markets.items()
+			}
+		except (ccxt.NetworkError, ccxt.ExchangeError, ConnectionError, TimeoutError) as e:
+			logger.warning("markets_fetch_retry", error=str(e), error_type=type(e).__name__)
+			raise
 
+	@retry(
+		stop=stop_after_attempt(3),
+		wait=wait_exponential(multiplier=1, min=1, max=10),
+		retry=retry_if_exception_type((ccxt.NetworkError, ccxt.ExchangeError, ConnectionError, TimeoutError)),
+		reraise=True,
+	)
 	def fetch_tickers(self, symbols: Optional[Iterable[str]] = None) -> Dict[str, Dict[str, Any]]:
-		return self._client.fetch_tickers(list(symbols) if symbols else None)
+		"""Fetch ticker data with retry logic."""
+		try:
+			return self._client.fetch_tickers(list(symbols) if symbols else None)
+		except (ccxt.NetworkError, ccxt.ExchangeError, ConnectionError, TimeoutError) as e:
+			logger.warning("tickers_fetch_retry", error=str(e), error_type=type(e).__name__)
+			raise
 
+	@retry(
+		stop=stop_after_attempt(3),
+		wait=wait_exponential(multiplier=1, min=1, max=10),
+		retry=retry_if_exception_type((ccxt.NetworkError, ccxt.ExchangeError, ConnectionError, TimeoutError)),
+		reraise=True,
+	)
 	def fetch_ohlcv(
 		self,
 		symbol: str,
@@ -90,29 +128,55 @@ class ExchangeClient:
 		limit: Optional[int] = None,
 		params: Optional[Dict[str, Any]] = None,
 	) -> list[list[Any]]:
+		"""
+		Fetch OHLCV data with automatic retry on network errors.
+		
+		Args:
+			symbol: Trading symbol (e.g., 'BTC/USDT')
+			timeframe: Timeframe (e.g., '1m', '1h', '1d')
+			since: Start timestamp in milliseconds
+			limit: Number of candles to fetch
+			params: Additional parameters
+			
+		Returns:
+			List of OHLCV candles: [[timestamp, open, high, low, close, volume], ...]
+			
+		Raises:
+			ccxt.NetworkError: If network error persists after retries
+			ccxt.ExchangeError: If exchange error persists after retries
+		"""
+		# Validate inputs
+		if not symbol or not isinstance(symbol, str):
+			raise ValueError(f"Invalid symbol: {symbol}")
+		if not timeframe or not isinstance(timeframe, str):
+			raise ValueError(f"Invalid timeframe: {timeframe}")
+		if limit is not None and (not isinstance(limit, int) or limit <= 0):
+			raise ValueError(f"Invalid limit: {limit}")
+		
 		# Fix: Ensure params is always a dict, never None
 		safe_params = params if params is not None else {}
 
-		# Add retry logic with exponential backoff
-		max_retries = 3
-		for attempt in range(max_retries):
-			try:
-				return self._client.fetch_ohlcv(
-					symbol,
-					timeframe=timeframe,
-					since=since,
-					limit=limit,
-					params=safe_params
-				)
-			except Exception as e:
-				if attempt == max_retries - 1:
-					# Last attempt failed, raise the error
-					raise
-				# Exponential backoff: 1s, 2s, 4s
-				import time
-				wait_time = 2 ** attempt
-				print(f"⚠️  OHLCV fetch failed (attempt {attempt + 1}/{max_retries}), retrying in {wait_time}s: {e}")
-				time.sleep(wait_time)
+		try:
+			result = self._client.fetch_ohlcv(
+				symbol,
+				timeframe=timeframe,
+				since=since,
+				limit=limit,
+				params=safe_params
+			)
+			if not result:
+				logger.warning("empty_ohlcv_result", symbol=symbol, timeframe=timeframe)
+				return []
+			return result
+		except (ccxt.NetworkError, ccxt.ExchangeError, ConnectionError, TimeoutError) as e:
+			logger.warning(
+				"ohlcv_fetch_retry",
+				symbol=symbol,
+				timeframe=timeframe,
+				error=str(e),
+				error_type=type(e).__name__,
+			)
+			raise
 
 	def parse_exchange_timestamp(self, ms_timestamp: int) -> datetime:
 		return datetime.fromtimestamp(ms_timestamp / 1_000, tz=timezone.utc)

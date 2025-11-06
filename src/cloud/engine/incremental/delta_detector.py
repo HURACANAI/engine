@@ -1,5 +1,13 @@
 """
+[FUTURE/MECHANIC - NOT USED IN ENGINE]
+
 Delta Detector
+
+This module is for Mechanic (Cloud Updater Box) hourly incremental updates.
+The Engine does NOT use this - it does full daily retraining instead.
+
+DO NOT USE in Engine daily training pipeline.
+This will be used when building Mechanic component.
 
 Detects what changed between training runs:
 - New candles available

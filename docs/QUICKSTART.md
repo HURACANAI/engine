@@ -1,5 +1,18 @@
 # 🚀 Huracan Engine - Quick Start Guide
 
+## 🎯 Engine Scope
+
+**This codebase is ONLY for building the Engine (Cloud Training Box).**
+
+- ✅ **Daily baseline training** at 02:00 UTC
+- ✅ **Shadow trading for learning** (paper trades, no real money)
+- ❌ **NOT** hourly updates (that's Mechanic - future)
+- ❌ **NOT** live trading (that's Pilot - future)
+
+**See [ENGINE_SCOPE.md](./ENGINE_SCOPE.md) for details.**
+
+---
+
 ## ✅ Setup Complete!
 
 Your Huracan Engine is now a **complete self-learning RL-powered trading system**!

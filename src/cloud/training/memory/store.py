@@ -11,6 +11,8 @@ import psycopg2
 from psycopg2.extras import Json, RealDictCursor
 import structlog
 
+from ..database.pool import DatabaseConnectionPool
+
 logger = structlog.get_logger(__name__)
 
 
@@ -71,29 +73,68 @@ class PatternStats:
 class MemoryStore:
     """Manages trade memory with vector similarity search capabilities."""
 
-    def __init__(self, dsn: str, embedding_dim: int = 128) -> None:
+    def __init__(
+        self,
+        dsn: str,
+        embedding_dim: int = 128,
+        use_pool: bool = True,
+        pool_minconn: int = 2,
+        pool_maxconn: int = 10,
+    ) -> None:
+        """
+        Initialize memory store.
+        
+        Args:
+            dsn: Database connection string
+            embedding_dim: Dimension of embeddings
+            use_pool: Whether to use connection pooling (recommended)
+            pool_minconn: Minimum pool connections
+            pool_maxconn: Maximum pool connections
+        """
         self._dsn = dsn
         self._embedding_dim = embedding_dim
-        self._conn: Optional[psycopg2.extensions.connection] = None
+        self._use_pool = use_pool
+        
+        if use_pool:
+            self._pool = DatabaseConnectionPool(
+                dsn=dsn,
+                minconn=pool_minconn,
+                maxconn=pool_maxconn,
+            )
+            logger.info("memory_store_initialized_with_pool", embedding_dim=embedding_dim)
+        else:
+            # Legacy mode: direct connections
+            self._conn: Optional[psycopg2.extensions.connection] = None
+            logger.info("memory_store_initialized_direct", embedding_dim=embedding_dim)
 
     def connect(self) -> None:
-        """Establish database connection."""
-        if self._conn is None or self._conn.closed:
-            self._conn = psycopg2.connect(self._dsn)
-            logger.info("memory_store_connected")
+        """Establish database connection (legacy mode only)."""
+        if not self._use_pool:
+            if self._conn is None or self._conn.closed:
+                self._conn = psycopg2.connect(self._dsn)
+                logger.info("memory_store_connected")
 
-    def _ensure_connection(self) -> psycopg2.extensions.connection:
-        """Return an active database connection or raise if unavailable."""
-        self.connect()
-        if self._conn is None or self._conn.closed:
-            raise RuntimeError("Memory store database connection is not available")
-        return self._conn
+    def _ensure_connection(self):
+        """Return connection context manager or direct connection."""
+        if self._use_pool:
+            return self._pool.get_connection()
+        else:
+            # Legacy mode
+            self.connect()
+            if self._conn is None or self._conn.closed:
+                raise RuntimeError("Memory store database connection is not available")
+            return self._conn
 
     def close(self) -> None:
-        """Close database connection."""
-        if self._conn and not self._conn.closed:
-            self._conn.close()
-            logger.info("memory_store_closed")
+        """Close database connection or pool."""
+        if self._use_pool:
+            # Pool connections are managed automatically
+            pass
+        else:
+            # Legacy mode
+            if self._conn and not self._conn.closed:
+                self._conn.close()
+                logger.info("memory_store_closed")
 
     def store_trade(self, trade: TradeMemory) -> int:
         """
@@ -102,54 +143,72 @@ class MemoryStore:
         Returns:
             trade_id: The inserted trade ID
         """
-        conn = self._ensure_connection()
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                INSERT INTO trade_memory (
-                    symbol, entry_timestamp, entry_price, entry_features, entry_embedding,
-                    position_size_gbp, direction, exit_timestamp, exit_price, exit_reason,
-                    hold_duration_minutes, gross_profit_bps, net_profit_gbp, fees_gbp,
-                    slippage_bps, market_regime, volatility_bps, spread_at_entry_bps,
-                    is_winner, win_quality, model_version, model_confidence
-                )
-                VALUES (
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
-                )
-                RETURNING trade_id
-                """,
-                (
-                    trade.symbol,
-                    trade.entry_timestamp,
-                    trade.entry_price,
-                    Json(trade.entry_features),
-                    trade.entry_embedding.tolist(),
-                    trade.position_size_gbp,
-                    trade.direction,
-                    trade.exit_timestamp,
-                    trade.exit_price,
-                    trade.exit_reason,
-                    trade.hold_duration_minutes,
-                    trade.gross_profit_bps,
-                    trade.net_profit_gbp,
-                    trade.fees_gbp,
-                    trade.slippage_bps,
-                    trade.market_regime,
-                    trade.volatility_bps,
-                    trade.spread_at_entry_bps,
-                    trade.is_winner,
-                    trade.win_quality,
-                    trade.model_version,
-                    trade.model_confidence,
-                ),
+        # Validate trade data
+        if not trade.symbol or not isinstance(trade.symbol, str):
+            raise ValueError(f"Invalid trade symbol: {trade.symbol}")
+        if trade.entry_price <= 0:
+            raise ValueError(f"Invalid entry price: {trade.entry_price}")
+        if trade.position_size_gbp <= 0:
+            raise ValueError(f"Invalid position size: {trade.position_size_gbp}")
+        
+        if self._use_pool:
+            with self._ensure_connection() as conn:
+                with conn.cursor() as cur:
+                    return self._store_trade_impl(cur, trade)
+        else:
+            conn = self._ensure_connection()
+            with conn.cursor() as cur:
+                result = self._store_trade_impl(cur, trade)
+                conn.commit()
+                return result
+    
+    def _store_trade_impl(self, cur, trade: TradeMemory) -> int:
+        """Internal implementation of store_trade."""
+        cur.execute(
+            """
+            INSERT INTO trade_memory (
+                symbol, entry_timestamp, entry_price, entry_features, entry_embedding,
+                position_size_gbp, direction, exit_timestamp, exit_price, exit_reason,
+                hold_duration_minutes, gross_profit_bps, net_profit_gbp, fees_gbp,
+                slippage_bps, market_regime, volatility_bps, spread_at_entry_bps,
+                is_winner, win_quality, model_version, model_confidence
             )
-            returned = cur.fetchone()
-            if returned is None:
-                raise RuntimeError("Failed to retrieve inserted trade_id")
-            trade_id = int(returned[0])
-            conn.commit()
-            logger.info("trade_stored", trade_id=trade_id, symbol=trade.symbol)
-            return trade_id
+            VALUES (
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+            )
+            RETURNING trade_id
+            """,
+            (
+                trade.symbol,
+                trade.entry_timestamp,
+                trade.entry_price,
+                Json(trade.entry_features),
+                trade.entry_embedding.tolist(),
+                trade.position_size_gbp,
+                trade.direction,
+                trade.exit_timestamp,
+                trade.exit_price,
+                trade.exit_reason,
+                trade.hold_duration_minutes,
+                trade.gross_profit_bps,
+                trade.net_profit_gbp,
+                trade.fees_gbp,
+                trade.slippage_bps,
+                trade.market_regime,
+                trade.volatility_bps,
+                trade.spread_at_entry_bps,
+                trade.is_winner,
+                trade.win_quality,
+                trade.model_version,
+                trade.model_confidence,
+            ),
+        )
+        returned = cur.fetchone()
+        if returned is None:
+            raise RuntimeError("Failed to retrieve inserted trade_id")
+        trade_id = int(returned[0])
+        logger.info("trade_stored", trade_id=trade_id, symbol=trade.symbol)
+        return trade_id
 
     def find_similar_patterns(
         self,
@@ -182,8 +241,43 @@ class MemoryStore:
             - Patterns from different regimes still returned but with lower scores
             This prevents over-filtering while favoring contextually similar trades
         """
-        conn = self._ensure_connection()
-
+        # Validate inputs
+        if embedding is None or not isinstance(embedding, np.ndarray):
+            raise ValueError(f"Invalid embedding: must be numpy array, got {type(embedding)}")
+        if embedding.size == 0:
+            raise ValueError("Embedding cannot be empty")
+        if top_k <= 0 or not isinstance(top_k, int):
+            raise ValueError(f"Invalid top_k: must be positive integer, got {top_k}")
+        if not 0 <= min_similarity <= 1:
+            raise ValueError(f"Invalid min_similarity: must be between 0 and 1, got {min_similarity}")
+        if not 0 <= regime_weight <= 1:
+            raise ValueError(f"Invalid regime_weight: must be between 0 and 1, got {regime_weight}")
+        
+        if self._use_pool:
+            with self._ensure_connection() as conn:
+                return self._find_similar_patterns_impl(
+                    conn, embedding, symbol, market_regime, top_k, min_similarity,
+                    regime_weight, use_regime_boost
+                )
+        else:
+            conn = self._ensure_connection()
+            return self._find_similar_patterns_impl(
+                conn, embedding, symbol, market_regime, top_k, min_similarity,
+                regime_weight, use_regime_boost
+            )
+    
+    def _find_similar_patterns_impl(
+        self,
+        conn,
+        embedding: np.ndarray,
+        symbol: Optional[str],
+        market_regime: Optional[str],
+        top_k: int,
+        min_similarity: float,
+        regime_weight: float,
+        use_regime_boost: bool,
+    ) -> List[SimilarPattern]:
+        """Internal implementation of find_similar_patterns."""
         where_clauses = ["1 - (entry_embedding <=> %s::vector) >= %s"]
         params: List[Any] = [embedding.tolist(), min_similarity]
 

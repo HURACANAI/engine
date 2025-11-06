@@ -1,4 +1,26 @@
-"""Entrypoint for the 02:00 UTC daily retraining pipeline."""
+"""
+ENGINE MAIN ENTRY POINT - Daily Baseline Training
+
+This is the main entry point for the Engine (Cloud Training Box).
+Runs daily at 02:00 UTC to build a new baseline model.
+
+What the Engine Does:
+- Trains on 3-6 months of historical market data
+- Builds a clean daily baseline model
+- Validates with walk-forward testing
+- Saves model to S3 and registers in Postgres
+- Generates performance reports
+
+What the Engine Does NOT Do:
+- Hourly incremental updates (that's Mechanic)
+- Live trading execution (that's Pilot)
+- Real-time order management (that's Pilot)
+
+Entry Point:
+    python -m cloud.training.pipelines.daily_retrain
+    OR
+    cloud-training-daily-retrain (poetry script)
+"""
 
 from __future__ import annotations
 
@@ -48,7 +70,20 @@ def initialize_ray(address: Optional[str], namespace: str, runtime_env: Optional
 
 
 def run_daily_retrain() -> None:
-    """Execute the full Engine retraining workflow."""
+    """
+    Execute the full Engine retraining workflow.
+    
+    This is the main function for Engine daily baseline training.
+    It:
+    1. Loads configuration and initializes services
+    2. Selects trading universe
+    3. Trains models on historical data
+    4. Validates with walk-forward testing
+    5. Saves models and metrics to S3/Postgres
+    6. Generates reports
+    
+    Runs daily at 02:00 UTC (configured via APScheduler).
+    """
 
     configure_logging()
     logger = structlog.get_logger("daily_retrain")

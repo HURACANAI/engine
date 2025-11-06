@@ -8,9 +8,12 @@ from pathlib import Path
 from typing import Iterable, Optional
 
 import polars as pl
+import structlog
 
 from ..services.exchange import ExchangeClient
 from .quality_checks import DataQualitySuite
+
+logger = structlog.get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -38,10 +41,19 @@ class CandleDataLoader:
     def load(self, query: CandleQuery, use_cache: bool = True) -> pl.DataFrame:
         cache_path = self._cache_path(query)
         if use_cache and cache_path.exists():
-            frame = pl.read_parquet(cache_path)
-            return self._quality.validate(frame, query=query)
+            try:
+                frame = pl.read_parquet(cache_path)
+                return self._quality.validate(frame, query=query)
+            except Exception as e:
+                # If cache read fails, fall back to download
+                logger.warning("cache_read_failed", path=str(cache_path), error=str(e))
+        
         frame = self._download(query)
-        frame.write_parquet(cache_path)
+        if len(frame) > 0:  # Only write if we got data
+            try:
+                frame.write_parquet(cache_path)
+            except Exception as e:
+                logger.warning("cache_write_failed", path=str(cache_path), error=str(e))
         return frame
 
     def _download(self, query: CandleQuery, skip_validation: bool = False) -> pl.DataFrame:
@@ -50,13 +62,28 @@ class CandleDataLoader:
         end_ms = int(query.end_at.timestamp() * 1_000)
         while since_ms < end_ms:
             batch = self._exchange.fetch_ohlcv(query.symbol, query.timeframe, since=since_ms, limit=1_000)
-            if not batch:
+            if not batch or len(batch) == 0:
                 break
             rows.extend(batch)
-            last_ts = batch[-1][0]
-            if last_ts == since_ms:
+            # Safely get last timestamp
+            last_ts = batch[-1][0] if len(batch) > 0 else None
+            if last_ts is None or last_ts == since_ms:
                 break
             since_ms = last_ts + 60_000
+        if not rows:
+            # Return empty DataFrame with correct schema
+            return pl.DataFrame(
+                schema={
+                    "timestamp": pl.Int64,
+                    "open": pl.Float64,
+                    "high": pl.Float64,
+                    "low": pl.Float64,
+                    "close": pl.Float64,
+                    "volume": pl.Float64,
+                    "ts": pl.Datetime(time_unit="ms", time_zone="UTC"),
+                }
+            )
+        
         frame = pl.DataFrame(
             rows,
             schema=[
@@ -68,7 +95,7 @@ class CandleDataLoader:
                 ("volume", pl.Float64),
             ],
         ).with_columns(
-            pl.col("timestamp").map_elements(lambda ts: datetime.fromtimestamp(ts / 1_000, tz=timezone.utc)).alias("ts")
+            (pl.col("timestamp") / 1000).cast(pl.Datetime(time_unit="ms", time_zone="UTC")).alias("ts")
         )
         frame = frame.sort("ts")
 

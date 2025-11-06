@@ -34,9 +34,11 @@ from .notifications import NotificationClient
 from .universe import UniverseSelector
 from ..memory.store import MemoryStore
 from ..pipelines.rl_training_pipeline import RLTrainingPipeline
-from shared.contracts.mechanic import MechanicContract
+# FUTURE/MECHANIC - Not used in Engine (will be used when building Mechanic component)
+from shared.contracts.mechanic import MechanicContract  # NOQA: F401
 from shared.contracts.metrics import MetricsPayload
-from shared.contracts.pilot import PilotContract
+# FUTURE/PILOT - Not used in Engine (will be used when building Pilot component)
+from shared.contracts.pilot import PilotContract  # NOQA: F401
 from shared.features.recipe import FeatureRecipe
 
 

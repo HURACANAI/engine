@@ -57,6 +57,11 @@ class TrendEngine:
     Best in: TREND regime
     Key features: trend_strength, ema_slope, momentum_slope, htf_bias, adx
     Strategy: Enter when aligned multi-timeframe trend, exit on weakness
+    
+    Enhanced with Moving Average Crossover Strategy (verified):
+    - Golden Cross: SMA50 crosses above SMA200 → BUY signal
+    - Death Cross: SMA50 crosses below SMA200 → SELL signal
+    - Works best in trending markets
     """
 
     def __init__(
@@ -64,10 +69,12 @@ class TrendEngine:
         min_trend_strength: float = 0.6,
         min_adx: float = 25.0,
         min_confidence: float = 0.55,
+        use_ma_crossover: bool = True,
     ):
         self.min_trend_strength = min_trend_strength
         self.min_adx = min_adx
         self.min_confidence = min_confidence
+        self.use_ma_crossover = use_ma_crossover
 
         # Feature weights for this technique
         self.feature_weights = {
@@ -78,10 +85,69 @@ class TrendEngine:
             "adx": 0.15,
         }
 
+    def detect_ma_crossover(
+        self, features: Dict[str, float]
+    ) -> Optional[Tuple[str, float]]:
+        """
+        Detect moving average crossover (Golden Cross / Death Cross).
+        
+        Based on verified trend following strategy.
+        
+        Args:
+            features: Feature dictionary (should contain sma50, sma200, prev_sma50, prev_sma200)
+        
+        Returns:
+            (direction, confidence) tuple if crossover detected, None otherwise
+        """
+        if not self.use_ma_crossover:
+            return None
+
+        # Get MA values
+        sma50 = features.get("sma50", None)
+        sma200 = features.get("sma200", None)
+        prev_sma50 = features.get("prev_sma50", None)
+        prev_sma200 = features.get("prev_sma200", None)
+
+        if None in [sma50, sma200, prev_sma50, prev_sma200]:
+            return None
+
+        # Check for Golden Cross (SMA50 crosses above SMA200)
+        if prev_sma50 <= prev_sma200 and sma50 > sma200:
+            return ("buy", 0.75)  # Strong bullish signal
+
+        # Check for Death Cross (SMA50 crosses below SMA200)
+        elif prev_sma50 >= prev_sma200 and sma50 < sma200:
+            return ("sell", 0.75)  # Strong bearish signal
+
+        return None
+
     def generate_signal(
         self, features: Dict[str, float], current_regime: str
     ) -> AlphaSignal:
         """Generate trend-following signal."""
+        # Check for MA crossover first (high priority signal)
+        ma_crossover = self.detect_ma_crossover(features)
+        if ma_crossover:
+            direction, crossover_confidence = ma_crossover
+            regime_affinity = 1.0 if current_regime == "trend" else 0.5
+            confidence = crossover_confidence * regime_affinity
+            
+            crossover_type = "Golden Cross" if direction == "buy" else "Death Cross"
+            reasoning = f"{crossover_type} detected: SMA50 crossed SMA200"
+            
+            return AlphaSignal(
+                technique=TradingTechnique.TREND,
+                direction=direction,
+                confidence=min(confidence, 1.0),
+                reasoning=reasoning,
+                key_features={
+                    "sma50": features.get("sma50", 0.0),
+                    "sma200": features.get("sma200", 0.0),
+                    "ma_crossover": 1.0,
+                },
+                regime_affinity=regime_affinity,
+            )
+
         # Extract key features
         trend_str = features.get("trend_strength", 0.0)
         ema_slope = features.get("ema_slope", 0.0)

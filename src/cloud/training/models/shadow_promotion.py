@@ -1,5 +1,17 @@
 """
+[FUTURE/PILOT - NOT USED IN ENGINE]
+
 Shadow A/B Promotion Criteria - Safe Production Deployments
+
+This module is for Pilot (Local Trader) live trading deployment.
+The Engine does NOT use this - Engine does shadow trading for LEARNING only.
+
+DO NOT USE in Engine daily training pipeline.
+This will be used when building Pilot component.
+
+IMPORTANT DISTINCTION:
+- Engine shadow trading = LEARNING (paper trades to train models, no deployment)
+- Pilot shadow promotion = LIVE DEPLOYMENT (promoting models to production)
 
 Key Problem:
 New models/strategies look good in backtest, but:

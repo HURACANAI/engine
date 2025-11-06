@@ -1,6 +1,27 @@
 # Huracan Engine v5.1
 
-Huracan Engine is the reinforcement-learning training box that produces the nightly "Baseline Brain" for the Huracan trading stack. The project now ships a fully wired PPO agent, walk-forward shadow trading simulator, post-trade analytics backed by PostgreSQL + pgvector, health-monitoring control loop, **and comprehensive observability system** with AI-powered insights and interactive UIs.
+Huracan Engine is the **Cloud Training Box** that produces the nightly "Baseline Brain" for the Huracan trading stack. The project now ships a fully wired PPO agent, walk-forward shadow trading simulator, post-trade analytics backed by PostgreSQL + pgvector, health-monitoring control loop, **and comprehensive observability system** with AI-powered insights and interactive UIs.
+
+## 🎯 Engine Scope
+
+**IMPORTANT:** This codebase is **ONLY for building the Engine** (Cloud Training Box).
+
+### What the Engine IS ✅
+- **Daily baseline training** - Runs once per day at 02:00 UTC
+- **Full model retraining** - Trains on 3-6 months of historical data
+- **Shadow trading for learning** - Paper trades to train models (NO real money)
+- **Model export** - Saves trained models to S3/Postgres for other components
+
+### What the Engine is NOT ❌
+- **Hourly incremental updates** - That's Mechanic (future component)
+- **Live trading execution** - That's Pilot (future component)
+- **Real-time order management** - That's Pilot (future component)
+
+**See [ENGINE_SCOPE.md](./ENGINE_SCOPE.md) for complete scope documentation.**
+
+**Main Entry Point:** `src/cloud/training/pipelines/daily_retrain.py`
+
+---
 
 ## Highlights
 

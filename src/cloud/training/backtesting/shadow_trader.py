@@ -1,4 +1,15 @@
 """
+[ENGINE - USED FOR LEARNING]
+
+Shadow Trading Engine - Learning System
+
+This module is USED by the Engine for LEARNING from historical data.
+It performs shadow trading (paper trades) to train models.
+
+IMPORTANT DISTINCTION:
+- Engine shadow trading (THIS FILE) = LEARNING (paper trades to train models)
+- Pilot shadow deployment = LIVE DEPLOYMENT (testing models before production)
+
 Shadow trading engine that backtests EVERY possible trade on historical data
 with strict no-lookahead enforcement.
 

@@ -1,5 +1,13 @@
 """
+[ENGINE - USED FOR VALIDATION]
+
 Backtesting Framework - Historical Simulation of Dual-Mode Trading
+
+This module is USED by the Engine for validating models on historical data.
+However, it uses trading_coordinator.py which is marked as FUTURE/PILOT.
+
+NOTE: This framework validates models for Engine, but uses Pilot components
+(trading_coordinator) for signal processing. This is acceptable for validation.
 
 Purpose:
 - Simulate the full dual-mode trading system on historical data
@@ -27,25 +35,10 @@ Key Features:
    - Regime-specific performance
 
 4. Integration with All Components
-   - trading_coordinator.py for signal processing
+   - trading_coordinator.py for signal processing (FUTURE/PILOT component)
    - gate_profiles.py for tiered filtering
    - dual_book_manager.py for position management
    - conformal_gating.py for uncertainty quantification
-
-Usage:
-    # Load historical data
-    trades = load_historical_trades('historical_trades.csv')
-
-    # Run backtest
-    backtester = Backtester(
-        initial_capital=100_000,
-        train_ratio=0.70,
-    )
-
-    results = backtester.run(trades)
-
-    # Generate report
-    backtester.generate_report(results, 'backtest_report.html')
 """
 
 from dataclasses import dataclass, field

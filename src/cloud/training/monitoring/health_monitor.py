@@ -318,7 +318,12 @@ class HealthMonitorOrchestrator:
         logger.info("health_monitor_stopped", status="SHUTDOWN_COMPLETE")
 
     def send_hourly_digest(self) -> None:
-        """Send hourly digest of warnings."""
+        """
+        Send hourly digest of warnings.
+        
+        NOTE: This is used by Engine for monitoring during daily training.
+        May also be used by Mechanic for hourly updates (future).
+        """
         logger.info("sending_hourly_digest", operation="HOURLY_ALERT_DIGEST")
         self.alert_manager.send_digest()
 
