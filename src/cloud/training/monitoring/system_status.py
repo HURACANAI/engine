@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional
 
 import psutil
 import psycopg2
+import psycopg2.errors
 from psycopg2.extras import RealDictCursor
 import structlog
 
@@ -131,13 +132,27 @@ class SystemStatusReporter:
                         issues.append(f"Table {table} does not exist")
                         healthy = False
 
-            # Check data counts
+            # Check data counts (only for tables that exist)
+            trade_count = 0
+            pattern_count = 0
+            
             with self._conn.cursor() as cur:
-                cur.execute("SELECT COUNT(*) FROM trade_memory")
-                trade_count = cur.fetchone()[0]
-
-                cur.execute("SELECT COUNT(*) FROM pattern_library")
-                pattern_count = cur.fetchone()[0]
+                # Only query tables that exist
+                if details.get("table_trade_memory") == "EXISTS":
+                    try:
+                        cur.execute("SELECT COUNT(*) FROM trade_memory")
+                        trade_count = cur.fetchone()[0]
+                    except Exception as e:
+                        logger.warning("trade_count_query_failed", error=str(e))
+                        self._conn.rollback()
+                
+                if details.get("table_pattern_library") == "EXISTS":
+                    try:
+                        cur.execute("SELECT COUNT(*) FROM pattern_library")
+                        pattern_count = cur.fetchone()[0]
+                    except Exception as e:
+                        logger.warning("pattern_count_query_failed", error=str(e))
+                        self._conn.rollback()
 
             logger.info(
                 "database_data_counts",
@@ -165,6 +180,11 @@ class SystemStatusReporter:
 
         except Exception as exc:
             logger.exception("database_check_failed", error=str(exc), status="ERROR")
+            if self._conn:
+                try:
+                    self._conn.rollback()
+                except Exception:
+                    pass
             return ServiceStatus(
                 name="Database",
                 enabled=True,
@@ -354,33 +374,61 @@ class SystemStatusReporter:
         try:
             self.connect()
 
-            # Check if training data exists
-            with self._conn.cursor() as cur:
-                cur.execute("SELECT COUNT(*) FROM trade_memory")
-                if cur.fetchone()[0] > 0:
-                    features.append("HISTORICAL_TRAINING_DATA")
-                    logger.info("feature_active", feature="HISTORICAL_TRAINING_DATA")
+            # Check if training data exists (only if table exists)
+            try:
+                with self._conn.cursor() as cur:
+                    cur.execute("SELECT COUNT(*) FROM trade_memory")
+                    if cur.fetchone()[0] > 0:
+                        features.append("HISTORICAL_TRAINING_DATA")
+                        logger.info("feature_active", feature="HISTORICAL_TRAINING_DATA")
+            except psycopg2.errors.UndefinedTable:
+                logger.debug("table_trade_memory_not_exists", message="Table doesn't exist yet")
+                self._conn.rollback()
+            except Exception as e:
+                logger.warning("trade_memory_check_failed", error=str(e))
+                self._conn.rollback()
 
-            # Check if patterns exist
-            with self._conn.cursor() as cur:
-                cur.execute("SELECT COUNT(*) FROM pattern_library WHERE reliability_score > 0")
-                if cur.fetchone()[0] > 0:
-                    features.append("PATTERN_LIBRARY")
-                    logger.info("feature_active", feature="PATTERN_LIBRARY")
+            # Check if patterns exist (only if table exists)
+            try:
+                with self._conn.cursor() as cur:
+                    cur.execute("SELECT COUNT(*) FROM pattern_library WHERE reliability_score > 0")
+                    if cur.fetchone()[0] > 0:
+                        features.append("PATTERN_LIBRARY")
+                        logger.info("feature_active", feature="PATTERN_LIBRARY")
+            except psycopg2.errors.UndefinedTable:
+                logger.debug("table_pattern_library_not_exists", message="Table doesn't exist yet")
+                self._conn.rollback()
+            except Exception as e:
+                logger.warning("pattern_library_check_failed", error=str(e))
+                self._conn.rollback()
 
-            # Check if win/loss analysis tables have data
-            with self._conn.cursor() as cur:
-                cur.execute("SELECT COUNT(*) FROM win_analysis")
-                if cur.fetchone()[0] > 0:
-                    features.append("WIN_LOSS_ANALYSIS")
-                    logger.info("feature_active", feature="WIN_LOSS_ANALYSIS")
+            # Check if win/loss analysis tables have data (only if table exists)
+            try:
+                with self._conn.cursor() as cur:
+                    cur.execute("SELECT COUNT(*) FROM win_analysis")
+                    if cur.fetchone()[0] > 0:
+                        features.append("WIN_LOSS_ANALYSIS")
+                        logger.info("feature_active", feature="WIN_LOSS_ANALYSIS")
+            except psycopg2.errors.UndefinedTable:
+                logger.debug("table_win_analysis_not_exists", message="Table doesn't exist yet")
+                self._conn.rollback()
+            except Exception as e:
+                logger.warning("win_analysis_check_failed", error=str(e))
+                self._conn.rollback()
 
-            # Check if post-exit tracking has data
-            with self._conn.cursor() as cur:
-                cur.execute("SELECT COUNT(*) FROM post_exit_tracking")
-                if cur.fetchone()[0] > 0:
-                    features.append("POST_EXIT_TRACKING")
-                    logger.info("feature_active", feature="POST_EXIT_TRACKING")
+            # Check if post-exit tracking has data (only if table exists)
+            try:
+                with self._conn.cursor() as cur:
+                    cur.execute("SELECT COUNT(*) FROM post_exit_tracking")
+                    if cur.fetchone()[0] > 0:
+                        features.append("POST_EXIT_TRACKING")
+                        logger.info("feature_active", feature="POST_EXIT_TRACKING")
+            except psycopg2.errors.UndefinedTable:
+                logger.debug("table_post_exit_tracking_not_exists", message="Table doesn't exist yet")
+                self._conn.rollback()
+            except Exception as e:
+                logger.warning("post_exit_tracking_check_failed", error=str(e))
+                self._conn.rollback()
 
             logger.info(
                 "active_features_detected",
@@ -390,6 +438,11 @@ class SystemStatusReporter:
 
         except Exception as exc:
             logger.exception("feature_detection_failed", error=str(exc))
+            if self._conn:
+                try:
+                    self._conn.rollback()
+                except Exception:
+                    pass
 
         return features
 
@@ -406,41 +459,66 @@ class SystemStatusReporter:
         try:
             self.connect()
 
-            # Recent trades
-            with self._conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute(
-                    """
-                    SELECT
-                        COUNT(*) as count,
-                        MAX(entry_timestamp) as last_trade
-                    FROM trade_memory
-                    WHERE entry_timestamp >= NOW() - INTERVAL '24 hours'
-                    """
-                )
-                trade_data = cur.fetchone()
-                activity["trades_24h"] = trade_data["count"]
-                activity["last_trade_time"] = trade_data["last_trade"]
+            # Recent trades (only if table exists)
+            try:
+                with self._conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute(
+                        """
+                        SELECT
+                            COUNT(*) as count,
+                            MAX(entry_timestamp) as last_trade
+                        FROM trade_memory
+                        WHERE entry_timestamp >= NOW() - INTERVAL '24 hours'
+                        """
+                    )
+                    trade_data = cur.fetchone()
+                    activity["trades_24h"] = trade_data["count"] if trade_data else 0
+                    activity["last_trade_time"] = trade_data["last_trade"] if trade_data else None
 
-                logger.info(
-                    "recent_trade_activity",
-                    trades_24h=trade_data["count"],
-                    last_trade=trade_data["last_trade"],
-                )
+                    logger.info(
+                        "recent_trade_activity",
+                        trades_24h=activity["trades_24h"],
+                        last_trade=activity["last_trade_time"],
+                    )
+            except psycopg2.errors.UndefinedTable:
+                logger.debug("table_trade_memory_not_exists", message="Table doesn't exist yet")
+                activity["trades_24h"] = 0
+                activity["last_trade_time"] = None
+                self._conn.rollback()
+            except Exception as e:
+                logger.warning("recent_trades_check_failed", error=str(e))
+                activity["trades_24h"] = 0
+                activity["last_trade_time"] = None
+                self._conn.rollback()
 
-            # Recent pattern updates
-            with self._conn.cursor() as cur:
-                cur.execute(
-                    """
-                    SELECT COUNT(*) FROM pattern_library
-                    WHERE last_updated >= NOW() - INTERVAL '24 hours'
-                    """
-                )
-                activity["patterns_updated_24h"] = cur.fetchone()[0]
+            # Recent pattern updates (only if table exists)
+            try:
+                with self._conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        SELECT COUNT(*) FROM pattern_library
+                        WHERE last_updated >= NOW() - INTERVAL '24 hours'
+                        """
+                    )
+                    activity["patterns_updated_24h"] = cur.fetchone()[0]
 
-                logger.info("pattern_update_activity", patterns_updated=activity["patterns_updated_24h"])
+                    logger.info("pattern_update_activity", patterns_updated=activity["patterns_updated_24h"])
+            except psycopg2.errors.UndefinedTable:
+                logger.debug("table_pattern_library_not_exists", message="Table doesn't exist yet")
+                activity["patterns_updated_24h"] = 0
+                self._conn.rollback()
+            except Exception as e:
+                logger.warning("pattern_updates_check_failed", error=str(e))
+                activity["patterns_updated_24h"] = 0
+                self._conn.rollback()
 
         except Exception as exc:
             logger.exception("activity_check_failed", error=str(exc))
+            if self._conn:
+                try:
+                    self._conn.rollback()
+                except Exception:
+                    pass
 
         return activity
 
