@@ -1,0 +1,119 @@
+# RunPod-specific configuration
+# This config is optimized for RunPod deployment
+
+scheduler:
+  daily_run_time_utc: "02:00"
+  timezone: "UTC"
+
+universe:
+  target_size: 20  # Start with 20 coins, scale up later
+  liquidity_threshold_adv_gbp: 10000000
+  max_spread_bps: 8
+
+training:
+  window_days: 150
+  walk_forward:
+    train_days: 20
+    test_days: 5
+    min_trades: 300
+  rl_agent:
+    enabled: true
+    learning_rate: 0.0003
+    gamma: 0.99
+    clip_epsilon: 0.2
+    entropy_coef: 0.01
+    n_epochs: 10
+    batch_size: 128  # Increased for GPU
+    state_dim: 80
+    device: "cuda"  # Use GPU on RunPod
+  shadow_trading:
+    enabled: true
+    position_size_gbp: 1000
+    max_hold_minutes: 120
+    stop_loss_bps: 15
+    take_profit_bps: 20
+    min_confidence_threshold: 0.52
+  memory:
+    vector_similarity_threshold: 0.7
+    min_pattern_occurrences: 10
+    pattern_update_frequency: "daily"
+    max_similar_patterns: 20
+  monitoring:
+    enabled: true
+    check_interval_seconds: 300
+    win_rate_stddev_threshold: 2.0
+    profit_stddev_threshold: 2.0
+    volume_stddev_threshold: 2.5
+    auto_remediation_enabled: true
+    pause_failing_patterns: true
+    pattern_failure_threshold: 0.45
+  validation:
+    enabled: true
+    mandatory_oos:
+      enabled: true
+      min_oos_sharpe: 1.0
+      min_oos_win_rate: 0.55
+      max_train_test_gap: 0.3
+      max_sharpe_std: 0.2
+      min_test_trades: 100
+      min_windows: 5
+    overfitting_detection:
+      enabled: true
+      train_test_gap_threshold: 0.5
+      cv_stability_threshold: 0.3
+      degradation_threshold: -0.2
+    data_validation:
+      enabled: true
+      outlier_z_threshold: 3.0
+      max_missing_pct: 0.05
+      max_age_hours: 24
+      min_coverage: 0.95
+    paper_trading:
+      enabled: false
+      min_duration_days: 14
+      min_trades: 100
+      min_win_rate: 0.55
+      min_sharpe: 1.0
+      max_backtest_deviation: 0.20
+    stress_testing:
+      enabled: false
+      max_drawdown_threshold: 0.30
+      min_survival_rate: 0.70
+  optimization:
+    parallel_processing:
+      enabled: true
+      num_workers: 8  # Adjust based on CPU cores (nproc / 2)
+      use_ray: true
+    caching:
+      enabled: true
+      max_size: 2000  # Increased for RunPod
+      default_ttl: 3600
+    query_optimization:
+      enabled: true
+      enable_caching: true
+      cache_ttl: 3600
+
+costs:
+  target_net_bps: 15
+  taker_buffer_bps: 9
+  notional_per_trade: 1000
+
+artifacts:
+  bucket: huracan-engine
+  prefix: baselines
+
+postgres:
+  # Update with your RunPod PostgreSQL credentials
+  dsn: "postgresql://haq:huracan123@localhost:5432/huracan"
+
+notifications:
+  telegram_enabled: true
+  telegram_webhook_url: "https://api.telegram.org/bot8229109041:AAFIcLRx3V50khoaEIG7WXeI1ITzy4s6hf0/sendMessage"
+  telegram_chat_id: "7914196017"  # Your Telegram user ID
+
+ray:
+  address: null  # Local Ray cluster (no remote address)
+  namespace: "huracan-engine"
+  runtime_env:
+    working_dir: "/workspace/engine"  # Update to your RunPod working directory
+
