@@ -341,13 +341,25 @@ def run_daily_retrain() -> None:
         
         if settings.dropbox.enabled and dropbox_token:
             try:
-                logger.info("dropbox_sync_starting")
+                logger.info("dropbox_sync_initializing")
                 dropbox_sync = DropboxSync(
                     access_token=dropbox_token,
                     app_folder=dropbox_folder,
                     enabled=True,
                 )
                 
+                # Start continuous sync (every 1 minute)
+                sync_thread = dropbox_sync.start_continuous_sync(
+                    interval_seconds=60,  # 1 minute
+                    logs_dir="logs",
+                    models_dir="models",
+                    learning_dir="logs/learning",
+                    monitoring_dir="logs",
+                )
+                
+                logger.info("dropbox_continuous_sync_started", interval_seconds=60)
+                
+                # Initial sync
                 sync_results = {}
                 if settings.dropbox.sync_logs:
                     sync_results["logs"] = dropbox_sync.upload_logs("logs")
@@ -356,8 +368,17 @@ def run_daily_retrain() -> None:
                 if settings.dropbox.sync_monitoring:
                     sync_results["monitoring"] = dropbox_sync.upload_monitoring_data("logs")
                 
+                # Sync learning data
+                if Path("logs/learning").exists():
+                    sync_results["learning"] = dropbox_sync.sync_directory(
+                        local_dir="logs/learning",
+                        remote_dir="/learning",
+                        pattern="*.json",
+                        recursive=True,
+                    )
+                
                 logger.info(
-                    "dropbox_sync_complete",
+                    "dropbox_initial_sync_complete",
                     **sync_results,
                     total_files=sum(sync_results.values()),
                 )
@@ -365,8 +386,8 @@ def run_daily_retrain() -> None:
                 if telegram_monitor:
                     telegram_monitor.notify_system_event(
                         level=NotificationLevel.LOW,
-                        title="Dropbox Sync Complete",
-                        message=f"Synced {sum(sync_results.values())} files to Dropbox",
+                        title="Dropbox Sync Started",
+                        message=f"Continuous sync enabled (every 1 min). Initial sync: {sum(sync_results.values())} files",
                         action_required=False,
                     )
             except Exception as sync_error:
