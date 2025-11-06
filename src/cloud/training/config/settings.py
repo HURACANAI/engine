@@ -73,6 +73,79 @@ class MonitoringSettings(BaseModel):
     pattern_failure_threshold: float = 0.45
 
 
+class MandatoryOOSSettings(BaseModel):
+    enabled: bool = True
+    min_oos_sharpe: float = 1.0
+    min_oos_win_rate: float = 0.55
+    max_train_test_gap: float = 0.3
+    max_sharpe_std: float = 0.2
+    min_test_trades: int = 100
+    min_windows: int = 5
+
+
+class OverfittingDetectionSettings(BaseModel):
+    enabled: bool = True
+    train_test_gap_threshold: float = 0.5
+    cv_stability_threshold: float = 0.3
+    degradation_threshold: float = -0.2
+
+
+class DataValidationSettings(BaseModel):
+    enabled: bool = True
+    outlier_z_threshold: float = 3.0
+    max_missing_pct: float = 0.05
+    max_age_hours: int = 24
+    min_coverage: float = 0.95
+
+
+class PaperTradingSettings(BaseModel):
+    enabled: bool = False
+    min_duration_days: int = 14
+    min_trades: int = 100
+    min_win_rate: float = 0.55
+    min_sharpe: float = 1.0
+    max_backtest_deviation: float = 0.20
+
+
+class StressTestingSettings(BaseModel):
+    enabled: bool = False
+    max_drawdown_threshold: float = 0.30
+    min_survival_rate: float = 0.70
+
+
+class ValidationSettings(BaseModel):
+    enabled: bool = True
+    mandatory_oos: MandatoryOOSSettings = Field(default_factory=MandatoryOOSSettings)
+    overfitting_detection: OverfittingDetectionSettings = Field(default_factory=OverfittingDetectionSettings)
+    data_validation: DataValidationSettings = Field(default_factory=DataValidationSettings)
+    paper_trading: PaperTradingSettings = Field(default_factory=PaperTradingSettings)
+    stress_testing: StressTestingSettings = Field(default_factory=StressTestingSettings)
+
+
+class ParallelProcessingSettings(BaseModel):
+    enabled: bool = True
+    num_workers: int = 6
+    use_ray: bool = True
+
+
+class CachingSettings(BaseModel):
+    enabled: bool = True
+    max_size: int = 1000
+    default_ttl: int = 3600
+
+
+class QueryOptimizationSettings(BaseModel):
+    enabled: bool = True
+    enable_caching: bool = True
+    cache_ttl: int = 3600
+
+
+class OptimizationSettings(BaseModel):
+    parallel_processing: ParallelProcessingSettings = Field(default_factory=ParallelProcessingSettings)
+    caching: CachingSettings = Field(default_factory=CachingSettings)
+    query_optimization: QueryOptimizationSettings = Field(default_factory=QueryOptimizationSettings)
+
+
 class TrainingSettings(BaseModel):
     window_days: int = 150
     walk_forward: WalkForwardSettings = Field(default_factory=WalkForwardSettings)
@@ -80,6 +153,8 @@ class TrainingSettings(BaseModel):
     shadow_trading: ShadowTradingSettings = Field(default_factory=ShadowTradingSettings)
     memory: MemorySettings = Field(default_factory=MemorySettings)
     monitoring: MonitoringSettings = Field(default_factory=MonitoringSettings)
+    validation: ValidationSettings = Field(default_factory=ValidationSettings)
+    optimization: OptimizationSettings = Field(default_factory=OptimizationSettings)
 
 
 class CostSettings(BaseModel):
@@ -146,6 +221,14 @@ class ExchangeSettings(BaseModel):
 
 class EngineSettings(BaseSettings):
     """Loads layered configuration combining YAML profiles and env overrides."""
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        env_nested_delimiter="__",
+        case_sensitive=False,
+        extra="ignore",
+    )
 
     environment: str = Field("local", alias="HURACAN_ENV")
     mode: str = Field("shadow", alias="HURACAN_MODE")

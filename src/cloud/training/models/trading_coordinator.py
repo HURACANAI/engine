@@ -409,7 +409,7 @@ class TradingCoordinator:
             if hasattr(routing_decision, 'gate_decision') and routing_decision.gate_decision:
                 if hasattr(routing_decision.gate_decision, 'edge_net_bps'):
                     edge_net = routing_decision.gate_decision.edge_net_bps
-            
+
             logger.info(
                 "trade_executed",
                 symbol=symbol,
@@ -435,7 +435,7 @@ class TradingCoordinator:
                     edge_net_bps = routing_decision.gate_decision.edge_net_bps
                 if hasattr(routing_decision.gate_decision, 'win_probability'):
                     win_probability = routing_decision.gate_decision.win_probability
-            
+
             # Create trade decision record
             return TradeDecision(
                 approved=True,
@@ -511,13 +511,13 @@ class TradingCoordinator:
             positions = self.book_manager._get_book_positions(book_type, open_only=True)
 
             if positions:  # Check if positions list is not None/empty
-                for position in positions:
+            for position in positions:
                     if position and hasattr(position, 'symbol') and position.symbol == symbol:
                         if hasattr(position, 'position_id'):
-                            self.book_manager.update_position_price(
-                                position.position_id,
-                                current_price,
-                            )
+                    self.book_manager.update_position_price(
+                        position.position_id,
+                        current_price,
+                    )
 
     def simulate_pending_counterfactuals(self) -> int:
         """Simulate all pending counterfactuals with current prices."""

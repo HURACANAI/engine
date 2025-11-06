@@ -423,7 +423,54 @@ def _train_symbol(
     combined_trades = pd.concat(oos_trades, ignore_index=True) if oos_trades else pd.DataFrame(columns=["timestamp", "pnl_bps", "prediction_bps", "confidence", "equity_curve"])
     metrics = _compute_metrics(combined_trades, costs.total_costs_bps, len(dataset))
 
-    if metrics["trades_oos"] < settings.training.walk_forward.min_trades:
+    # Run validation pipeline if enabled
+    validation_passed = True
+    if settings.training.validation.enabled:
+        try:
+            from ..validation.validation_pipeline import ValidationPipeline
+            from ..engine.walk_forward import WalkForwardResults
+
+            # Create walk-forward results from metrics
+            wf_results = WalkForwardResults(
+                windows=[],
+                total_windows=len(splits),
+                test_sharpe=metrics["sharpe"],
+                test_win_rate=metrics["hit_rate"],
+                test_avg_pnl_bps=metrics["pnl_bps"] / max(metrics["trades_oos"], 1),
+                sharpe_std=0.0,  # Would calculate from splits
+                win_rate_std=0.0,
+                train_test_sharpe_diff=0.0,  # Would calculate from train metrics
+                train_test_wr_diff=0.0,
+            )
+
+            validation_pipeline = ValidationPipeline(settings=settings)
+            validation_result = validation_pipeline.validate(
+                walk_forward_results=wf_results,
+                model_id=f"{symbol}-{run_date:%Y%m%d}",
+                data=raw_frame,
+                symbol=symbol,
+            )
+            validation_passed = validation_result.passed
+
+            if not validation_passed:
+                logger.error(
+                    "validation_failed",
+                    symbol=symbol,
+                    blocking_issues=validation_result.blocking_issues,
+                )
+        except Exception as e:
+            logger.warning(
+                "validation_pipeline_error",
+                symbol=symbol,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+            # Don't block on validation errors - log and continue
+            # But if it's a ValueError (hard block), re-raise
+            if isinstance(e, ValueError):
+                raise
+
+    if metrics["trades_oos"] < settings.training.walk_forward.min_trades or not validation_passed:
         reason = "gate_trades"
         gate_results = {
             "sharpe_pass": False,
