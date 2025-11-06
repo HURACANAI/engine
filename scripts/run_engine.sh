@@ -23,9 +23,9 @@ echo ""
 
 # Install missing dependencies if needed
 echo "📦 Checking dependencies..."
-python3 -c "import boto3, matplotlib" 2>/dev/null || {
-    echo "⚠️  Installing missing dependencies (boto3, matplotlib)..."
-    pip install -q boto3 matplotlib || echo "⚠️  Some dependencies may be missing, continuing anyway..."
+python3 -c "import boto3, matplotlib, pydantic_settings" 2>/dev/null || {
+    echo "⚠️  Installing missing dependencies (boto3, matplotlib, pydantic-settings)..."
+    pip install -q boto3 matplotlib pydantic-settings || echo "⚠️  Some dependencies may be missing, continuing anyway..."
 }
 
 # Check if PostgreSQL is running
