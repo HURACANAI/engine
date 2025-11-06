@@ -226,9 +226,9 @@ class ExchangeClient:
 			raise
 
 	@retry(
-		stop=stop_after_attempt(3),
-		wait=wait_exponential(multiplier=1, min=1, max=10),
-		retry=retry_if_exception_type((ccxt.NetworkError, ccxt.ExchangeError, ConnectionError, TimeoutError)),
+		stop=stop_after_attempt(5),
+		wait=wait_exponential(multiplier=2, min=5, max=60),
+		retry=retry_if_exception_type((ccxt.NetworkError, ccxt.ExchangeError, ccxt.DDoSProtection, ConnectionError, TimeoutError)),
 		reraise=True,
 	)
 	def fetch_ohlcv(

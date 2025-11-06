@@ -209,92 +209,132 @@ class TrainingOrchestrator:
         self._run_date = datetime.now(tz=timezone.utc).date()
 
     def run(self) -> List[TrainingTaskResult]:
+        import time
+        from typing import List as TypingList
+        
         universe = self._universe_selector.select()
         rows = list(universe.iter_rows(named=True))
         logger.info("universe_selected", count=len(rows), symbols=[row["symbol"] for row in rows])
-        tasks = [
-            self._submit_task(
-                row=row,
-                history=self._registry.fetch_recent_metrics(row["symbol"], limit=10),
-            )
-            for row in rows
-        ]
         results: List[TrainingTaskResult] = []
         
-        # Handle tasks individually to allow graceful failure handling
-        for i, task in enumerate(tasks):
-            try:
-                result = ray.get(task)
-                results.append(result)
-                self._finalize_result(result)
-                
-                # Notify Telegram about validation failures (from main process)
-                if self._telegram_monitor and not result.published and "validation" in result.reason.lower():
-                    self._telegram_monitor.notify_validation_failure(
-                        validation_type="Model Validation",
-                        reason=result.reason,
-                        symbol=result.symbol,
-                        details=result.metrics,
-                    )
-            except Exception as e:
-                # Handle individual task failures gracefully
-                symbol = rows[i]["symbol"] if i < len(rows) else "unknown"
-                error_msg = str(e)
-                
-                # Check if it's a data quality issue
-                if "Coverage" in error_msg and "below threshold" in error_msg:
-                    logger.warning(
-                        "data_quality_insufficient",
-                        symbol=symbol,
-                        error=error_msg,
-                        action="skipping_coin",
-                    )
-                    # Create a result indicating the coin was skipped
-                    empty_cost = CostBreakdown(fee_bps=0.0, spread_bps=0.0, slippage_bps=0.0)
-                    skipped_result = TrainingTaskResult(
-                        symbol=symbol,
-                        costs=empty_cost,
-                        metrics={},
-                        gate_results={},
-                        published=False,
-                        reason=f"data_quality_insufficient: {error_msg}",
-                        artifacts=None,
-                        model_id=str(uuid4()),
-                        run_id=f"{symbol}-{self._run_date:%Y%m%d}",
-                        pilot_contract=None,
-                        mechanic_contract=None,
-                        metrics_payload=None,
-                        model_params={},
-                        feature_metadata={},
-                    )
-                    results.append(skipped_result)
-                else:
-                    # For other errors, log and continue
-                    logger.error(
-                        "training_task_failed",
-                        symbol=symbol,
-                        error=error_msg,
-                        action="skipping_coin",
-                    )
-                    # Create a result indicating the coin failed
-                    empty_cost = CostBreakdown(fee_bps=0.0, spread_bps=0.0, slippage_bps=0.0)
-                    failed_result = TrainingTaskResult(
-                        symbol=symbol,
-                        costs=empty_cost,
-                        metrics={},
-                        gate_results={},
-                        published=False,
-                        reason=f"training_failed: {error_msg}",
-                        artifacts=None,
-                        model_id=str(uuid4()),
-                        run_id=f"{symbol}-{self._run_date:%Y%m%d}",
-                        pilot_contract=None,
-                        mechanic_contract=None,
-                        metrics_payload=None,
-                        model_params={},
-                        feature_metadata={},
-                    )
-                    results.append(failed_result)
+        # Process coins in batches to avoid rate limiting
+        # Binance limit: 2400 requests/minute = 40 requests/second
+        # Process 5 coins at a time with 2 second delay between batches
+        batch_size = 5
+        batch_delay = 2.0  # seconds
+        
+        for batch_start in range(0, len(rows), batch_size):
+            batch_end = min(batch_start + batch_size, len(rows))
+            batch_rows = rows[batch_start:batch_end]
+            
+            logger.info(
+                "processing_batch",
+                batch_num=(batch_start // batch_size) + 1,
+                total_batches=(len(rows) + batch_size - 1) // batch_size,
+                batch_start=batch_start,
+                batch_end=batch_end,
+                symbols=[row["symbol"] for row in batch_rows],
+            )
+            
+            # Submit tasks for this batch
+            batch_tasks = [
+                self._submit_task(
+                    row=row,
+                    history=self._registry.fetch_recent_metrics(row["symbol"], limit=10),
+                )
+                for row in batch_rows
+            ]
+            
+            # Handle tasks individually to allow graceful failure handling
+            for i, task in enumerate(batch_tasks):
+                try:
+                    result = ray.get(task)
+                    results.append(result)
+                    self._finalize_result(result)
+                    
+                    # Notify Telegram about validation failures (from main process)
+                    if self._telegram_monitor and not result.published and "validation" in result.reason.lower():
+                        self._telegram_monitor.notify_validation_failure(
+                            validation_type="Model Validation",
+                            reason=result.reason,
+                            symbol=result.symbol,
+                            details=result.metrics,
+                        )
+                except Exception as e:
+                    # Handle individual task failures gracefully
+                    symbol = batch_rows[i]["symbol"] if i < len(batch_rows) else "unknown"
+                    error_msg = str(e)
+                    
+                    # Check if it's a rate limit issue
+                    if "429" in error_msg or "Too Many Requests" in error_msg or "DDoSProtection" in error_msg:
+                        logger.warning(
+                            "rate_limit_hit",
+                            symbol=symbol,
+                            error=error_msg,
+                            action="skipping_coin_will_retry_later",
+                        )
+                        # Wait a bit before continuing
+                        time.sleep(5)
+                    
+                    # Check if it's a data quality issue
+                    if "Coverage" in error_msg and "below threshold" in error_msg:
+                        logger.warning(
+                            "data_quality_insufficient",
+                            symbol=symbol,
+                            error=error_msg,
+                            action="skipping_coin",
+                        )
+                        # Create a result indicating the coin was skipped
+                        empty_cost = CostBreakdown(fee_bps=0.0, spread_bps=0.0, slippage_bps=0.0)
+                        skipped_result = TrainingTaskResult(
+                            symbol=symbol,
+                            costs=empty_cost,
+                            metrics={},
+                            gate_results={},
+                            published=False,
+                            reason=f"data_quality_insufficient: {error_msg}",
+                            artifacts=None,
+                            model_id=str(uuid4()),
+                            run_id=f"{symbol}-{self._run_date:%Y%m%d}",
+                            pilot_contract=None,
+                            mechanic_contract=None,
+                            metrics_payload=None,
+                            model_params={},
+                            feature_metadata={},
+                        )
+                        results.append(skipped_result)
+                    else:
+                        # For other errors, log and continue
+                        logger.error(
+                            "training_task_failed",
+                            symbol=symbol,
+                            error=error_msg,
+                            action="skipping_coin",
+                        )
+                        # Create a result indicating the coin failed
+                        empty_cost = CostBreakdown(fee_bps=0.0, spread_bps=0.0, slippage_bps=0.0)
+                        failed_result = TrainingTaskResult(
+                            symbol=symbol,
+                            costs=empty_cost,
+                            metrics={},
+                            gate_results={},
+                            published=False,
+                            reason=f"training_failed: {error_msg}",
+                            artifacts=None,
+                            model_id=str(uuid4()),
+                            run_id=f"{symbol}-{self._run_date:%Y%m%d}",
+                            pilot_contract=None,
+                            mechanic_contract=None,
+                            metrics_payload=None,
+                            model_params={},
+                            feature_metadata={},
+                        )
+                        results.append(failed_result)
+            
+            # Delay between batches to avoid rate limiting
+            if batch_end < len(rows):
+                logger.info("batch_complete_waiting", delay_seconds=batch_delay)
+                time.sleep(batch_delay)
         
         self._notifier.send_summary(results, run_date=self._run_date)
         return results

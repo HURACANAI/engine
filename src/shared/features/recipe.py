@@ -667,8 +667,8 @@ class FeatureRecipe:
         range_feature = ((pl.col("high") - pl.col("low")) / pl.col("close")).alias("range_pct")
 
         typical_price = (pl.col("high") + pl.col("low") + pl.col("close")) / 3.0
-        cum_typical_volume = (typical_price * pl.col("volume")).cumsum()
-        cum_volume = pl.col("volume").cumsum()
+        cum_typical_volume = pl.cumsum(typical_price * pl.col("volume"))
+        cum_volume = pl.cumsum(pl.col("volume"))
         vwap = (cum_typical_volume / (cum_volume + 1e-9)).alias("vwap")
         drift = ((pl.col("close") - vwap) / vwap).alias("close_to_vwap")
 
