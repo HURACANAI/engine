@@ -107,9 +107,52 @@ class ExchangeClient:
 		reraise=True,
 	)
 	def fetch_tickers(self, symbols: Optional[Iterable[str]] = None) -> Dict[str, Dict[str, Any]]:
-		"""Fetch ticker data with retry logic."""
+		"""Fetch ticker data with retry logic.
+		
+		For Binance, symbols must be of the same type (spot or swap).
+		This method automatically separates symbols by type and fetches them separately.
+		"""
 		try:
-			return self._client.fetch_tickers(list(symbols) if symbols else None)
+			if not symbols:
+				return self._client.fetch_tickers(None)
+			
+			symbols_list = list(symbols)
+			
+			# For Binance, we need to separate spot and swap symbols
+			if self.exchange_id == "binance":
+				# Get market types for each symbol
+				markets = self._client.markets
+				spot_symbols = []
+				swap_symbols = []
+				
+				for symbol in symbols_list:
+					market = markets.get(symbol)
+					if market:
+						market_type = market.get("type", "spot")
+						if market_type == "spot":
+							spot_symbols.append(symbol)
+						elif market_type in ("swap", "future"):
+							swap_symbols.append(symbol)
+						else:
+							# Default to spot for unknown types
+							spot_symbols.append(symbol)
+					else:
+						# If market not found, default to spot
+						spot_symbols.append(symbol)
+				
+				# Fetch tickers separately for each type
+				result = {}
+				if spot_symbols:
+					spot_tickers = self._client.fetch_tickers(spot_symbols)
+					result.update(spot_tickers)
+				if swap_symbols:
+					swap_tickers = self._client.fetch_tickers(swap_symbols)
+					result.update(swap_tickers)
+				
+				return result
+			else:
+				# For other exchanges, fetch all at once
+				return self._client.fetch_tickers(symbols_list)
 		except (ccxt.NetworkError, ccxt.ExchangeError, ConnectionError, TimeoutError) as e:
 			logger.warning("tickers_fetch_retry", error=str(e), error_type=type(e).__name__)
 			raise
