@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed, Future
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -71,48 +72,83 @@ class CandleDataLoader:
         return frame
 
     def _download(self, query: CandleQuery, skip_validation: bool = False) -> pl.DataFrame:
-        """Download data with multi-exchange fallback."""
-        # Try primary exchange first
-        try:
-            return self._download_from_exchange(self._exchange, query, skip_validation)
-        except Exception as e:
-            error_str = str(e).lower()
-            # Check if it's a rate limit error
-            if any(keyword in error_str for keyword in ["429", "rate limit", "too many requests", "ddos"]):
+        """Download data with parallel multi-exchange support.
+        
+        Downloads from multiple exchanges simultaneously to speed up the process.
+        Since different exchanges are different APIs, we can download in parallel
+        without hitting rate limits. Uses the first successful result.
+        """
+        # Prepare all exchanges to try (primary + fallbacks)
+        exchanges_to_try = [
+            (self._exchange.exchange_id, self._exchange),
+        ]
+        
+        # Add fallback exchanges
+        for fallback_id in self._fallback_exchanges:
+            try:
+                fallback_client = self._get_fallback_client(fallback_id)
+                exchanges_to_try.append((fallback_id, fallback_client))
+            except Exception as e:
                 logger.warning(
-                    "rate_limit_on_primary",
-                    exchange=self._exchange.exchange_id,
-                    symbol=query.symbol,
+                    "fallback_exchange_init_failed",
+                    exchange=fallback_id,
                     error=str(e),
-                    message="Trying fallback exchanges",
                 )
-                # Try fallback exchanges
-                for fallback_id in self._fallback_exchanges:
-                    try:
-                        fallback_client = self._get_fallback_client(fallback_id)
+                continue
+        
+        # Download from all exchanges in parallel
+        # Different exchanges = different APIs = no rate limit conflicts
+        logger.info(
+            "parallel_download_start",
+            symbol=query.symbol,
+            num_exchanges=len(exchanges_to_try),
+            exchanges=[ex_id for ex_id, _ in exchanges_to_try],
+        )
+        
+        with ThreadPoolExecutor(max_workers=len(exchanges_to_try)) as executor:
+            # Submit all download tasks
+            futures: dict[Future[pl.DataFrame], tuple[str, ExchangeClient]] = {}
+            for exchange_id, exchange_client in exchanges_to_try:
+                future = executor.submit(
+                    self._download_from_exchange,
+                    exchange_client,
+                    query,
+                    skip_validation,
+                )
+                futures[future] = (exchange_id, exchange_client)
+            
+            # Use first successful result
+            for future in as_completed(futures):
+                exchange_id, exchange_client = futures[future]
+                try:
+                    result = future.result()
+                    if result is not None and len(result) > 0:
                         logger.info(
-                            "trying_fallback_exchange",
-                            exchange=fallback_id,
+                            "parallel_download_success",
                             symbol=query.symbol,
+                            exchange=exchange_id,
+                            rows=len(result),
+                            message="Using data from this exchange",
                         )
-                        return self._download_from_exchange(fallback_client, query, skip_validation)
-                    except Exception as fallback_error:
-                        logger.warning(
-                            "fallback_exchange_failed",
-                            exchange=fallback_id,
-                            symbol=query.symbol,
-                            error=str(fallback_error),
-                        )
-                        continue
-                # If all fallbacks failed, raise original error
-                logger.error(
-                    "all_exchanges_failed",
-                    symbol=query.symbol,
-                    primary_exchange=self._exchange.exchange_id,
-                    fallback_exchanges=self._fallback_exchanges,
-                    error=str(e),
-                )
-            raise
+                        # Cancel remaining tasks (optional - they'll finish but we won't use them)
+                        return result
+                except Exception as e:
+                    error_str = str(e).lower()
+                    logger.warning(
+                        "parallel_download_failed",
+                        symbol=query.symbol,
+                        exchange=exchange_id,
+                        error=str(e),
+                    )
+                    continue
+        
+        # If all exchanges failed, raise error
+        logger.error(
+            "all_exchanges_failed_parallel",
+            symbol=query.symbol,
+            exchanges=[ex_id for ex_id, _ in exchanges_to_try],
+        )
+        raise RuntimeError(f"Failed to download {query.symbol} from all exchanges")
     
     def _download_from_exchange(
         self,
