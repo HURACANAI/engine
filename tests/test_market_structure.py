@@ -100,6 +100,7 @@ def test_beta_calculation():
     beta_metrics = calculator.calculate_beta(
         alt_data, btc_data, btc_data.timestamps[-1]
     )
+    assert beta_metrics is not None, "Expected beta metrics from calculator"
 
     print(f"\nTrue Beta: 1.80")
     print(f"Calculated Beta: {beta_metrics.beta:.2f}")
@@ -141,6 +142,7 @@ def test_lead_lag_detection():
     leadlag_metrics = tracker.detect_lead_lag(
         leader_data, follower_data, leader_data.timestamps[-1]
     )
+    assert leadlag_metrics is not None, "Expected lead-lag metrics from tracker"
 
     print(f"\nTrue Lag: -2 (leader leads by 2 periods)")
     print(f"Detected Lag: {leadlag_metrics.optimal_lag}")
@@ -173,6 +175,7 @@ def test_volatility_spillover():
     spillover = monitor.calculate_spillover(
         source_data, target_data, source_data.timestamps[-1]
     )
+    assert spillover is not None, "Expected spillover metrics from monitor"
 
     print(f"\nSpillover Coefficient: {spillover.spillover_coefficient:.3f}")
     print(f"Volatility Correlation: {spillover.correlation:.2%}")
@@ -207,6 +210,7 @@ def test_market_regime_detection():
     snapshot = coordinator.detect_market_regime(
         "ALT", alt_data, btc_data.timestamps[-1]
     )
+    assert snapshot is not None, "Expected market regime snapshot from coordinator"
 
     print(f"\nDetected Regime: {snapshot.regime.value}")
     print(f"Confidence: {snapshot.regime_confidence:.1%}")

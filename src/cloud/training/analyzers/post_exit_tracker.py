@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, Dict, Any
 
 import polars as pl
 import psycopg2
@@ -47,6 +47,13 @@ class PostExitTracker:
         """Establish database connection."""
         if self._conn is None or self._conn.closed:
             self._conn = psycopg2.connect(self._dsn)
+
+    def _ensure_connection(self) -> psycopg2.extensions.connection:
+        """Return an open connection, raising if unavailable."""
+        self.connect()
+        if self._conn is None or self._conn.closed:
+            raise RuntimeError("Database connection is not available")
+        return self._conn
 
     def close(self) -> None:
         """Close database connection."""
@@ -275,8 +282,8 @@ class PostExitTracker:
 
     def _store_tracking(self, insights: PostExitInsights) -> None:
         """Store post-exit tracking in database."""
-        self.connect()
-        with self._conn.cursor() as cur:
+        conn = self._ensure_connection()
+        with conn.cursor() as cur:
             cur.execute(
                 """
                 INSERT INTO post_exit_tracking (
@@ -305,12 +312,12 @@ class PostExitTracker:
                     insights.insight_summary,
                 ),
             )
-            self._conn.commit()
+            conn.commit()
 
     def get_exit_learning_stats(self, symbol: str, days: int = 30) -> dict:
         """Get statistics on exit timing performance."""
-        self.connect()
-        with self._conn.cursor(cursor_factory=RealDictCursor) as cur:
+        conn = self._ensure_connection()
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
                 """
                 SELECT
@@ -327,7 +334,17 @@ class PostExitTracker:
                 (symbol, days),
             )
 
-            row = cur.fetchone()
+            row: Optional[Dict[str, Any]] = cur.fetchone()
+            if row is None:
+                return {
+                    "symbol": symbol,
+                    "total_exits": 0,
+                    "avg_missed_profit_bps": 0.0,
+                    "early_exits": 0,
+                    "late_exits": 0,
+                    "avg_optimal_hold_minutes": 0,
+                    "exit_timing_accuracy": 1.0,
+                }
 
             return {
                 "symbol": symbol,

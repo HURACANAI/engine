@@ -170,7 +170,7 @@ class DualModeEnhancedPipeline(EnhancedRLPipeline):
             hold_duration_minutes=0,
             volatility_bps=features.get("volatility_bps", 80.0),
             spread_bps=features.get("spread_bps", 10.0),
-            regime_code=self._regime_to_code(features.get("regime", "unknown")),
+            regime_code=self._regime_to_code(str(features.get("regime", "unknown"))),
             current_drawdown_gbp=0.0,
             trades_today=0,
             win_rate_today=0.5,
@@ -222,7 +222,8 @@ def example_usage():
 
     # 1. Create settings (you'd load from config)
     from pathlib import Path
-    settings = EngineSettings.from_yaml(Path("config/base.yaml"))
+    config_dir = Path("config")
+    settings = EngineSettings.load(config_dir=config_dir)
 
     # 2. Create pipeline with dual-mode
     pipeline = DualModeEnhancedPipeline(
@@ -252,7 +253,6 @@ def example_usage():
             "htf_bias": 0.6,
             "eps_net": 0.001,
             "confidence": 0.70,
-            "regime": "trend",
         },
         regime="trend",
         confidence=0.70,
