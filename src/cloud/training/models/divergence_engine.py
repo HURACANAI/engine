@@ -13,12 +13,23 @@ Expected Impact: +4-6% win rate improvement
 Best in: TREND regime (end of trends)
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
-from typing import Dict, Optional
+from typing import Dict, Optional, TYPE_CHECKING
 import numpy as np
 import structlog  # type: ignore
 
-from .alpha_engines import AlphaSignal, TradingTechnique
+if TYPE_CHECKING:
+    from .alpha_engines import AlphaSignal, TradingTechnique
+else:
+    # Runtime import - avoid circular dependency
+    try:
+        from .alpha_engines import AlphaSignal, TradingTechnique
+    except ImportError:
+        # Fallback if circular import occurs
+        AlphaSignal = None  # type: ignore
+        TradingTechnique = None  # type: ignore
 
 logger = structlog.get_logger(__name__)
 

@@ -13,12 +13,23 @@ Expected Impact: +3-5% win rate improvement
 Best in: RANGE regime
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
-from typing import Dict, Optional, List
+from typing import Dict, Optional, List, TYPE_CHECKING
 import numpy as np
 import structlog  # type: ignore
 
-from .alpha_engines import AlphaSignal, TradingTechnique
+if TYPE_CHECKING:
+    from .alpha_engines import AlphaSignal, TradingTechnique
+else:
+    # Runtime import - avoid circular dependency
+    try:
+        from .alpha_engines import AlphaSignal, TradingTechnique
+    except ImportError:
+        # Fallback if circular import occurs
+        AlphaSignal = None  # type: ignore
+        TradingTechnique = None  # type: ignore
 
 logger = structlog.get_logger(__name__)
 
