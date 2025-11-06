@@ -246,8 +246,30 @@ class TrainingOrchestrator:
             
             # Handle tasks individually to allow graceful failure handling
             for i, task in enumerate(batch_tasks):
+                symbol = batch_rows[i]["symbol"] if i < len(batch_rows) else "unknown"
+                logger.info(
+                    "starting_training_task",
+                    symbol=symbol,
+                    batch_num=(batch_start // batch_size) + 1,
+                    task_num=i + 1,
+                    total_in_batch=len(batch_tasks),
+                )
                 try:
-                    result = ray.get(task)
+                    # Add timeout to prevent indefinite hanging (30 minutes per coin)
+                    # Note: This will raise ray.exceptions.GetTimeoutError if timeout is exceeded
+                    logger.info(
+                        "waiting_for_training_task",
+                        symbol=symbol,
+                        timeout_seconds=1800,
+                        message="Task may take time downloading historical data from exchange",
+                    )
+                    result = ray.get(task, timeout=1800.0)  # 30 minutes timeout
+                    logger.info(
+                        "training_task_complete",
+                        symbol=symbol,
+                        published=result.published,
+                        reason=result.reason,
+                    )
                     results.append(result)
                     self._finalize_result(result)
                     
@@ -259,6 +281,32 @@ class TrainingOrchestrator:
                             symbol=result.symbol,
                             details=result.metrics,
                         )
+                except ray.exceptions.GetTimeoutError:
+                    logger.error(
+                        "training_task_timeout",
+                        symbol=symbol,
+                        timeout_seconds=1800,
+                        message="Task exceeded 30 minute timeout - likely stuck on API call or data download",
+                    )
+                    # Create a timeout result
+                    empty_cost = CostBreakdown(fee_bps=0.0, spread_bps=0.0, slippage_bps=0.0)
+                    timeout_result = TrainingTaskResult(
+                        symbol=symbol,
+                        costs=empty_cost,
+                        metrics={},
+                        gate_results={},
+                        published=False,
+                        reason="training_timeout: Task exceeded 30 minute timeout",
+                        artifacts=None,
+                        model_id=str(uuid4()),
+                        run_id=f"{symbol}-{self._run_date:%Y%m%d}",
+                        pilot_contract=None,
+                        mechanic_contract=None,
+                        metrics_payload=None,
+                        model_params={},
+                        feature_metadata={},
+                    )
+                    results.append(timeout_result)
                 except Exception as e:
                     # Handle individual task failures gracefully
                     symbol = batch_rows[i]["symbol"] if i < len(batch_rows) else "unknown"
@@ -415,6 +463,12 @@ def _train_symbol(
     mode: str,
     dsn: Optional[str] = None,
 ) -> TrainingTaskResult:
+    logger.info(
+        "training_task_started",
+        symbol=symbol,
+        exchange_id=exchange_id,
+        message="Ray task started - beginning data download",
+    )
     settings = EngineSettings.model_validate(raw_settings)
     run_date = date.fromisoformat(run_date_str)
     credentials = settings.exchange.credentials.get(exchange_id, {})
@@ -423,7 +477,22 @@ def _train_symbol(
     loader = CandleDataLoader(exchange_client=exchange, quality_suite=quality_suite)
     start_at, end_at = _window_bounds(run_date, settings.scheduler.daily_run_time_utc, settings.training.window_days)
     query = CandleQuery(symbol=symbol, start_at=start_at, end_at=end_at)
+    
+    logger.info(
+        "downloading_historical_data",
+        symbol=symbol,
+        start_at=start_at.isoformat(),
+        end_at=end_at.isoformat(),
+        window_days=settings.training.window_days,
+        message="This may take several minutes depending on data size",
+    )
     raw_frame = loader.load(query)
+    logger.info(
+        "data_download_complete",
+        symbol=symbol,
+        rows=len(raw_frame),
+        message="Historical data downloaded, proceeding with training",
+    )
     if raw_frame.is_empty():
         empty_cost = CostBreakdown(fee_bps=0.0, spread_bps=0.0, slippage_bps=0.0)
         return TrainingTaskResult(
