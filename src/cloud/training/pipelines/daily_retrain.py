@@ -158,6 +158,11 @@ def run_daily_retrain() -> None:
         if telegram_monitor:
             telegram_monitor.notify_error("Configuration Error", error_msg)
         raise RuntimeError(error_msg)
+    
+    # Log DSN (masked for security) to verify config is loaded correctly
+    dsn_masked = settings.postgres.dsn.split("@")[-1] if "@" in settings.postgres.dsn else "***"
+    logger.info("postgres_dsn_loaded", dsn_masked=dsn_masked, has_password=":" in settings.postgres.dsn.split("@")[0] if "@" in settings.postgres.dsn else False)
+    
     model_registry = ModelRegistry(RegistryConfig(dsn=settings.postgres.dsn))
 
     notifier = NotificationClient(settings.notifications)
