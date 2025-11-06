@@ -1,28 +1,36 @@
-# Huracan Engine
+# Huracan Engine v5.1
 
-Huracan Engine is the reinforcement-learning training box that produces the nightly “Baseline Brain” for the Huracan trading stack. The project now ships a fully wired PPO agent, walk-forward shadow trading simulator, post-trade analytics backed by PostgreSQL + pgvector, and a health-monitoring control loop wrapped in a daily orchestration pipeline.
+Huracan Engine is the reinforcement-learning training box that produces the nightly "Baseline Brain" for the Huracan trading stack. The project now ships a fully wired PPO agent, walk-forward shadow trading simulator, post-trade analytics backed by PostgreSQL + pgvector, health-monitoring control loop, **and comprehensive observability system** with AI-powered insights and interactive UIs.
 
 ## Highlights
 
-- **Reinforcement learning agent** using PPO with contextual action biasing, running statistics, and gradient clipping (`src/cloud/training/agents/rl_agent.py`).
-- **Shadow trading simulator** that walks historical data without lookahead, captures rich trade context, and feeds rewards back into the agent (`src/cloud/training/backtesting/shadow_trader.py`).
-- **Post-trade analytics suite** covering wins, losses, pattern stats, and post-exit tracking, all persisted via `MemoryStore` into PostgreSQL/pgvector (`src/cloud/training/analyzers`, `src/cloud/training/memory`).
-- **Confidence, regime, and feature importance models** packaged under `src/cloud/training/models` to score trades before entry and explain outcomes.
-- **Daily orchestration and monitoring** with Ray integration, health checks, alerting, and artifact publishing (`src/cloud/training/pipelines/daily_retrain.py`, `src/cloud/training/monitoring`).
+- **Reinforcement learning agent** using PPO with contextual action biasing, running statistics, and gradient clipping ([src/cloud/training/agents/rl_agent.py](../src/cloud/training/agents/rl_agent.py)).
+- **Shadow trading simulator** that walks historical data without lookahead, captures rich trade context, and feeds rewards back into the agent ([src/cloud/training/backtesting/shadow_trader.py](../src/cloud/training/backtesting/shadow_trader.py)).
+- **Post-trade analytics suite** covering wins, losses, pattern stats, and post-exit tracking, all persisted via `MemoryStore` into PostgreSQL/pgvector ([src/cloud/training/analyzers](../src/cloud/training/analyzers), [src/cloud/training/memory](../src/cloud/training/memory)).
+- **Confidence, regime, and feature importance models** packaged under [src/cloud/training/models](../src/cloud/training/models) to score trades before entry and explain outcomes.
+- **Intelligence gates** (14 systems) that filter unprofitable trades through cost analysis, adverse selection detection, and meta-labeling.
+- **Daily orchestration and monitoring** with Ray integration, health checks, alerting, and artifact publishing ([src/cloud/training/pipelines/daily_retrain.py](../src/cloud/training/pipelines/daily_retrain.py), [src/cloud/training/monitoring](../src/cloud/training/monitoring)).
+- **Observability system** (33 modules) with event logging (113k events/sec), learning analytics, AI Council (7 models + judge), and 4 interactive UIs ([observability/](../observability/)).
 
 ## Repository Layout
 
 - `src/cloud/training/agents` – PPO agent and supporting utilities.
 - `src/cloud/training/backtesting` – Shadow trading engine plus backtest configuration.
 - `src/cloud/training/analyzers` – Win/loss insight generators, pattern matcher, post-exit tracker.
-- `src/cloud/training/models` – Regime detector, confidence scorer, feature importance learner, ensemble helpers.
+- `src/cloud/training/models` – Regime detector, confidence scorer, feature importance learner, ensemble helpers, intelligence gates.
 - `src/cloud/training/memory` – PostgreSQL schema and vector-backed memory store.
 - `src/cloud/training/pipelines` – Daily retrain entrypoint and RL training pipeline.
 - `src/cloud/training/services` – Orchestrator, costs, exchange client, artifact publishing, notifications.
 - `src/cloud/training/monitoring` – Health monitor orchestrator, anomaly detection, auto-remediation.
+- **`observability/`** – Event logging, learning analytics, AI Council, interactive UIs (33 modules, v5.1).
+  - `observability/core/` – Event logger, hybrid storage, model registry, queue monitor.
+  - `observability/analytics/` – Learning tracker, shadow trade journal, gate explainer, decision tracer, metrics computer.
+  - `observability/ai_council/` – 7 analyst models + judge for AI-powered insights (planned).
+  - `observability/ui/` – Live dashboard, trade viewer, gate inspector, model tracker (4 interactive UIs).
 - `config/` – Base, local, and monitoring YAML profiles used by `EngineSettings`.
 - `scripts/` – Setup helpers (`setup_database.sh`, `setup_rl_training.sh`), runner scripts (`run_daily_retrain.sh`, `run_health_monitor.py`).
-- `tests/` – Unit and integration coverage (confidence scoring, regime detection, RL system checks, etc.).
+- `tests/` – Unit and integration coverage (confidence scoring, regime detection, RL system checks, observability, etc.).
+- `docs/` – Comprehensive documentation (50+ files including phase completion, guides, architecture).
 
 ## Getting Started
 
@@ -114,10 +122,43 @@ PY
 
 The `docs/` directory contains deep dives and runbooks:
 
+### Core Guides
 - [`SETUP_GUIDE.md`](SETUP_GUIDE.md) – full environment walkthrough.
 - [`RL_TRAINING_GUIDE.md`](RL_TRAINING_GUIDE.md) – detailed PPO + shadow trading explanation.
 - [`HEALTH_MONITORING_GUIDE.md`](HEALTH_MONITORING_GUIDE.md) – alerting, anomaly detection, and auto-remediation details.
 - [`INTEGRATION_COMPLETE.md`](INTEGRATION_COMPLETE.md) & [`DEPLOYMENT_COMPLETE.md`](DEPLOYMENT_COMPLETE.md) – integration status and deployment checklist.
 - [`README_COMPLETE.md`](README_COMPLETE.md) – comprehensive architecture summary.
 
+### Complete System Documentation
+- [`../COMPLETE_SYSTEM_DOCUMENTATION_V5.md`](../COMPLETE_SYSTEM_DOCUMENTATION_V5.md) – **v5.1 master reference** with complete A-Z coverage of all systems, strategies, and methods.
+
+### Observability Documentation (v5.1 NEW!)
+- [`../observability/FINAL_SUMMARY.md`](../observability/FINAL_SUMMARY.md) – Observability system overview (33 modules).
+- [`../observability/AI_COUNCIL_ARCHITECTURE.md`](../observability/AI_COUNCIL_ARCHITECTURE.md) – AI Council design (7 analysts + judge).
+- [`../observability/ENGINE_ARCHITECTURE.md`](../observability/ENGINE_ARCHITECTURE.md) – Engine vs Hamilton separation.
+- [`../observability/INTEGRATION_GUIDE.md`](../observability/INTEGRATION_GUIDE.md) – 3-line integration guide.
+
+### Phase Completion Docs
+- Phase 1-4 completion documents ([`PHASE1_COMPLETE.md`](PHASE1_COMPLETE.md) through [`PHASE_5_COMPLETE.md`](PHASE_5_COMPLETE.md))
+- Engine phase completions ([`ENGINE_PHASE1_COMPLETE.md`](ENGINE_PHASE1_COMPLETE.md) through [`ENGINE_PHASE4_WAVE3_COMPLETE.md`](ENGINE_PHASE4_WAVE3_COMPLETE.md))
+- [`INTELLIGENCE_GATES_COMPLETE.md`](INTELLIGENCE_GATES_COMPLETE.md) – All 14 intelligence gates
+
 These references stay in sync with the code paths listed above, so you can trace each subsystem from documentation to implementation without outdated pointers.
+
+## Interactive Tools (v5.1 NEW!)
+
+The observability system includes 4 interactive terminal UIs:
+
+```bash
+# Live dashboard - real-time learning metrics
+python -m observability.ui.live_dashboard
+
+# Shadow trade viewer - explore paper trades
+python -m observability.ui.trade_viewer
+
+# Gate inspector - analyze gate decisions
+python -m observability.ui.gate_inspector
+
+# Model tracker - track model evolution
+python -m observability.ui.model_tracker_ui
+```
