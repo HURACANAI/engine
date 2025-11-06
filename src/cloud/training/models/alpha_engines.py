@@ -52,7 +52,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
 
 import numpy as np
-import structlog
+import structlog  # type: ignore
 
 logger = structlog.get_logger()
 
