@@ -533,7 +533,18 @@ def _train_symbol(
     credentials = settings.exchange.credentials.get(exchange_id, {})
     exchange = ExchangeClient(exchange_id, credentials=credentials, sandbox=settings.exchange.sandbox)
     quality_suite = DataQualitySuite()
-    loader = CandleDataLoader(exchange_client=exchange, quality_suite=quality_suite)
+    
+    # Multi-exchange fallback support
+    # Get credentials for all exchanges for fallback
+    all_exchange_credentials = settings.exchange.credentials or {}
+    fallback_exchanges = ["coinbasepro", "kraken", "okx", "bybit"]  # Major exchanges with good API limits
+    
+    loader = CandleDataLoader(
+        exchange_client=exchange,
+        quality_suite=quality_suite,
+        fallback_exchanges=fallback_exchanges,
+        exchange_credentials=all_exchange_credentials,
+    )
     start_at, end_at = _window_bounds(run_date, settings.scheduler.daily_run_time_utc, settings.training.window_days)
     query = CandleQuery(symbol=symbol, start_at=start_at, end_at=end_at)
     
