@@ -205,6 +205,7 @@ def run_daily_retrain() -> None:
         notifier=notifier,
         artifact_publisher=artifact_publisher,
         telegram_monitor=telegram_monitor,  # Pass Telegram monitor for validation notifications
+        learning_tracker=learning_tracker,  # Pass learning tracker
     )
 
     try:

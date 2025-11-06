@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ..monitoring.comprehensive_telegram_monitor import ComprehensiveTelegramMonitor
+    from ..monitoring.learning_tracker import LearningTracker
 from uuid import uuid4
 
 import matplotlib
@@ -208,6 +209,7 @@ class TrainingOrchestrator:
         self._notifier = notifier
         self._artifact_publisher = artifact_publisher
         self._telegram_monitor = telegram_monitor
+        self._learning_tracker = learning_tracker
         self._run_date = datetime.now(tz=timezone.utc).date()
 
     def run(self) -> List[TrainingTaskResult]:
