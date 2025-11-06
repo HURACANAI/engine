@@ -270,6 +270,18 @@ class TrainingOrchestrator:
                     task_num=i + 1,
                     total_in_batch=len(batch_tasks),
                 )
+                
+                # Notify Telegram about training start
+                if self._telegram_monitor:
+                    self._telegram_monitor.notify_training_progress(
+                        symbol=symbol,
+                        batch_num=(batch_start // batch_size) + 1,
+                        total_batches=(len(rows) + batch_size - 1) // batch_size,
+                        task_num=i + 1,
+                        total_tasks=len(batch_tasks),
+                        status="started",
+                    )
+                
                 try:
                     # Add timeout to prevent indefinite hanging (30 minutes per coin)
                     # Note: This will raise ray.exceptions.GetTimeoutError if timeout is exceeded
@@ -286,6 +298,22 @@ class TrainingOrchestrator:
                         published=result.published,
                         reason=result.reason,
                     )
+                    
+                    # Notify Telegram about training completion
+                    if self._telegram_monitor:
+                        self._telegram_monitor.notify_training_progress(
+                            symbol=symbol,
+                            batch_num=(batch_start // batch_size) + 1,
+                            total_batches=(len(rows) + batch_size - 1) // batch_size,
+                            task_num=i + 1,
+                            total_tasks=len(batch_tasks),
+                            status="completed",
+                            details={
+                                "published": result.published,
+                                "reason": result.reason,
+                            },
+                        )
+                    
                     results.append(result)
                     self._finalize_result(result)
                     
@@ -304,6 +332,21 @@ class TrainingOrchestrator:
                         timeout_seconds=1800,
                         message="Task exceeded 30 minute timeout - likely stuck on API call or data download",
                     )
+                    
+                    # Notify Telegram about timeout
+                    if self._telegram_monitor:
+                        self._telegram_monitor.notify_training_progress(
+                            symbol=symbol,
+                            batch_num=(batch_start // batch_size) + 1,
+                            total_batches=(len(rows) + batch_size - 1) // batch_size,
+                            task_num=i + 1,
+                            total_tasks=len(batch_tasks),
+                            status="failed",
+                            details={
+                                "error": "Task exceeded 30 minute timeout - likely stuck on API call or data download",
+                            },
+                        )
+                    
                     # Create a timeout result
                     empty_cost = CostBreakdown(fee_bps=0.0, spread_bps=0.0, slippage_bps=0.0)
                     timeout_result = TrainingTaskResult(

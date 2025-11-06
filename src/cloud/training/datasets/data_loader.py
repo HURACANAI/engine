@@ -25,18 +25,32 @@ class CandleQuery:
 
 
 class CandleDataLoader:
-    """Retrieves and caches historical OHLCV data through the exchange adapter."""
+    """Retrieves and caches historical OHLCV data through the exchange adapter.
+    
+    Supports multi-exchange fallback to avoid rate limits:
+    - Tries primary exchange (usually Binance) first
+    - Falls back to other exchanges if rate limited
+    - Data is the same across exchanges for the same symbol
+    """
 
     def __init__(
         self,
         exchange_client: ExchangeClient,
         cache_dir: Optional[Path] = None,
         quality_suite: Optional[DataQualitySuite] = None,
+        fallback_exchanges: Optional[list[str]] = None,
+        exchange_credentials: Optional[dict] = None,
     ) -> None:
         self._exchange = exchange_client
         self._cache_dir = Path(cache_dir or Path.cwd() / "data" / "candles")
         self._cache_dir.mkdir(parents=True, exist_ok=True)
         self._quality = quality_suite or DataQualitySuite()
+        
+        # Multi-exchange fallback support
+        # Default fallback exchanges (major exchanges with good API limits)
+        self._fallback_exchanges = fallback_exchanges or ["coinbasepro", "kraken", "okx", "bybit"]
+        self._exchange_credentials = exchange_credentials or {}
+        self._fallback_clients: dict[str, ExchangeClient] = {}
 
     def load(self, query: CandleQuery, use_cache: bool = True) -> pl.DataFrame:
         cache_path = self._cache_path(query)
@@ -57,11 +71,61 @@ class CandleDataLoader:
         return frame
 
     def _download(self, query: CandleQuery, skip_validation: bool = False) -> pl.DataFrame:
+        """Download data with multi-exchange fallback."""
+        # Try primary exchange first
+        try:
+            return self._download_from_exchange(self._exchange, query, skip_validation)
+        except Exception as e:
+            error_str = str(e).lower()
+            # Check if it's a rate limit error
+            if any(keyword in error_str for keyword in ["429", "rate limit", "too many requests", "ddos"]):
+                logger.warning(
+                    "rate_limit_on_primary",
+                    exchange=self._exchange.exchange_id,
+                    symbol=query.symbol,
+                    error=str(e),
+                    message="Trying fallback exchanges",
+                )
+                # Try fallback exchanges
+                for fallback_id in self._fallback_exchanges:
+                    try:
+                        fallback_client = self._get_fallback_client(fallback_id)
+                        logger.info(
+                            "trying_fallback_exchange",
+                            exchange=fallback_id,
+                            symbol=query.symbol,
+                        )
+                        return self._download_from_exchange(fallback_client, query, skip_validation)
+                    except Exception as fallback_error:
+                        logger.warning(
+                            "fallback_exchange_failed",
+                            exchange=fallback_id,
+                            symbol=query.symbol,
+                            error=str(fallback_error),
+                        )
+                        continue
+                # If all fallbacks failed, raise original error
+                logger.error(
+                    "all_exchanges_failed",
+                    symbol=query.symbol,
+                    primary_exchange=self._exchange.exchange_id,
+                    fallback_exchanges=self._fallback_exchanges,
+                    error=str(e),
+                )
+            raise
+    
+    def _download_from_exchange(
+        self,
+        exchange_client: ExchangeClient,
+        query: CandleQuery,
+        skip_validation: bool = False,
+    ) -> pl.DataFrame:
+        """Download data from a specific exchange."""
         rows = []
         since_ms = int(query.start_at.timestamp() * 1_000)
         end_ms = int(query.end_at.timestamp() * 1_000)
         while since_ms < end_ms:
-            batch = self._exchange.fetch_ohlcv(query.symbol, query.timeframe, since=since_ms, limit=1_000)
+            batch = exchange_client.fetch_ohlcv(query.symbol, query.timeframe, since=since_ms, limit=1_000)
             if not batch or len(batch) == 0:
                 break
             rows.extend(batch)
@@ -103,6 +167,18 @@ class CandleDataLoader:
         if not skip_validation and self._quality is not None:
             return self._quality.validate(frame, query=query)
         return frame
+    
+    def _get_fallback_client(self, exchange_id: str) -> ExchangeClient:
+        """Get or create a fallback exchange client."""
+        if exchange_id not in self._fallback_clients:
+            credentials = self._exchange_credentials.get(exchange_id, {})
+            self._fallback_clients[exchange_id] = ExchangeClient(
+                exchange_id=exchange_id,
+                credentials=credentials,
+                sandbox=False,
+                load_markets=True,
+            )
+        return self._fallback_clients[exchange_id]
 
     def _cache_path(self, query: CandleQuery) -> Path:
         symbol_safe = query.symbol.replace("/", "-")
