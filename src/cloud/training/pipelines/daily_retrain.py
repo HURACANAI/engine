@@ -176,11 +176,13 @@ def run_daily_retrain() -> None:
         logger.info("===== STARTUP STATUS CHECK =====", operation="STARTUP_HEALTH_CHECK")
         status_reporter = SystemStatusReporter(dsn=settings.postgres.dsn)
         startup_status = status_reporter.generate_full_report()
+        healthy_count = sum(1 for s in startup_status.services if s.healthy)
+        total_count = len(startup_status.services)
         logger.info(
             "startup_status_summary",
-            overall_status=startup_status.get("overall_status", "UNKNOWN"),
-            services_healthy=startup_status.get("services_healthy", 0),
-            services_total=startup_status.get("services_total", 0),
+            overall_status=startup_status.overall_status,
+            services_healthy=healthy_count,
+            services_total=total_count,
         )
     else:
         logger.info("health_monitoring_disabled", reason="monitoring.enabled=false")
