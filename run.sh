@@ -11,6 +11,6 @@ python3 -c "import boto3, matplotlib, pydantic_settings" 2>/dev/null || {
     pip install -q boto3 matplotlib pydantic-settings
 }
 
-# Run the engine
-python3 src/cloud/training/pipelines/daily_retrain.py
+# Run the engine as a module (required for relative imports)
+python3 -m src.cloud.training.pipelines.daily_retrain
 

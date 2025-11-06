@@ -56,6 +56,6 @@ echo ""
 echo "🎯 Running Engine..."
 echo ""
 
-# Run the engine
-python3 src/cloud/training/pipelines/daily_retrain.py
+# Run the engine as a module (required for relative imports)
+python3 -m src.cloud.training.pipelines.daily_retrain
 
