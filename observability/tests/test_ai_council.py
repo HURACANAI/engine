@@ -125,7 +125,7 @@ async def test_analyst_diversity():
             response_data={
                 'summary': "Shadow trades: 42, win rate: 0.74, AUC: 0.72 which is below target of 0.75.",
                 'key_insights': ["AUC needs improvement", "Calibration is good"],
-                'numbers_cited': {"total_trades": 42, "win_rate": 0.74, "auc": 0.72}
+                'numbers_cited': {"total_trades": 42, "win_rate": 0.74, "auc": 0.72, "auc_target": 0.75}
             }
         )
     ]
