@@ -65,7 +65,7 @@ def initialize_ray(address: Optional[str], namespace: str, runtime_env: Optional
         "namespace": namespace,
         "runtime_env": runtime_env or {},
         "ignore_reinit_error": True,
-        "log_to_driver": False,
+        "log_to_driver": True,  # Enable logging from Ray tasks to see what's happening
     }
     if address:
         init_kwargs["address"] = address
