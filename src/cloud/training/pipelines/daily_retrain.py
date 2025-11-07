@@ -445,10 +445,14 @@ def run_daily_retrain() -> None:
             print(f"\n📝 Monitoring log saved to: {log_file}")
             print(f"   You can copy/paste this file to share with support.\n")
         
-        # Dropbox sync is already initialized at startup
-        # Just log final sync status if needed
+        # Dropbox sync is already initialized at startup and running in background
+        # Continuous sync will keep syncing data every 1 minute
         if dropbox_sync:
-            logger.info("dropbox_sync_active", message="Dropbox sync is running in background")
+            logger.info(
+                "dropbox_sync_active",
+                folder=dropbox_sync._dated_folder if hasattr(dropbox_sync, "_dated_folder") else "unknown",
+                message="Dropbox sync is running in background - data will be synced continuously",
+            )
         
         if ray.is_initialized():
             ray.shutdown()
