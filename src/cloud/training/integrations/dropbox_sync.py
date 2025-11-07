@@ -68,9 +68,27 @@ class DropboxSync:
             return
         
         self._enabled = True
-        self._access_token = access_token
+        # Clean and validate token (remove any whitespace, newlines, etc.)
+        self._access_token = access_token.strip() if access_token else ""
         self._app_folder = app_folder
-        self._dbx = dropbox.Dropbox(access_token)
+        
+        # Validate token format (should start with 'sl.')
+        if not self._access_token.startswith("sl."):
+            logger.error(
+                "dropbox_token_invalid_format",
+                token_prefix=self._access_token[:10] if len(self._access_token) > 10 else self._access_token,
+                message="Token should start with 'sl.'",
+            )
+            raise ValueError("Invalid Dropbox token format - token should start with 'sl.'")
+        
+        # Log token prefix for debugging (not full token for security)
+        logger.debug(
+            "dropbox_token_received",
+            token_prefix=self._access_token[:20],
+            token_length=len(self._access_token),
+        )
+        
+        self._dbx = dropbox.Dropbox(self._access_token)
         
         # Test connection
         try:
@@ -81,10 +99,19 @@ class DropboxSync:
                 app_folder=app_folder,
             )
         except AuthError as e:
-            logger.error("dropbox_auth_failed", error=str(e))
+            logger.error(
+                "dropbox_auth_failed",
+                error=str(e),
+                token_prefix=self._access_token[:20],
+                message="Token authentication failed - check if token is valid and not expired",
+            )
             raise
         except Exception as e:
-            logger.error("dropbox_connection_failed", error=str(e))
+            logger.error(
+                "dropbox_connection_failed",
+                error=str(e),
+                token_prefix=self._access_token[:20],
+            )
             raise
         
         # Create dated folder at startup (first thing we do)
