@@ -17,14 +17,29 @@ export PYTHONPATH="$PROJECT_ROOT:$PYTHONPATH"
 # Install ALL dependencies from pyproject.toml to avoid missing module errors
 # Only install packages that are not already installed
 echo "📦 Checking and installing required dependencies..."
-PACKAGES="polars pyarrow pandas duckdb lightgbm xgboost 'ray[default]' apscheduler sqlalchemy alembic boto3 s3fs pydantic pydantic-settings structlog prometheus-client great-expectations tenacity ccxt requests python-telegram-bot numpy scipy matplotlib psycopg2-binary psutil dropbox"
 
+# Map pip package names to import names (some differ)
+declare -A PACKAGE_MAP=(
+    ["pydantic-settings"]="pydantic_settings"
+    ["python-telegram-bot"]="telegram"
+    ["psycopg2-binary"]="psycopg2"
+    ["prometheus-client"]="prometheus_client"
+    ["great-expectations"]="great_expectations"
+)
+
+# Check each package
 MISSING_PACKAGES=""
-for pkg in $PACKAGES; do
-    # Remove quotes for checking
-    pkg_name=$(echo "$pkg" | tr -d "'")
+for pkg in polars pyarrow pandas duckdb lightgbm xgboost "ray[default]" apscheduler sqlalchemy alembic boto3 s3fs pydantic pydantic-settings structlog prometheus-client great-expectations tenacity ccxt requests python-telegram-bot numpy scipy matplotlib psycopg2-binary psutil dropbox; do
+    # Get import name (use mapped name if exists, otherwise use package name)
+    if [[ -n "${PACKAGE_MAP[$pkg]}" ]]; then
+        import_name="${PACKAGE_MAP[$pkg]}"
+    else
+        import_name="${pkg//\[default\]/}"
+        import_name="${import_name//-/_}"
+    fi
+    
     # Check if package is installed
-    if ! python3 -c "import ${pkg_name//\[default\]/}" 2>/dev/null; then
+    if ! python3 -c "import $import_name" 2>/dev/null; then
         MISSING_PACKAGES="$MISSING_PACKAGES $pkg"
     fi
 done
