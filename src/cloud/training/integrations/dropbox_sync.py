@@ -47,6 +47,7 @@ class DropboxSync:
         access_token: str,
         app_folder: str = "Runpodhuracan",
         enabled: bool = True,
+        create_dated_folder: bool = True,
     ) -> None:
         """Initialize Dropbox sync.
         
@@ -54,6 +55,7 @@ class DropboxSync:
             access_token: Dropbox access token
             app_folder: App folder name in Dropbox
             enabled: Whether sync is enabled
+            create_dated_folder: Whether to create a dated folder (YYYY-MM-DD) for today's data
         """
         if not DROPBOX_AVAILABLE:
             raise ImportError(
@@ -84,6 +86,12 @@ class DropboxSync:
         except Exception as e:
             logger.error("dropbox_connection_failed", error=str(e))
             raise
+        
+        # Create dated folder at startup (first thing we do)
+        if create_dated_folder:
+            self._dated_folder = self._create_dated_folder()
+        else:
+            self._dated_folder = ""
     
     def upload_file(
         self,
@@ -460,7 +468,11 @@ class DropboxSync:
         local_dir = Path(data_cache_dir)
         local_dir.mkdir(parents=True, exist_ok=True)
         
-        remote_dir = self._normalize_path(remote_dir)
+        # Use shared location for historical data (not dated folder)
+        if remote_dir is None:
+            remote_dir = f"/{self._app_folder}/data/candles"
+        else:
+            remote_dir = self._normalize_path(remote_dir)
         
         try:
             # List files in Dropbox

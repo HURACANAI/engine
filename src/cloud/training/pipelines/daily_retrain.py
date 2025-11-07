@@ -342,11 +342,21 @@ def run_daily_retrain() -> None:
         if settings.dropbox.enabled and dropbox_token:
             try:
                 logger.info("dropbox_sync_initializing")
+                # Initialize Dropbox sync - this will create dated folder as first action
                 dropbox_sync = DropboxSync(
                     access_token=dropbox_token,
                     app_folder=dropbox_folder,
                     enabled=True,
+                    create_dated_folder=True,  # Create dated folder at startup
                 )
+                
+                # Log the dated folder that was created
+                if hasattr(dropbox_sync, "_dated_folder") and dropbox_sync._dated_folder:
+                    logger.info(
+                        "dropbox_dated_folder_ready",
+                        folder=dropbox_sync._dated_folder,
+                        message="All data will be organized under this dated folder",
+                    )
                 
                 # Start continuous sync (every 1 minute)
                 sync_thread = dropbox_sync.start_continuous_sync(
@@ -380,10 +390,11 @@ def run_daily_retrain() -> None:
                 
                 # Restore historical data cache from Dropbox (if available)
                 # This avoids re-downloading data we already have
+                # Historical data is stored in shared location (not dated folder)
                 if Path("data/candles").exists() or True:  # Always try to restore
                     restored_count = dropbox_sync.restore_data_cache(
                         data_cache_dir="data/candles",
-                        remote_dir="/data/candles",
+                        remote_dir=None,  # Uses shared location automatically
                     )
                     if restored_count > 0:
                         logger.info(
@@ -393,8 +404,16 @@ def run_daily_retrain() -> None:
                         )
                 
                 # Sync historical data cache to Dropbox
+                # Historical data goes to shared location (not dated folder) for reuse
                 if Path("data/candles").exists():
-                    sync_results["data_cache"] = dropbox_sync.upload_data_cache("data/candles")
+                    # Use shared location for historical data
+                    shared_data_path = f"/{dropbox_folder}/data/candles"
+                    sync_results["data_cache"] = dropbox_sync.sync_directory(
+                        local_dir="data/candles",
+                        remote_dir=shared_data_path,
+                        pattern="*.parquet",
+                        recursive=True,
+                    )
                 
                 logger.info(
                     "dropbox_initial_sync_complete",
