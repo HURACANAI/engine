@@ -68,27 +68,51 @@ class DropboxSync:
             return
         
         self._enabled = True
-        # Clean and validate token (remove any whitespace, newlines, etc.)
-        self._access_token = access_token.strip() if access_token else ""
+        # Clean and validate token (remove any whitespace, newlines, quotes, etc.)
+        if not access_token:
+            raise ValueError("Dropbox access token is required")
+        
+        # Clean token: remove whitespace, newlines, quotes, etc.
+        self._access_token = access_token.strip().strip('"').strip("'").replace("\n", "").replace("\r", "")
         self._app_folder = app_folder
         
         # Validate token format (should start with 'sl.')
         if not self._access_token.startswith("sl."):
             logger.error(
                 "dropbox_token_invalid_format",
-                token_prefix=self._access_token[:10] if len(self._access_token) > 10 else self._access_token,
+                token_prefix=self._access_token[:20] if len(self._access_token) > 20 else self._access_token,
+                token_length=len(self._access_token),
                 message="Token should start with 'sl.'",
             )
-            raise ValueError("Invalid Dropbox token format - token should start with 'sl.'")
+            raise ValueError(f"Invalid Dropbox token format - token should start with 'sl.' (got: {self._access_token[:20]}...)")
+        
+        # Validate token length (Dropbox tokens are typically long)
+        if len(self._access_token) < 50:
+            logger.warning(
+                "dropbox_token_short",
+                token_length=len(self._access_token),
+                message="Token seems unusually short - may be invalid",
+            )
         
         # Log token prefix for debugging (not full token for security)
-        logger.debug(
+        logger.info(
             "dropbox_token_received",
-            token_prefix=self._access_token[:20],
+            token_prefix=self._access_token[:30],
             token_length=len(self._access_token),
+            message="Token received and cleaned",
         )
         
-        self._dbx = dropbox.Dropbox(self._access_token)
+        # Initialize Dropbox client
+        try:
+            self._dbx = dropbox.Dropbox(self._access_token)
+        except Exception as e:
+            logger.error(
+                "dropbox_client_init_failed",
+                error=str(e),
+                token_prefix=self._access_token[:30],
+                message="Failed to initialize Dropbox client",
+            )
+            raise
         
         # Test connection
         try:
