@@ -410,10 +410,14 @@ class DropboxSync:
                         )
                     
                     # Sync historical data cache (so we don't need to redownload)
+                    # Note: Historical data goes to a shared location, not dated folder
+                    # (so it can be reused across days)
                     if Path(data_cache_dir).exists():
+                        # Use shared location for historical data (not dated folder)
+                        shared_data_path = f"/{self._app_folder}/data/candles"
                         self.sync_directory(
                             local_dir=data_cache_dir,
-                            remote_dir="/data/candles",
+                            remote_dir=shared_data_path,
                             pattern="*.parquet",
                             recursive=True,
                         )
@@ -432,18 +436,29 @@ class DropboxSync:
         logger.info("continuous_sync_thread_started", interval_seconds=interval_seconds)
         return thread
     
-    def upload_data_cache(self, data_cache_dir: str | Path = "data/candles") -> int:
+    def upload_data_cache(
+        self,
+        data_cache_dir: str | Path = "data/candles",
+        use_shared_location: bool = True,
+    ) -> int:
         """Upload historical data cache to Dropbox.
         
         Args:
             data_cache_dir: Local data cache directory
+            use_shared_location: If True, use shared location (not dated folder) for reuse
             
         Returns:
             Number of files uploaded
         """
+        if use_shared_location:
+            # Use shared location for historical data (not dated folder)
+            remote_dir = f"/{self._app_folder}/data/candles"
+        else:
+            remote_dir = "/data/candles"
+        
         return self.sync_directory(
             local_dir=data_cache_dir,
-            remote_dir="/data/candles",
+            remote_dir=remote_dir,
             pattern="*.parquet",
             recursive=True,
         )
@@ -451,7 +466,7 @@ class DropboxSync:
     def restore_data_cache(
         self,
         data_cache_dir: str | Path = "data/candles",
-        remote_dir: str = "/data/candles",
+        remote_dir: Optional[str] = None,
     ) -> int:
         """Restore historical data cache from Dropbox.
         
