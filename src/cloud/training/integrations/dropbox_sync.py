@@ -313,11 +313,57 @@ class DropboxSync:
         
         return results
     
-    def _normalize_path(self, path: str) -> str:
+    def _create_dated_folder(self) -> str:
+        """Create a dated folder in Dropbox (YYYY-MM-DD format).
+        
+        Returns:
+            Path to the dated folder (e.g., "/Runpodhuracan/2025-11-06/")
+        """
+        if not self._enabled:
+            return ""
+        
+        # Get today's date in YYYY-MM-DD format
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        dated_path = f"/{self._app_folder}/{today}"
+        
+        try:
+            # Try to create the folder (will not error if it already exists)
+            try:
+                self._dbx.files_create_folder_v2(dated_path)
+                logger.info(
+                    "dropbox_dated_folder_created",
+                    folder_path=dated_path,
+                    date=today,
+                )
+            except ApiError as e:
+                # Folder already exists - that's fine
+                if "path/conflict/folder" in str(e.error):
+                    logger.debug(
+                        "dropbox_dated_folder_exists",
+                        folder_path=dated_path,
+                        date=today,
+                    )
+                else:
+                    raise
+            
+            return dated_path
+        except Exception as e:
+            logger.error(
+                "dropbox_dated_folder_creation_failed",
+                folder_path=dated_path,
+                error=str(e),
+            )
+            # Fallback to app folder root if dated folder creation fails
+            return f"/{self._app_folder}"
+    
+    def _normalize_path(self, path: str, use_dated_folder: bool = True) -> str:
         """Normalize Dropbox path.
+        
+        All paths are organized under the dated folder created at startup.
         
         Args:
             path: Path to normalize
+            use_dated_folder: If True, use dated folder (default). If False, use app folder root.
             
         Returns:
             Normalized path
@@ -326,9 +372,23 @@ class DropboxSync:
         if path.startswith("/"):
             path = path[1:]
         
-        # Ensure path starts with app folder
-        if not path.startswith(f"/{self._app_folder}/"):
-            path = f"/{self._app_folder}/{path}"
+        # If path doesn't start with app folder, prepend it
+        if not path.startswith(f"{self._app_folder}/"):
+            # Use dated folder if available and requested, otherwise use app folder
+            if use_dated_folder and hasattr(self, "_dated_folder") and self._dated_folder:
+                # Combine with dated folder
+                path = f"{self._dated_folder}/{path}"
+            else:
+                path = f"/{self._app_folder}/{path}"
+        else:
+            # Path already has app folder, but ensure it uses dated folder if requested
+            if use_dated_folder and hasattr(self, "_dated_folder") and self._dated_folder:
+                # Replace app folder with dated folder
+                path = path.replace(f"/{self._app_folder}/", f"{self._dated_folder}/", 1)
+            else:
+                # Ensure leading slash
+                if not path.startswith("/"):
+                    path = f"/{path}"
         
         return path
     
