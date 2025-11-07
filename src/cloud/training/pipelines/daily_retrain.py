@@ -97,6 +97,40 @@ def run_daily_retrain() -> None:
 
     settings = EngineSettings.load()
     
+    # ===== CREATE DROPBOX DATED FOLDER IMMEDIATELY (FIRST ACTION) =====
+    # This happens before anything else so user knows it works
+    dropbox_sync = None
+    dropbox_token = settings.dropbox.access_token or "sl.u.AGHQ-QqhV0EtQCouDihfL34xdAWDNKKYGpDL08AyO2iKef94KW8zMv0DRWrIM508LPdOSkLQhwksqHH-9alha89fx46EVnWK77ViBZbmjM6g"
+    dropbox_folder = settings.dropbox.app_folder or "Runpodhuracan"
+    
+    if settings.dropbox.enabled and dropbox_token:
+        try:
+            logger.info("dropbox_creating_dated_folder_immediately")
+            print("\n📁 Creating Dropbox dated folder...")
+            
+            # Initialize Dropbox sync - this will create dated folder as FIRST action
+            dropbox_sync = DropboxSync(
+                access_token=dropbox_token,
+                app_folder=dropbox_folder,
+                enabled=True,
+                create_dated_folder=True,  # Create dated folder immediately
+            )
+            
+            # Log the dated folder that was created
+            if hasattr(dropbox_sync, "_dated_folder") and dropbox_sync._dated_folder:
+                logger.info(
+                    "dropbox_dated_folder_created_successfully",
+                    folder=dropbox_sync._dated_folder,
+                    message="✅ Dated folder created - ready for data sync",
+                )
+                print(f"✅ Dropbox folder created: {dropbox_sync._dated_folder}\n")
+            else:
+                logger.warning("dropbox_dated_folder_creation_failed", message="Folder not created")
+                print("⚠️  Dropbox folder creation failed - check logs\n")
+        except Exception as sync_error:
+            logger.error("dropbox_folder_creation_failed", error=str(sync_error))
+            print(f"❌ Dropbox folder creation failed: {str(sync_error)}\n")
+    
     # Initialize comprehensive Telegram monitoring
     telegram_monitor = None
     log_file = Path("logs") / f"engine_monitoring_{start_ts.strftime('%Y%m%d_%H%M%S')}.log"
@@ -104,32 +138,14 @@ def run_daily_retrain() -> None:
     # Initialize learning tracker
     learning_tracker = LearningTracker(output_dir=Path("logs/learning"))
     
-    # Initialize Dropbox sync FIRST (creates dated folder immediately)
-    # This happens before training starts so dated folder is ready
-    dropbox_sync = None
-    dropbox_token = settings.dropbox.access_token or "sl.u.AGHQ-QqhV0EtQCouDihfL34xdAWDNKKYGpDL08AyO2iKef94KW8zMv0DRWrIM508LPdOSkLQhwksqHH-9alha89fx46EVnWK77ViBZbmjM6g"
-    dropbox_folder = settings.dropbox.app_folder or "Runpodhuracan"
-    
-    if settings.dropbox.enabled and dropbox_token:
+    # ===== START DROPBOX CONTINUOUS SYNC (AFTER FOLDER CREATION) =====
+    # Now that folder is created, start syncing data as it's generated
+    if dropbox_sync:
         try:
-            logger.info("dropbox_sync_initializing_at_startup")
-            # Initialize Dropbox sync - this will create dated folder as first action
-            dropbox_sync = DropboxSync(
-                access_token=dropbox_token,
-                app_folder=dropbox_folder,
-                enabled=True,
-                create_dated_folder=True,  # Create dated folder at startup
-            )
+            logger.info("dropbox_starting_continuous_sync")
+            print("🔄 Starting Dropbox continuous sync (every 1 minute)...\n")
             
-            # Log the dated folder that was created
-            if hasattr(dropbox_sync, "_dated_folder") and dropbox_sync._dated_folder:
-                logger.info(
-                    "dropbox_dated_folder_ready",
-                    folder=dropbox_sync._dated_folder,
-                    message="Dated folder created - all data will be organized here",
-                )
-            
-            # Start continuous sync (every 1 minute)
+            # Start continuous sync (every 1 minute) - syncs data as it's generated
             sync_thread = dropbox_sync.start_continuous_sync(
                 interval_seconds=60,  # 1 minute
                 logs_dir="logs",
@@ -155,14 +171,15 @@ def run_daily_retrain() -> None:
                         files_restored=restored_count,
                         message="Restored historical data from Dropbox - no need to redownload",
                     )
+                    print(f"📥 Restored {restored_count} historical data files from Dropbox\n")
             
-            # Initial sync of existing data
+            # Initial sync of existing data (if any)
             sync_results = {}
-            if settings.dropbox.sync_logs:
+            if settings.dropbox.sync_logs and Path("logs").exists():
                 sync_results["logs"] = dropbox_sync.upload_logs("logs")
-            if settings.dropbox.sync_models:
+            if settings.dropbox.sync_models and Path("models").exists():
                 sync_results["models"] = dropbox_sync.upload_models("models")
-            if settings.dropbox.sync_monitoring:
+            if settings.dropbox.sync_monitoring and Path("logs").exists():
                 sync_results["monitoring"] = dropbox_sync.upload_monitoring_data("logs")
             
             # Sync learning data
@@ -186,28 +203,17 @@ def run_daily_retrain() -> None:
                     recursive=True,
                 )
             
-            logger.info(
-                "dropbox_initial_sync_complete",
-                **sync_results,
-                total_files=sum(sync_results.values()),
-            )
-            
-            if telegram_monitor:
-                telegram_monitor.notify_system_event(
-                    level=NotificationLevel.LOW,
-                    title="Dropbox Sync Started",
-                    message=f"✅ Dated folder created: {dropbox_sync._dated_folder}\nContinuous sync enabled (every 1 min). Initial sync: {sum(sync_results.values())} files",
-                    action_required=False,
+            total_files = sum(sync_results.values())
+            if total_files > 0:
+                logger.info(
+                    "dropbox_initial_sync_complete",
+                    **sync_results,
+                    total_files=total_files,
                 )
+                print(f"📤 Initial sync complete: {total_files} files synced\n")
         except Exception as sync_error:
-            logger.error("dropbox_sync_failed_at_startup", error=str(sync_error))
-            if telegram_monitor:
-                telegram_monitor.notify_system_event(
-                    level=NotificationLevel.MEDIUM,
-                    title="Dropbox Sync Failed",
-                    message=f"Error: {str(sync_error)}",
-                    action_required=False,
-                )
+            logger.error("dropbox_continuous_sync_failed", error=str(sync_error))
+            print(f"⚠️  Dropbox continuous sync failed: {str(sync_error)}\n")
     
     if settings.notifications.telegram_enabled and settings.notifications.telegram_chat_id:
         # Get bot token from environment or use default
