@@ -23,8 +23,9 @@ echo ""
 
 # Install ALL dependencies from pyproject.toml to avoid missing module errors
 # Using correct pip package names (some differ from import names)
-echo "📦 Installing all required dependencies..."
-pip install -q --root-user-action=ignore \
+# Skip torch (very large, ~2GB) - install separately if needed
+echo "📦 Installing all required dependencies (this may take a few minutes)..."
+pip install --root-user-action=ignore \
     polars pyarrow pandas duckdb \
     lightgbm xgboost \
     "ray[default]" \
@@ -41,7 +42,8 @@ pip install -q --root-user-action=ignore \
     numpy scipy matplotlib \
     psycopg2-binary psutil \
     dropbox \
-    || echo "⚠️  Some dependencies may have failed to install, continuing anyway..."
+    2>&1 | tee /tmp/pip_install.log || echo "⚠️  Some dependencies may have failed to install, continuing anyway..."
+echo "✅ Dependencies installation complete"
 
 # Check if PostgreSQL is running
 echo "🔍 Checking PostgreSQL..."

@@ -16,8 +16,9 @@ export PYTHONPATH="$PROJECT_ROOT:$PYTHONPATH"
 
 # Install ALL dependencies from pyproject.toml to avoid missing module errors
 # Using correct pip package names (some differ from import names)
-echo "📦 Installing all required dependencies..."
-pip install -q --root-user-action=ignore \
+# Skip torch (very large, ~2GB) - install separately if needed
+echo "📦 Installing all required dependencies (this may take a few minutes)..."
+pip install --root-user-action=ignore \
     polars pyarrow pandas duckdb \
     lightgbm xgboost \
     "ray[default]" \
@@ -34,9 +35,11 @@ pip install -q --root-user-action=ignore \
     numpy scipy matplotlib \
     psycopg2-binary psutil \
     dropbox \
-    || {
+    2>&1 | tee /tmp/pip_install.log || {
     echo "⚠️  Some dependencies may have failed to install, continuing anyway..."
+    echo "📋 Check /tmp/pip_install.log for details"
 }
+echo "✅ Dependencies installation complete"
 
 # Run the engine as a module (required for relative imports)
 # PYTHONPATH must point to directory containing 'src', not 'src' itself
