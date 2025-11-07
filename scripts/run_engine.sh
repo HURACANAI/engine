@@ -21,12 +21,26 @@ echo "📁 Project root: $PROJECT_ROOT"
 echo "🐍 Python path: $PYTHONPATH"
 echo ""
 
-# Install missing dependencies if needed
-echo "📦 Checking dependencies..."
-python3 -c "import boto3, matplotlib, pydantic_settings, dropbox, structlog, polars, psycopg2, ray, ccxt, numpy, tenacity, pydantic" 2>/dev/null || {
-    echo "⚠️  Installing missing dependencies (boto3, matplotlib, pydantic-settings, dropbox, structlog, polars, psycopg2-binary, ray, ccxt, numpy, tenacity, pydantic)..."
-    pip install -q boto3 matplotlib pydantic-settings dropbox structlog polars psycopg2-binary ray ccxt numpy tenacity pydantic || echo "⚠️  Some dependencies may be missing, continuing anyway..."
-}
+# Install ALL dependencies from pyproject.toml to avoid missing module errors
+echo "📦 Installing all required dependencies..."
+pip install -q --root-user-action=ignore \
+    polars pyarrow pandas duckdb \
+    lightgbm xgboost \
+    ray[default] \
+    apscheduler sqlalchemy alembic \
+    boto3 s3fs \
+    pydantic pydantic-settings \
+    structlog \
+    prometheus-client \
+    great-expectations \
+    tenacity \
+    ccxt \
+    requests \
+    python-telegram-bot \
+    numpy scipy matplotlib \
+    psycopg2-binary psutil \
+    dropbox \
+    || echo "⚠️  Some dependencies may have failed to install, continuing anyway..."
 
 # Check if PostgreSQL is running
 echo "🔍 Checking PostgreSQL..."
