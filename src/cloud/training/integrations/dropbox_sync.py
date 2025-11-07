@@ -358,6 +358,7 @@ class DropboxSync:
         models_dir: str | Path = "models",
         learning_dir: str | Path = "logs/learning",
         monitoring_dir: str | Path = "logs",
+        data_cache_dir: str | Path = "data/candles",
     ) -> threading.Thread:
         """Start continuous sync in background thread.
         
@@ -367,6 +368,7 @@ class DropboxSync:
             models_dir: Local models directory
             learning_dir: Local learning data directory
             monitoring_dir: Local monitoring data directory
+            data_cache_dir: Local historical data cache directory
             
         Returns:
             Background thread running continuous sync
@@ -399,6 +401,15 @@ class DropboxSync:
                             recursive=True,
                         )
                     
+                    # Sync historical data cache (so we don't need to redownload)
+                    if Path(data_cache_dir).exists():
+                        self.sync_directory(
+                            local_dir=data_cache_dir,
+                            remote_dir="/data/candles",
+                            pattern="*.parquet",
+                            recursive=True,
+                        )
+                    
                     logger.debug("continuous_sync_complete", interval_seconds=interval_seconds)
                     
                 except Exception as e:
@@ -412,4 +423,86 @@ class DropboxSync:
         
         logger.info("continuous_sync_thread_started", interval_seconds=interval_seconds)
         return thread
+    
+    def upload_data_cache(self, data_cache_dir: str | Path = "data/candles") -> int:
+        """Upload historical data cache to Dropbox.
+        
+        Args:
+            data_cache_dir: Local data cache directory
+            
+        Returns:
+            Number of files uploaded
+        """
+        return self.sync_directory(
+            local_dir=data_cache_dir,
+            remote_dir="/data/candles",
+            pattern="*.parquet",
+            recursive=True,
+        )
+    
+    def restore_data_cache(
+        self,
+        data_cache_dir: str | Path = "data/candles",
+        remote_dir: str = "/data/candles",
+    ) -> int:
+        """Restore historical data cache from Dropbox.
+        
+        Args:
+            data_cache_dir: Local data cache directory
+            remote_dir: Remote Dropbox directory
+            
+        Returns:
+            Number of files restored
+        """
+        if not self._enabled:
+            return 0
+        
+        local_dir = Path(data_cache_dir)
+        local_dir.mkdir(parents=True, exist_ok=True)
+        
+        remote_dir = self._normalize_path(remote_dir)
+        
+        try:
+            # List files in Dropbox
+            result = self._dbx.files_list_folder(remote_dir)
+            restored_count = 0
+            
+            for entry in result.entries:
+                if isinstance(entry, dropbox.files.FileMetadata):
+                    # Get relative path
+                    rel_path = entry.path_display.replace(remote_dir, "").lstrip("/")
+                    local_path = local_dir / rel_path
+                    
+                    # Create parent directory if needed
+                    local_path.parent.mkdir(parents=True, exist_ok=True)
+                    
+                    # Download file if it doesn't exist locally or is older
+                    if not local_path.exists() or local_path.stat().st_mtime < entry.server_modified.timestamp():
+                        try:
+                            metadata, response = self._dbx.files_download(entry.path_display)
+                            with open(local_path, "wb") as f:
+                                f.write(response.content)
+                            restored_count += 1
+                            logger.info(
+                                "data_cache_file_restored",
+                                remote_path=entry.path_display,
+                                local_path=str(local_path),
+                            )
+                        except Exception as e:
+                            logger.warning(
+                                "data_cache_file_restore_failed",
+                                remote_path=entry.path_display,
+                                error=str(e),
+                            )
+            
+            logger.info(
+                "data_cache_restore_complete",
+                files_restored=restored_count,
+                local_dir=str(local_dir),
+            )
+            return restored_count
+            
+        except Exception as e:
+            logger.error("data_cache_restore_failed", error=str(e))
+            return 0
 

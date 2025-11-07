@@ -355,6 +355,7 @@ def run_daily_retrain() -> None:
                     models_dir="models",
                     learning_dir="logs/learning",
                     monitoring_dir="logs",
+                    data_cache_dir="data/candles",  # Historical coin data cache
                 )
                 
                 logger.info("dropbox_continuous_sync_started", interval_seconds=60)
@@ -376,6 +377,24 @@ def run_daily_retrain() -> None:
                         pattern="*.json",
                         recursive=True,
                     )
+                
+                # Restore historical data cache from Dropbox (if available)
+                # This avoids re-downloading data we already have
+                if Path("data/candles").exists() or True:  # Always try to restore
+                    restored_count = dropbox_sync.restore_data_cache(
+                        data_cache_dir="data/candles",
+                        remote_dir="/data/candles",
+                    )
+                    if restored_count > 0:
+                        logger.info(
+                            "data_cache_restored",
+                            files_restored=restored_count,
+                            message="Restored historical data from Dropbox - no need to redownload",
+                        )
+                
+                # Sync historical data cache to Dropbox
+                if Path("data/candles").exists():
+                    sync_results["data_cache"] = dropbox_sync.upload_data_cache("data/candles")
                 
                 logger.info(
                     "dropbox_initial_sync_complete",
