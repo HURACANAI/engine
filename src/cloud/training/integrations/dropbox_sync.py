@@ -547,7 +547,8 @@ class DropboxSync:
         if remote_dir is None:
             remote_dir = f"/{self._app_folder}/data/candles"
         else:
-            remote_dir = self._normalize_path(remote_dir)
+            # Don't use dated folder for historical data (use shared location)
+            remote_dir = self._normalize_path(remote_dir, use_dated_folder=False)
         
         try:
             # List files in Dropbox
