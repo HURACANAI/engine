@@ -22,11 +22,12 @@ echo "🐍 Python path: $PYTHONPATH"
 echo ""
 
 # Install ALL dependencies from pyproject.toml to avoid missing module errors
+# Using correct pip package names (some differ from import names)
 echo "📦 Installing all required dependencies..."
 pip install -q --root-user-action=ignore \
     polars pyarrow pandas duckdb \
     lightgbm xgboost \
-    ray[default] \
+    "ray[default]" \
     apscheduler sqlalchemy alembic \
     boto3 s3fs \
     pydantic pydantic-settings \
