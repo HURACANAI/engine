@@ -36,7 +36,7 @@ declare -A PACKAGE_MAP=(
 
 # Check each package
 MISSING_PACKAGES=""
-for pkg in polars pyarrow pandas duckdb lightgbm xgboost "ray[default]" apscheduler sqlalchemy alembic boto3 s3fs pydantic pydantic-settings structlog prometheus-client great-expectations tenacity ccxt requests python-telegram-bot numpy scipy matplotlib psycopg2-binary psutil dropbox; do
+for pkg in polars pyarrow pandas duckdb lightgbm xgboost "ray[default]" apscheduler sqlalchemy alembic boto3 s3fs pydantic pydantic-settings structlog prometheus-client great-expectations tenacity ccxt requests python-telegram-bot numpy scipy matplotlib psycopg2-binary psutil dropbox opentelemetry-api opentelemetry-sdk; do
     # Get import name (use mapped name if exists, otherwise use package name)
     if [[ -n "${PACKAGE_MAP[$pkg]}" ]]; then
         import_name="${PACKAGE_MAP[$pkg]}"
