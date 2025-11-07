@@ -104,6 +104,111 @@ def run_daily_retrain() -> None:
     # Initialize learning tracker
     learning_tracker = LearningTracker(output_dir=Path("logs/learning"))
     
+    # Initialize Dropbox sync FIRST (creates dated folder immediately)
+    # This happens before training starts so dated folder is ready
+    dropbox_sync = None
+    dropbox_token = settings.dropbox.access_token or "sl.u.AGHQ-QqhV0EtQCouDihfL34xdAWDNKKYGpDL08AyO2iKef94KW8zMv0DRWrIM508LPdOSkLQhwksqHH-9alha89fx46EVnWK77ViBZbmjM6g"
+    dropbox_folder = settings.dropbox.app_folder or "Runpodhuracan"
+    
+    if settings.dropbox.enabled and dropbox_token:
+        try:
+            logger.info("dropbox_sync_initializing_at_startup")
+            # Initialize Dropbox sync - this will create dated folder as first action
+            dropbox_sync = DropboxSync(
+                access_token=dropbox_token,
+                app_folder=dropbox_folder,
+                enabled=True,
+                create_dated_folder=True,  # Create dated folder at startup
+            )
+            
+            # Log the dated folder that was created
+            if hasattr(dropbox_sync, "_dated_folder") and dropbox_sync._dated_folder:
+                logger.info(
+                    "dropbox_dated_folder_ready",
+                    folder=dropbox_sync._dated_folder,
+                    message="Dated folder created - all data will be organized here",
+                )
+            
+            # Start continuous sync (every 1 minute)
+            sync_thread = dropbox_sync.start_continuous_sync(
+                interval_seconds=60,  # 1 minute
+                logs_dir="logs",
+                models_dir="models",
+                learning_dir="logs/learning",
+                monitoring_dir="logs",
+                data_cache_dir="data/candles",  # Historical coin data cache
+            )
+            
+            logger.info("dropbox_continuous_sync_started", interval_seconds=60)
+            
+            # Restore historical data cache from Dropbox (if available)
+            # This avoids re-downloading data we already have
+            # Historical data is stored in shared location (not dated folder)
+            if Path("data/candles").exists() or True:  # Always try to restore
+                restored_count = dropbox_sync.restore_data_cache(
+                    data_cache_dir="data/candles",
+                    remote_dir=None,  # Uses shared location automatically
+                )
+                if restored_count > 0:
+                    logger.info(
+                        "data_cache_restored",
+                        files_restored=restored_count,
+                        message="Restored historical data from Dropbox - no need to redownload",
+                    )
+            
+            # Initial sync of existing data
+            sync_results = {}
+            if settings.dropbox.sync_logs:
+                sync_results["logs"] = dropbox_sync.upload_logs("logs")
+            if settings.dropbox.sync_models:
+                sync_results["models"] = dropbox_sync.upload_models("models")
+            if settings.dropbox.sync_monitoring:
+                sync_results["monitoring"] = dropbox_sync.upload_monitoring_data("logs")
+            
+            # Sync learning data
+            if Path("logs/learning").exists():
+                sync_results["learning"] = dropbox_sync.sync_directory(
+                    local_dir="logs/learning",
+                    remote_dir="/learning",
+                    pattern="*.json",
+                    recursive=True,
+                )
+            
+            # Sync historical data cache to Dropbox
+            # Historical data goes to shared location (not dated folder) for reuse
+            if Path("data/candles").exists():
+                # Use shared location for historical data
+                shared_data_path = f"/{dropbox_folder}/data/candles"
+                sync_results["data_cache"] = dropbox_sync.sync_directory(
+                    local_dir="data/candles",
+                    remote_dir=shared_data_path,
+                    pattern="*.parquet",
+                    recursive=True,
+                )
+            
+            logger.info(
+                "dropbox_initial_sync_complete",
+                **sync_results,
+                total_files=sum(sync_results.values()),
+            )
+            
+            if telegram_monitor:
+                telegram_monitor.notify_system_event(
+                    level=NotificationLevel.LOW,
+                    title="Dropbox Sync Started",
+                    message=f"✅ Dated folder created: {dropbox_sync._dated_folder}\nContinuous sync enabled (every 1 min). Initial sync: {sum(sync_results.values())} files",
+                    action_required=False,
+                )
+        except Exception as sync_error:
+            logger.error("dropbox_sync_failed_at_startup", error=str(sync_error))
+            if telegram_monitor:
+                telegram_monitor.notify_system_event(
+                    level=NotificationLevel.MEDIUM,
+                    title="Dropbox Sync Failed",
+                    message=f"Error: {str(sync_error)}",
+                    action_required=False,
+                )
+    
     if settings.notifications.telegram_enabled and settings.notifications.telegram_chat_id:
         # Get bot token from environment or use default
         bot_token = settings.notifications.telegram_webhook_url or "8229109041:AAFIcLRx3V50khoaEIG7WXeI1ITzy4s6hf0"
@@ -334,109 +439,10 @@ def run_daily_retrain() -> None:
             print(f"\n📝 Monitoring log saved to: {log_file}")
             print(f"   You can copy/paste this file to share with support.\n")
         
-        # Sync to Dropbox if enabled (hardcoded credentials)
-        # Use hardcoded credentials if not set in config
-        dropbox_token = settings.dropbox.access_token or "sl.u.AGHQ-QqhV0EtQCouDihfL34xdAWDNKKYGpDL08AyO2iKef94KW8zMv0DRWrIM508LPdOSkLQhwksqHH-9alha89fx46EVnWK77ViBZbmjM6g"
-        dropbox_folder = settings.dropbox.app_folder or "Runpodhuracan"
-        
-        if settings.dropbox.enabled and dropbox_token:
-            try:
-                logger.info("dropbox_sync_initializing")
-                # Initialize Dropbox sync - this will create dated folder as first action
-                dropbox_sync = DropboxSync(
-                    access_token=dropbox_token,
-                    app_folder=dropbox_folder,
-                    enabled=True,
-                    create_dated_folder=True,  # Create dated folder at startup
-                )
-                
-                # Log the dated folder that was created
-                if hasattr(dropbox_sync, "_dated_folder") and dropbox_sync._dated_folder:
-                    logger.info(
-                        "dropbox_dated_folder_ready",
-                        folder=dropbox_sync._dated_folder,
-                        message="All data will be organized under this dated folder",
-                    )
-                
-                # Start continuous sync (every 1 minute)
-                sync_thread = dropbox_sync.start_continuous_sync(
-                    interval_seconds=60,  # 1 minute
-                    logs_dir="logs",
-                    models_dir="models",
-                    learning_dir="logs/learning",
-                    monitoring_dir="logs",
-                    data_cache_dir="data/candles",  # Historical coin data cache
-                )
-                
-                logger.info("dropbox_continuous_sync_started", interval_seconds=60)
-                
-                # Initial sync
-                sync_results = {}
-                if settings.dropbox.sync_logs:
-                    sync_results["logs"] = dropbox_sync.upload_logs("logs")
-                if settings.dropbox.sync_models:
-                    sync_results["models"] = dropbox_sync.upload_models("models")
-                if settings.dropbox.sync_monitoring:
-                    sync_results["monitoring"] = dropbox_sync.upload_monitoring_data("logs")
-                
-                # Sync learning data
-                if Path("logs/learning").exists():
-                    sync_results["learning"] = dropbox_sync.sync_directory(
-                        local_dir="logs/learning",
-                        remote_dir="/learning",
-                        pattern="*.json",
-                        recursive=True,
-                    )
-                
-                # Restore historical data cache from Dropbox (if available)
-                # This avoids re-downloading data we already have
-                # Historical data is stored in shared location (not dated folder)
-                if Path("data/candles").exists() or True:  # Always try to restore
-                    restored_count = dropbox_sync.restore_data_cache(
-                        data_cache_dir="data/candles",
-                        remote_dir=None,  # Uses shared location automatically
-                    )
-                    if restored_count > 0:
-                        logger.info(
-                            "data_cache_restored",
-                            files_restored=restored_count,
-                            message="Restored historical data from Dropbox - no need to redownload",
-                        )
-                
-                # Sync historical data cache to Dropbox
-                # Historical data goes to shared location (not dated folder) for reuse
-                if Path("data/candles").exists():
-                    # Use shared location for historical data
-                    shared_data_path = f"/{dropbox_folder}/data/candles"
-                    sync_results["data_cache"] = dropbox_sync.sync_directory(
-                        local_dir="data/candles",
-                        remote_dir=shared_data_path,
-                        pattern="*.parquet",
-                        recursive=True,
-                    )
-                
-                logger.info(
-                    "dropbox_initial_sync_complete",
-                    **sync_results,
-                    total_files=sum(sync_results.values()),
-                )
-                
-                if telegram_monitor:
-                    telegram_monitor.notify_system_event(
-                        level=NotificationLevel.LOW,
-                        title="Dropbox Sync Started",
-                        message=f"Continuous sync enabled (every 1 min). Initial sync: {sum(sync_results.values())} files",
-                        action_required=False,
-                    )
-            except Exception as sync_error:
-                logger.error("dropbox_sync_failed", error=str(sync_error))
-                if telegram_monitor:
-                    telegram_monitor.notify_system_event(
-                        level=NotificationLevel.MEDIUM,
-                        title="Dropbox Sync Failed",
-                        message=f"Error: {str(sync_error)}",
-                        action_required=False,
-                    )
+        # Dropbox sync is already initialized at startup
+        # Just log final sync status if needed
+        if dropbox_sync:
+            logger.info("dropbox_sync_active", message="Dropbox sync is running in background")
         
         if ray.is_initialized():
             ray.shutdown()
