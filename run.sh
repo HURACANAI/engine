@@ -15,9 +15,11 @@ cd "$PROJECT_ROOT"
 export PYTHONPATH="$PROJECT_ROOT:$PYTHONPATH"
 
 # Install missing dependencies if needed
-python3 -c "import boto3, matplotlib, pydantic_settings, dropbox" 2>/dev/null || {
-    echo "Installing missing dependencies (boto3, matplotlib, pydantic-settings, dropbox)..."
-    pip install -q boto3 matplotlib pydantic-settings dropbox
+python3 -c "import boto3, matplotlib, pydantic_settings, dropbox, structlog, polars, psycopg2" 2>/dev/null || {
+    echo "Installing missing dependencies (boto3, matplotlib, pydantic-settings, dropbox, structlog, polars, psycopg2-binary)..."
+    pip install -q boto3 matplotlib pydantic-settings dropbox structlog polars psycopg2-binary || {
+        echo "⚠️  Some dependencies may be missing, continuing anyway..."
+    }
 }
 
 # Run the engine as a module (required for relative imports)
