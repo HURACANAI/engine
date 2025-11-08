@@ -99,6 +99,23 @@ def run_daily_retrain() -> None:
 
     settings = EngineSettings.load()
     
+    # Initialize feature manager for graceful degradation
+    from .feature_manager import get_feature_manager
+    feature_manager = get_feature_manager()
+    
+    # Register all features
+    feature_manager.register_feature("dropbox", critical=False, enabled=settings.dropbox.enabled)
+    feature_manager.register_feature("telegram", critical=False, enabled=settings.notifications.telegram_enabled)
+    feature_manager.register_feature("database", critical=False, enabled=True)  # Database is optional
+    feature_manager.register_feature("health_monitor", critical=False, enabled=settings.training.monitoring.enabled)
+    feature_manager.register_feature("exchange_client", critical=True, enabled=True)  # CRITICAL - engine needs this
+    feature_manager.register_feature("ray", critical=False, enabled=True)
+    feature_manager.register_feature("s3", critical=False, enabled=bool(settings.s3 and settings.s3.access_key))
+    feature_manager.register_feature("model_registry", critical=False, enabled=True)
+    feature_manager.register_feature("telegram_command_handler", critical=False, enabled=settings.notifications.telegram_enabled)
+    
+    logger.info("features_registered", total_features=len(feature_manager.features))
+    
     # ===== CREATE DROPBOX DATED FOLDER IMMEDIATELY (FIRST ACTION) =====
     # This happens before anything else so user knows it works
     dropbox_sync = None
@@ -142,62 +159,126 @@ def run_daily_retrain() -> None:
     dropbox_token = dropbox_token_raw.strip().strip('"').strip("'").strip()
     dropbox_folder = settings.dropbox.app_folder or "Runpodhuracan"
     
+    # Initialize Dropbox (NON-FATAL - engine continues if it fails)
     if settings.dropbox.enabled:
-        # Dropbox is REQUIRED - bot will not run if Dropbox fails
         if not dropbox_token:
-            logger.error(
-                "dropbox_token_missing_fatal",
-                message="Dropbox is enabled but no token provided. Engine cannot start.",
-                help_message=(
-                    "Dropbox sync is required but no token found. "
-                    "Please set DROPBOX_ACCESS_TOKEN environment variable or disable Dropbox in settings."
-                ),
+            logger.warning(
+                "dropbox_token_missing",
+                message="Dropbox is enabled but no token provided. Continuing without Dropbox.",
             )
-            print("\n❌ FATAL ERROR: Dropbox is enabled but no access token provided\n")
+            print("\n⚠️  WARNING: Dropbox is enabled but no token provided\n")
             print("   💡 To fix: Set DROPBOX_ACCESS_TOKEN environment variable\n")
-            print("   💡 Or disable Dropbox in settings if not needed\n")
-            print("   Engine will NOT start without Dropbox\n")
-            sys.exit(1)
-        
-        logger.info("dropbox_creating_dated_folder_immediately")
-        print("\n📁 Creating Dropbox dated folder...")
-        print("   ⚠️  Dropbox is REQUIRED - engine will stop if Dropbox fails\n")
-        
-        # Initialize Dropbox sync - this will create dated folder as FIRST action
-        # If this fails, the exception will propagate and stop execution
-        dropbox_sync = DropboxSync(
-            access_token=dropbox_token,
-            app_folder=dropbox_folder,
-            enabled=True,
-            create_dated_folder=True,  # Create dated folder immediately
-        )
-        
-        # Log the dated folder that was created
-        if hasattr(dropbox_sync, "_dated_folder") and dropbox_sync._dated_folder:
-            logger.info(
-                "dropbox_dated_folder_created_successfully",
-                folder=dropbox_sync._dated_folder,
-                message="✅ Dated folder created - ready for data sync",
-            )
-            print(f"✅ Dropbox folder created: {dropbox_sync._dated_folder}\n")
+            print("   💡 Engine will continue without Dropbox sync\n")
+            feature_manager.mark_feature_failed("dropbox", "No token provided", stop_engine=False)
+            dropbox_sync = None
         else:
-            logger.error("dropbox_dated_folder_creation_failed", message="Folder not created - this is fatal")
-            print("❌ FATAL ERROR: Dropbox folder creation failed\n")
-            print("   Engine cannot continue without Dropbox\n")
-            sys.exit(1)
+            logger.info("dropbox_creating_dated_folder_immediately")
+            print("\n📁 Initializing Dropbox...\n")
+            
+            try:
+                # Initialize Dropbox sync - NON-FATAL if it fails
+                dropbox_sync = DropboxSync(
+                    access_token=dropbox_token,
+                    app_folder=dropbox_folder,
+                    enabled=True,
+                    create_dated_folder=True,
+                )
+                
+                # Verify folder was created
+                if hasattr(dropbox_sync, "_dated_folder") and dropbox_sync._dated_folder:
+                    logger.info(
+                        "dropbox_dated_folder_created_successfully",
+                        folder=dropbox_sync._dated_folder,
+                        message="✅ Dated folder created - ready for data sync",
+                    )
+                    print(f"✅ Dropbox initialized: {dropbox_sync._dated_folder}\n")
+                    feature_manager.mark_feature_working("dropbox")
+                else:
+                    raise ValueError("Dropbox folder creation failed")
+                    
+            except Exception as e:
+                logger.warning(
+                    "dropbox_init_failed_non_fatal",
+                    error=str(e),
+                    message="Dropbox initialization failed - engine will continue without Dropbox",
+                )
+                print(f"⚠️  WARNING: Dropbox initialization failed: {e}\n")
+                print("   💡 Engine will continue without Dropbox sync\n")
+                feature_manager.mark_feature_failed("dropbox", str(e), stop_engine=False)
+                dropbox_sync = None
     else:
-        # Dropbox is disabled - allow bot to run
+        # Dropbox is disabled
         logger.info("dropbox_disabled", message="Dropbox sync is disabled - engine will run without Dropbox")
         print("\n⚠️  Dropbox sync is disabled in settings\n")
         dropbox_sync = None
+        feature_manager.mark_feature_failed("dropbox", "Disabled in settings", stop_engine=False)
     
-    # Initialize comprehensive Telegram monitoring
+    # Initialize comprehensive Telegram monitoring (NON-FATAL)
     telegram_monitor = None
     telegram_command_handler = None
     log_file = Path("logs") / f"engine_monitoring_{start_ts.strftime('%Y%m%d_%H%M%S')}.log"
     
-    # Initialize learning tracker
-    learning_tracker = LearningTracker(output_dir=Path("logs/learning"))
+    if settings.notifications.telegram_enabled and settings.notifications.telegram_chat_id:
+        try:
+            # Get bot token from environment or use default
+            bot_token = settings.notifications.telegram_webhook_url or "8229109041:AAFIcLRx3V50khoaEIG7WXeI1ITzy4s6hf0"
+            # Extract token from webhook URL if needed
+            if "bot" in bot_token and "/" in bot_token:
+                bot_token = bot_token.split("/bot")[-1].split("/")[0]
+            
+            telegram_monitor = ComprehensiveTelegramMonitor(
+                bot_token=bot_token,
+                chat_id=settings.notifications.telegram_chat_id,
+                log_file=log_file,
+                enable_trade_notifications=True,
+                enable_learning_notifications=True,
+                enable_error_notifications=True,
+                enable_performance_summaries=True,
+                enable_model_updates=True,
+                enable_gate_decisions=True,
+                enable_health_alerts=True,
+                enable_validation_alerts=True,
+                min_notification_level=NotificationLevel.LOW,
+            )
+            logger.info("telegram_monitoring_initialized", log_file=str(log_file))
+            feature_manager.mark_feature_working("telegram")
+            
+            # Initialize command handler for interactive commands (/health, /status, /help)
+            try:
+                from ..monitoring.telegram_command_handler import TelegramCommandHandler
+                telegram_command_handler = TelegramCommandHandler(
+                    bot_token=bot_token,
+                    chat_id=settings.notifications.telegram_chat_id,
+                    settings=settings,
+                    dropbox_sync=dropbox_sync,
+                )
+                telegram_command_handler.start_polling()
+                logger.info("telegram_command_handler_started", commands=["/health", "/status", "/help"])
+                print("🤖 Telegram bot commands enabled: /health, /status, /help")
+                feature_manager.mark_feature_working("telegram_command_handler")
+            except Exception as e:
+                logger.warning("telegram_command_handler_init_failed", error=str(e))
+                print(f"⚠️  Telegram command handler failed to start: {e}")
+                print("   💡 Engine will continue without command handler\n")
+                feature_manager.mark_feature_failed("telegram_command_handler", str(e), stop_engine=False)
+                telegram_command_handler = None
+        except Exception as e:
+            logger.warning("telegram_monitoring_init_failed", error=str(e))
+            print(f"⚠️  WARNING: Telegram monitoring failed to initialize: {e}\n")
+            print("   💡 Engine will continue without Telegram notifications\n")
+            feature_manager.mark_feature_failed("telegram", str(e), stop_engine=False)
+    else:
+        logger.warning("telegram_monitoring_disabled", reason="not configured")
+        feature_manager.mark_feature_failed("telegram", "Disabled in settings", stop_engine=False)
+    
+    # Initialize learning tracker (NON-FATAL)
+    learning_tracker = None
+    try:
+        learning_tracker = LearningTracker(output_dir=Path("logs/learning"))
+    except Exception as e:
+        logger.warning("learning_tracker_init_failed", error=str(e))
+        print(f"⚠️  WARNING: Learning tracker failed to initialize: {e}\n")
+        print("   💡 Engine will continue without learning tracker\n")
     
     # ===== START DROPBOX CONTINUOUS SYNC (AFTER FOLDER CREATION) =====
     # Now that folder is created, start syncing data as it's generated
@@ -408,49 +489,124 @@ def run_daily_retrain() -> None:
     else:
         logger.warning("telegram_monitoring_disabled", reason="not configured")
 
-    initialize_ray(settings.ray.address, settings.ray.namespace, settings.ray.runtime_env)
+    # Initialize Ray (NON-FATAL - engine can work without it)
+    try:
+        initialize_ray(settings.ray.address, settings.ray.namespace, settings.ray.runtime_env)
+        feature_manager.mark_feature_working("ray")
+    except Exception as e:
+        logger.warning("ray_init_failed_non_fatal", error=str(e))
+        print(f"⚠️  WARNING: Ray initialization failed: {e}\n")
+        print("   💡 Engine will continue without Ray (may be slower)\n")
+        feature_manager.mark_feature_failed("ray", str(e), stop_engine=False)
 
-    exchange_settings = settings.exchange
-    credentials = {}
-    if exchange_settings.credentials.get(exchange_settings.primary):
-        cred = exchange_settings.credentials[exchange_settings.primary]
-        credentials = {
-            "api_key": cred.api_key,
-            "api_secret": cred.api_secret,
-            "api_passphrase": cred.api_passphrase,
-        }
+    # Initialize Exchange Client (CRITICAL - engine needs this to work)
+    exchange_client = None
+    metadata_loader = None
+    universe_selector = None
+    try:
+        exchange_settings = settings.exchange
+        credentials = {}
+        if exchange_settings.credentials.get(exchange_settings.primary):
+            cred = exchange_settings.credentials[exchange_settings.primary]
+            credentials = {
+                "api_key": cred.api_key,
+                "api_secret": cred.api_secret,
+                "api_passphrase": cred.api_passphrase,
+            }
 
-    exchange_client = ExchangeClient(
-        exchange_settings.primary,
-        credentials=credentials,
-        sandbox=exchange_settings.sandbox,
-    )
-    metadata_loader = MarketMetadataLoader(exchange_client)
-    universe_selector = UniverseSelector(exchange_client, metadata_loader, settings.universe)
-    
-    # Get selected symbols for Telegram notification
-    selected_symbols_df = universe_selector.select()
-    selected_symbols = selected_symbols_df.to_dicts() if hasattr(selected_symbols_df, 'to_dicts') else selected_symbols_df
-    if telegram_monitor:
-        telegram_monitor.notify_system_startup(
-            symbols=[s['symbol'] for s in selected_symbols],
-            total_coins=len(selected_symbols),
+        exchange_client = ExchangeClient(
+            exchange_settings.primary,
+            credentials=credentials,
+            sandbox=exchange_settings.sandbox,
         )
+        metadata_loader = MarketMetadataLoader(exchange_client)
+        universe_selector = UniverseSelector(exchange_client, metadata_loader, settings.universe)
+        feature_manager.mark_feature_working("exchange_client")
+        logger.info("exchange_client_initialized", exchange=exchange_settings.primary)
+        
+        # Get selected symbols for Telegram notification (NON-FATAL)
+        try:
+            selected_symbols_df = universe_selector.select()
+            selected_symbols = selected_symbols_df.to_dicts() if hasattr(selected_symbols_df, 'to_dicts') else selected_symbols_df
+            if telegram_monitor and feature_manager.is_feature_working("telegram"):
+                telegram_monitor.notify_system_startup(
+                    symbols=[s['symbol'] for s in selected_symbols],
+                    total_coins=len(selected_symbols),
+                )
+        except Exception as e:
+            logger.warning("universe_selection_failed_non_fatal", error=str(e))
+            print(f"⚠️  WARNING: Universe selection failed: {e}\n")
+            print("   💡 Engine will continue\n")
+            
+    except Exception as e:
+        error_msg = f"CRITICAL: Exchange client initialization failed: {e}"
+        logger.error("exchange_client_init_failed_critical", error=str(e))
+        print(f"\n❌ FATAL ERROR: {error_msg}\n")
+        print("   💡 Engine CANNOT continue without exchange client\n")
+        print("   💡 Please check your exchange credentials and settings\n")
+        feature_manager.mark_feature_failed("exchange_client", str(e), stop_engine=True)
+        
+        # Check if engine should stop
+        if feature_manager.should_stop_engine():
+            status_report = feature_manager.get_status_report()
+            print("\n" + "=" * 60)
+            print("🚨 CRITICAL FEATURE FAILURE - ENGINE STOPPING")
+            print("=" * 60)
+            print(f"\nFailed critical features: {status_report['critical_failed_features']}")
+            print(f"Working features: {len(status_report['working_features'])}/{status_report['total_features']}")
+            print(f"Failed non-critical features: {status_report['failed_features']}")
+            print("\n" + "=" * 60 + "\n")
+            sys.exit(1)
     
-    if not settings.postgres:
-        error_msg = "Postgres DSN must be configured before running the engine"
-        if telegram_monitor:
-            telegram_monitor.notify_error("Configuration Error", error_msg)
-        raise RuntimeError(error_msg)
+    # Database is optional (NON-FATAL)
+    if not settings.postgres or not settings.postgres.dsn:
+        logger.warning("postgres_not_configured", message="Postgres DSN not configured - some features may be disabled")
+        print("⚠️  WARNING: Postgres DSN not configured\n")
+        print("   💡 Engine will continue but model registry and some features may not work\n")
+        feature_manager.mark_feature_failed("database", "Postgres DSN not configured", stop_engine=False)
+        if telegram_monitor and feature_manager.is_feature_working("telegram"):
+            try:
+                telegram_monitor.notify_error("Configuration Warning", "Postgres DSN not configured - some features disabled")
+            except Exception:
+                pass  # Non-fatal
     
-    # Log DSN (masked for security) to verify config is loaded correctly
-    dsn_masked = settings.postgres.dsn.split("@")[-1] if "@" in settings.postgres.dsn else "***"
-    logger.info("postgres_dsn_loaded", dsn_masked=dsn_masked, has_password=":" in settings.postgres.dsn.split("@")[0] if "@" in settings.postgres.dsn else False)
+    # Log DSN (masked for security) to verify config is loaded correctly (if available)
+    if settings.postgres and settings.postgres.dsn:
+        dsn_masked = settings.postgres.dsn.split("@")[-1] if "@" in settings.postgres.dsn else "***"
+        logger.info("postgres_dsn_loaded", dsn_masked=dsn_masked, has_password=":" in settings.postgres.dsn.split("@")[0] if "@" in settings.postgres.dsn else False)
     
-    model_registry = ModelRegistry(RegistryConfig(dsn=settings.postgres.dsn))
+    # Initialize Model Registry (NON-FATAL)
+    model_registry = None
+    try:
+        if settings.postgres and settings.postgres.dsn:
+            model_registry = ModelRegistry(RegistryConfig(dsn=settings.postgres.dsn))
+            feature_manager.mark_feature_working("model_registry")
+        else:
+            logger.warning("model_registry_disabled", reason="No database DSN")
+            feature_manager.mark_feature_failed("model_registry", "No database DSN", stop_engine=False)
+    except Exception as e:
+        logger.warning("model_registry_init_failed_non_fatal", error=str(e))
+        print(f"⚠️  WARNING: Model registry initialization failed: {e}\n")
+        print("   💡 Engine will continue without model registry\n")
+        feature_manager.mark_feature_failed("model_registry", str(e), stop_engine=False)
 
-    notifier = NotificationClient(settings.notifications)
-    artifact_publisher = ArtifactPublisher(settings.artifacts)
+    # Initialize Notifier (NON-FATAL)
+    notifier = None
+    try:
+        notifier = NotificationClient(settings.notifications)
+    except Exception as e:
+        logger.warning("notifier_init_failed_non_fatal", error=str(e))
+        print(f"⚠️  WARNING: Notifier initialization failed: {e}\n")
+        print("   💡 Engine will continue without notifications\n")
+
+    # Initialize Artifact Publisher (NON-FATAL)
+    artifact_publisher = None
+    try:
+        artifact_publisher = ArtifactPublisher(settings.artifacts)
+    except Exception as e:
+        logger.warning("artifact_publisher_init_failed_non_fatal", error=str(e))
+        print(f"⚠️  WARNING: Artifact publisher initialization failed: {e}\n")
+        print("   💡 Engine will continue without artifact publishing\n")
 
     # Initialize health monitoring if enabled
     health_monitor = None
@@ -480,6 +636,33 @@ def run_daily_retrain() -> None:
     else:
         logger.info("health_monitoring_disabled", reason="monitoring.enabled=false")
 
+    # Check if engine should stop due to critical failures
+    if feature_manager.should_stop_engine():
+        status_report = feature_manager.get_status_report()
+        print("\n" + "=" * 60)
+        print("🚨 CRITICAL FEATURE FAILURE - ENGINE STOPPING")
+        print("=" * 60)
+        print(f"\nFailed critical features: {status_report['critical_failed_features']}")
+        print(f"Working features: {len(status_report['working_features'])}/{status_report['total_features']}")
+        print(f"Failed non-critical features: {status_report['failed_features']}")
+        print("\n" + "=" * 60 + "\n")
+        sys.exit(1)
+    
+    # Print feature status summary
+    status_report = feature_manager.get_status_report()
+    print("\n" + "=" * 60)
+    print("📊 FEATURE STATUS SUMMARY")
+    print("=" * 60)
+    print(f"✅ Working: {status_report['working']}/{status_report['total_features']}")
+    if status_report['failed'] > 0:
+        print(f"⚠️  Failed (non-critical): {status_report['failed']}")
+        for feature_name in status_report['failed_features']:
+            feature_info = feature_manager.get_feature_info(feature_name)
+            if feature_info:
+                print(f"   • {feature_name}: {feature_info.error}")
+    print("=" * 60 + "\n")
+
+    # Initialize Training Orchestrator
     orchestrator = TrainingOrchestrator(
         settings=settings,
         exchange_client=exchange_client,
@@ -492,64 +675,72 @@ def run_daily_retrain() -> None:
     )
 
     try:
-        # Run pre-training health check
-        if health_monitor:
-            logger.info("===== PRE-TRAINING HEALTH CHECK =====")
-            pre_alerts = health_monitor.run_health_check()
-            critical_alerts = [a for a in pre_alerts if a.severity.value == "CRITICAL"]
-            warnings = [a for a in pre_alerts if a.severity.value == "WARNING"]
-            
-            logger.info(
-                "pre_training_health_check_complete",
-                alerts=len(pre_alerts),
-                critical=len(critical_alerts),
-                warning=len(warnings),
-            )
-            
-            # Notify Telegram about health check (enhanced comprehensive)
-            if telegram_monitor:
-                # Get enhanced report from health monitor (already ran during health check)
-                enhanced_report = health_monitor.get_enhanced_health_report()
+        # Run pre-training health check (NON-FATAL)
+        if health_monitor and feature_manager.is_feature_working("health_monitor"):
+            try:
+                logger.info("===== PRE-TRAINING HEALTH CHECK =====")
+                pre_alerts = health_monitor.run_health_check()
+                critical_alerts = [a for a in pre_alerts if a.severity.value == "CRITICAL"]
+                warnings = [a for a in pre_alerts if a.severity.value == "WARNING"]
                 
-                if enhanced_report:
-                    # Use enhanced report for Telegram notification
-                    healthy_count = enhanced_report.summary.get("healthy", 0)
-                    total_count = enhanced_report.summary.get("total_checks", 0)
-                    
-                    logger.info(
-                        "sending_enhanced_health_check_to_telegram",
-                        overall_status=enhanced_report.overall_status,
-                        healthy=healthy_count,
-                        total=total_count,
-                        critical=enhanced_report.summary.get("critical", 0),
-                        warnings=enhanced_report.summary.get("warnings", 0),
-                    )
-                    
-                    telegram_monitor.notify_health_check(
-                        status=enhanced_report.overall_status,
-                        alerts=[{"message": a.message, "severity": a.severity.value} for a in critical_alerts],
-                        warnings=[{"message": a.message, "severity": a.severity.value} for a in warnings],
-                        healthy_services=healthy_count,
-                        total_services=total_count,
-                        health_report=enhanced_report,
-                    )
-                else:
-                    # Fallback to old system if enhanced report not available
-                    logger.warning("enhanced_health_report_not_available_using_fallback")
-                    status_reporter = SystemStatusReporter(dsn=settings.postgres.dsn if settings.postgres else "")
+                logger.info(
+                    "pre_training_health_check_complete",
+                    alerts=len(pre_alerts),
+                    critical=len(critical_alerts),
+                    warning=len(warnings),
+                )
+                
+                # Notify Telegram about health check (enhanced comprehensive) (NON-FATAL)
+                if telegram_monitor and feature_manager.is_feature_working("telegram"):
                     try:
-                        status_report = status_reporter.generate_full_report()
-                        healthy_count = sum(1 for s in status_report.services if s.healthy)
-                        total_count = len(status_report.services)
-                        telegram_monitor.notify_health_check(
-                            status=status_report.overall_status,
-                            alerts=[{"message": a.message, "severity": a.severity.value} for a in critical_alerts],
-                            warnings=[{"message": a.message, "severity": a.severity.value} for a in warnings],
-                            healthy_services=healthy_count,
-                            total_services=total_count,
-                        )
-                    except Exception as fallback_error:
-                        logger.exception("fallback_health_check_failed", error=str(fallback_error))
+                        # Get enhanced report from health monitor (already ran during health check)
+                        enhanced_report = health_monitor.get_enhanced_health_report()
+                        
+                        if enhanced_report:
+                            # Use enhanced report for Telegram notification
+                            healthy_count = enhanced_report.summary.get("healthy", 0)
+                            total_count = enhanced_report.summary.get("total_checks", 0)
+                            
+                            logger.info(
+                                "sending_enhanced_health_check_to_telegram",
+                                overall_status=enhanced_report.overall_status,
+                                healthy=healthy_count,
+                                total=total_count,
+                                critical=enhanced_report.summary.get("critical", 0),
+                                warnings=enhanced_report.summary.get("warnings", 0),
+                            )
+                            
+                            telegram_monitor.notify_health_check(
+                                status=enhanced_report.overall_status,
+                                alerts=[{"message": a.message, "severity": a.severity.value} for a in critical_alerts],
+                                warnings=[{"message": a.message, "severity": a.severity.value} for a in warnings],
+                                healthy_services=healthy_count,
+                                total_services=total_count,
+                                health_report=enhanced_report,
+                            )
+                        else:
+                            # Fallback to old system if enhanced report not available
+                            logger.warning("enhanced_health_report_not_available_using_fallback")
+                            status_reporter = SystemStatusReporter(dsn=settings.postgres.dsn if settings.postgres and settings.postgres.dsn else "")
+                            try:
+                                status_report = status_reporter.generate_full_report()
+                                healthy_count = sum(1 for s in status_report.services if s.healthy)
+                                total_count = len(status_report.services)
+                                telegram_monitor.notify_health_check(
+                                    status=status_report.overall_status,
+                                    alerts=[{"message": a.message, "severity": a.severity.value} for a in critical_alerts],
+                                    warnings=[{"message": a.message, "severity": a.severity.value} for a in warnings],
+                                    healthy_services=healthy_count,
+                                    total_services=total_count,
+                                )
+                            except Exception as fallback_error:
+                                logger.warning("fallback_health_check_failed_non_fatal", error=str(fallback_error))
+                    except Exception as telegram_error:
+                        logger.warning("telegram_health_check_notification_failed_non_fatal", error=str(telegram_error))
+            except Exception as health_check_error:
+                logger.warning("pre_training_health_check_failed_non_fatal", error=str(health_check_error))
+                print(f"⚠️  WARNING: Pre-training health check failed: {health_check_error}\n")
+                print("   💡 Engine will continue\n")
 
         # Run main training
         results = orchestrator.run()

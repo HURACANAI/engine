@@ -213,13 +213,16 @@ class DropboxSync:
         local_path: str | Path,
         remote_path: str,
         overwrite: bool = True,
+        use_dated_folder: bool = True,
     ) -> bool:
         """Upload a single file to Dropbox.
         
         Args:
             local_path: Local file path
-            remote_path: Remote Dropbox path (relative to app folder)
+            remote_path: Remote Dropbox path (relative to app folder or already normalized)
             overwrite: Whether to overwrite existing files
+            use_dated_folder: Whether to use dated folder (default: True). 
+                            Set to False if remote_path is already fully normalized.
             
         Returns:
             True if successful, False otherwise
@@ -233,7 +236,27 @@ class DropboxSync:
             return False
         
         # Normalize remote path
-        remote_path = self._normalize_path(remote_path)
+        # If use_dated_folder=False, assume path is already fully normalized and check if it needs normalization
+        if not use_dated_folder:
+            # Path should already be fully normalized - just ensure it starts with /
+            if not remote_path.startswith("/"):
+                remote_path = f"/{remote_path}"
+            # Log for debugging
+            logger.debug(
+                "upload_file_using_pre_normalized_path",
+                remote_path=remote_path,
+                dated_folder=getattr(self, "_dated_folder", "not_set"),
+            )
+        else:
+            # Normalize path (will add dated folder if available)
+            remote_path = self._normalize_path(remote_path, use_dated_folder=use_dated_folder)
+            logger.debug(
+                "upload_file_normalized_path",
+                original_path=remote_path,
+                normalized_path=remote_path,
+                use_dated_folder=use_dated_folder,
+                dated_folder=getattr(self, "_dated_folder", "not_set"),
+            )
         
         try:
             with open(local_path, "rb") as f:
@@ -288,6 +311,7 @@ class DropboxSync:
         remote_dir: str,
         pattern: str = "*",
         recursive: bool = True,
+        use_dated_folder: bool = True,
     ) -> int:
         """Sync a directory to Dropbox.
         
@@ -296,6 +320,7 @@ class DropboxSync:
             remote_dir: Remote Dropbox directory (relative to app folder)
             pattern: File pattern to match (e.g., "*.log", "*.pkl")
             recursive: Whether to sync recursively
+            use_dated_folder: Whether to use dated folder (default: True)
             
         Returns:
             Number of files synced
@@ -308,7 +333,15 @@ class DropboxSync:
             logger.warning("directory_not_found", path=str(local_dir))
             return 0
         
-        remote_dir = self._normalize_path(remote_dir)
+        remote_dir = self._normalize_path(remote_dir, use_dated_folder=use_dated_folder)
+        
+        # Log the normalized remote directory for debugging
+        logger.info(
+            "sync_directory_normalized_path",
+            normalized_remote_dir=remote_dir,
+            use_dated_folder=use_dated_folder,
+            dated_folder=getattr(self, "_dated_folder", "not_set"),
+        )
         
         # Ensure remote directory exists
         try:
@@ -335,9 +368,14 @@ class DropboxSync:
             
             # Calculate relative path
             rel_path = local_file.relative_to(local_dir)
-            remote_path = f"{remote_dir}/{rel_path.as_posix()}"
+            # Construct full remote path (remote_dir is already normalized)
+            if remote_dir.endswith("/"):
+                remote_path = f"{remote_dir}{rel_path.as_posix()}"
+            else:
+                remote_path = f"{remote_dir}/{rel_path.as_posix()}"
             
-            if self.upload_file(local_file, remote_path):
+            # Upload file (don't normalize again - remote_path is already fully normalized)
+            if self.upload_file(local_file, remote_path, use_dated_folder=False):
                 synced_count += 1
         
         logger.info(
@@ -350,11 +388,12 @@ class DropboxSync:
         
         return synced_count
     
-    def upload_logs(self, logs_dir: str | Path = "logs") -> int:
+    def upload_logs(self, logs_dir: str | Path = "logs", use_dated_folder: bool = True) -> int:
         """Upload all log files to Dropbox.
         
         Args:
             logs_dir: Local logs directory
+            use_dated_folder: Whether to use dated folder (default: True)
             
         Returns:
             Number of log files uploaded
@@ -364,6 +403,7 @@ class DropboxSync:
             remote_dir="/logs",
             pattern="*.log",
             recursive=True,
+            use_dated_folder=use_dated_folder,
         )
     
     def upload_models(self, models_dir: str | Path = "models") -> int:

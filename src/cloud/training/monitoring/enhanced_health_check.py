@@ -914,28 +914,41 @@ class EnhancedHealthChecker:
         """Check Telegram bot connectivity."""
         logger.info("checking_telegram_bot_health")
         
-        if not self.settings or not self.settings.notifications or not self.settings.notifications.telegram:
+        if not self.settings or not self.settings.notifications or not self.settings.notifications.telegram_enabled:
             return HealthCheckResult(
                 name="Telegram Bot",
                 status="DISABLED",
-                message="Telegram not configured",
+                message="Telegram not enabled",
                 details={"enabled": False},
             )
         
-        telegram_config = self.settings.notifications.telegram
-        if not telegram_config.bot_token or not telegram_config.chat_id:
+        # Get Telegram configuration from settings
+        telegram_webhook_url = self.settings.notifications.telegram_webhook_url
+        telegram_chat_id = self.settings.notifications.telegram_chat_id
+        
+        # Extract bot token from webhook URL if needed
+        bot_token = None
+        if telegram_webhook_url:
+            # Token might be in webhook URL or might be the token itself
+            if "/bot" in telegram_webhook_url:
+                bot_token = telegram_webhook_url.split("/bot")[-1].split("/")[0]
+            else:
+                bot_token = telegram_webhook_url
+        
+        if not bot_token or not telegram_chat_id:
             return HealthCheckResult(
                 name="Telegram Bot",
                 status="WARNING",
                 message="Telegram bot token or chat ID not configured",
                 details={
-                    "bot_token_configured": bool(telegram_config.bot_token),
-                    "chat_id_configured": bool(telegram_config.chat_id),
+                    "bot_token_configured": bool(bot_token),
+                    "chat_id_configured": bool(telegram_chat_id),
+                    "enabled": True,
                 },
                 issues=["Telegram credentials not fully configured"],
                 recommendations=[
-                    "Set TELEGRAM_BOT_TOKEN environment variable",
-                    "Set TELEGRAM_CHAT_ID environment variable",
+                    "Set telegram_webhook_url in settings (contains bot token)",
+                    "Set telegram_chat_id in settings",
                 ],
                 last_checked=datetime.now(tz=timezone.utc),
             )
@@ -944,7 +957,7 @@ class EnhancedHealthChecker:
             import requests
             
             # Test Telegram API
-            url = f"https://api.telegram.org/bot{telegram_config.bot_token}/getMe"
+            url = f"https://api.telegram.org/bot{bot_token}/getMe"
             response = requests.get(url, timeout=5)
             
             if response.status_code == 200:

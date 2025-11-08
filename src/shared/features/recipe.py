@@ -823,9 +823,10 @@ class FeatureRecipe:
         feature_frame = feature_frame.with_columns([
             (pl.col("typical_price") * pl.col("volume")).alias("typical_price_volume"),
         ])
+        # Use pl.cumsum() function instead of .cumsum() method for Polars compatibility
         feature_frame = feature_frame.with_columns([
-            pl.col("typical_price_volume").cumsum().alias("cum_typical_volume"),
-            pl.col("volume").cumsum().alias("cum_volume"),
+            pl.cumsum(pl.col("typical_price_volume")).alias("cum_typical_volume"),
+            pl.cumsum(pl.col("volume")).alias("cum_volume"),
         ])
         feature_frame = feature_frame.with_columns([
             (pl.col("cum_typical_volume") / (pl.col("cum_volume") + 1e-9)).alias("vwap"),

@@ -20,8 +20,10 @@ import requests
 import structlog
 
 from .enhanced_health_check import EnhancedHealthChecker, ComprehensiveHealthReport
+from .download_progress_tracker import DownloadStatus
 from ..config.settings import EngineSettings
 from ..integrations.dropbox_sync import DropboxSync
+import time
 
 logger = structlog.get_logger(__name__)
 
@@ -135,6 +137,9 @@ class TelegramCommandHandler:
         elif command == "/help":
             return self.handle_help_command()
 
+        elif command == "/download":
+            return self.handle_download_command()
+
         else:
             return f"❓ Unknown command: {command}\n\nUse /help to see available commands."
 
@@ -195,10 +200,117 @@ class TelegramCommandHandler:
         response += "   Includes issues, recommendations, and resource usage\n\n"
         response += "*/status* - Quick system status\n"
         response += "   Shows overall status and resource usage\n\n"
+        response += "*/download* - Show download progress\n"
+        response += "   Shows progress of downloading historical data for all coins\n"
+        response += "   Includes current symbol, progress percentage, and time estimates\n\n"
         response += "*/help* - Show this help message\n\n"
         response += "The bot monitors your engine and sends automatic\n"
         response += "notifications about training, errors, and health checks."
         return response
+
+    def handle_download_command(self) -> str:
+        """Handle /download command - show download progress."""
+        try:
+            from .download_progress_tracker import get_progress_tracker
+            progress_tracker = get_progress_tracker()
+            progress = progress_tracker.get_progress()
+            
+            if not progress:
+                return "📊 *Download Progress*\n\nNo download session active.\n\nTraining may not have started yet, or all downloads are complete."
+            
+            # Format progress message
+            progress_percent = progress.get_progress_percent()
+            elapsed_time = progress.get_elapsed_time()
+            estimated_remaining = progress.get_estimated_remaining_time()
+            
+            response = "📊 *Download Progress*\n\n"
+            response += f"Progress: *{progress_percent:.1f}%*\n\n"
+            
+            # Summary
+            response += f"📈 *Summary:*\n"
+            response += f"• Total Symbols: {progress.total_symbols}\n"
+            response += f"• ✅ Completed: {progress.completed}\n"
+            response += f"• ⏳ Downloading: {progress.downloading}\n"
+            response += f"• ❌ Failed: {progress.failed}\n"
+            response += f"• ⏸️ Pending: {progress.pending}\n\n"
+            
+            # Time information
+            if elapsed_time:
+                minutes = int(elapsed_time // 60)
+                seconds = int(elapsed_time % 60)
+                response += f"⏱️ *Time:*\n"
+                response += f"• Elapsed: {minutes}m {seconds}s\n"
+                
+                if estimated_remaining and progress.completed > 0:
+                    rem_minutes = int(estimated_remaining // 60)
+                    rem_seconds = int(estimated_remaining % 60)
+                    response += f"• Estimated Remaining: {rem_minutes}m {rem_seconds}s\n"
+                response += "\n"
+            
+            # Currently downloading symbols
+            downloading_symbols = [
+                s for s in progress.symbols.values()
+                if s.status == DownloadStatus.DOWNLOADING
+            ]
+            if downloading_symbols:
+                response += f"⏳ *Currently Downloading ({len(downloading_symbols)}):*\n"
+                for sym_progress in downloading_symbols[:5]:  # Limit to 5
+                    duration = ""
+                    if sym_progress.start_time:
+                        elapsed = time.time() - sym_progress.start_time
+                        duration = f" ({int(elapsed)}s)"
+                    response += f"• {sym_progress.symbol}{duration}\n"
+                    if sym_progress.batch_num and sym_progress.task_num:
+                        response += f"  └ Batch {sym_progress.batch_num}/{progress.total_batches}, Task {sym_progress.task_num}/{sym_progress.total_tasks}\n"
+                if len(downloading_symbols) > 5:
+                    response += f"  ... and {len(downloading_symbols) - 5} more\n"
+                response += "\n"
+            
+            # Recently completed symbols
+            completed_symbols = [
+                s for s in progress.symbols.values()
+                if s.status == DownloadStatus.COMPLETED
+            ]
+            if completed_symbols:
+                # Get last 5 completed
+                recent_completed = sorted(
+                    completed_symbols,
+                    key=lambda x: x.end_time or 0,
+                    reverse=True
+                )[:5]
+                response += f"✅ *Recently Completed ({len(recent_completed)}):*\n"
+                for sym_progress in recent_completed:
+                    rows_info = ""
+                    if sym_progress.rows_downloaded > 0:
+                        rows_info = f" ({sym_progress.rows_downloaded:,} rows)"
+                    response += f"• {sym_progress.symbol}{rows_info}\n"
+                response += "\n"
+            
+            # Failed symbols
+            failed_symbols = [
+                s for s in progress.symbols.values()
+                if s.status == DownloadStatus.FAILED
+            ]
+            if failed_symbols:
+                response += f"❌ *Failed ({len(failed_symbols)}):*\n"
+                for sym_progress in failed_symbols[:3]:  # Limit to 3
+                    error_msg = sym_progress.error or "Unknown error"
+                    response += f"• {sym_progress.symbol}: {error_msg}\n"
+                if len(failed_symbols) > 3:
+                    response += f"  ... and {len(failed_symbols) - 3} more\n"
+                response += "\n"
+            
+            # Batch information
+            if progress.batch_num and progress.total_batches:
+                response += f"📦 *Batch:* {progress.batch_num}/{progress.total_batches}\n\n"
+            
+            response += "_Use /download to refresh progress_"
+            
+            return response
+            
+        except Exception as e:
+            logger.exception("download_command_failed", error=str(e))
+            return f"❌ Download progress check failed:\n\n`{str(e)}`"
 
     def format_health_report(self, report: ComprehensiveHealthReport) -> str:
         """

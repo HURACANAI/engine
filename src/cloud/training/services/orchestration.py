@@ -213,6 +213,9 @@ class TrainingOrchestrator:
         self._run_date = datetime.now(tz=timezone.utc).date()
 
     def run(self) -> List[TrainingTaskResult]:
+        # Initialize download progress tracker
+        from ..monitoring.download_progress_tracker import get_progress_tracker
+        progress_tracker = get_progress_tracker()
         
         universe = self._universe_selector.select()
         rows = list(universe.iter_rows(named=True))
@@ -301,6 +304,19 @@ class TrainingOrchestrator:
                         published=result.published,
                         reason=result.reason,
                     )
+                    
+                    # Track download completion
+                    rows_downloaded = result.metrics.get("rows_downloaded", 0) if result.metrics else 0
+                    if result.reason == "insufficient_data":
+                        progress_tracker.fail_symbol_download(
+                            symbol=symbol,
+                            error=result.reason,
+                        )
+                    else:
+                        progress_tracker.complete_symbol_download(
+                            symbol=symbol,
+                            rows_downloaded=rows_downloaded,
+                        )
                     
                     # Notify Telegram about training completion
                     if self._telegram_monitor:
