@@ -1,0 +1,202 @@
+# ML Framework Configuration
+# Modular ML framework for Huracan Engine
+
+# Preprocessing Configuration
+preprocessing:
+  enabled: true
+  normalize: true
+  scaler_type: "standard"  # "standard" or "minmax"
+  use_pca: true
+  pca_variance_threshold: 0.95  # Keep 95% variance
+  engineer_features: true
+  handle_missing: true
+  missing_strategy: "mean"  # "mean", "median", "most_frequent", "constant"
+  handle_outliers: true
+  outlier_method: "clip"  # "clip", "remove", "winsorize"
+  outlier_threshold: 3.0
+
+# Baseline Models Configuration
+baseline_models:
+  linear_regression:
+    enabled: true
+    model_type: "regression"
+    hyperparameters:
+      fit_intercept: true
+      n_jobs: -1
+  
+  logistic_regression:
+    enabled: true
+    model_type: "classification"
+    hyperparameters:
+      max_iter: 1000
+      C: 1.0
+      solver: "lbfgs"
+  
+  knn:
+    enabled: true
+    model_type: "classification"  # or "regression"
+    hyperparameters:
+      n_neighbors: 5
+      weights: "uniform"  # "uniform" or "distance"
+      algorithm: "auto"
+  
+  svm:
+    enabled: true
+    model_type: "classification"  # or "regression"
+    hyperparameters:
+      C: 1.0
+      kernel: "rbf"  # "linear", "poly", "rbf", "sigmoid"
+      gamma: "scale"
+
+# Core Learners Configuration
+core_models:
+  decision_tree:
+    enabled: true
+    model_type: "regression"  # or "classification"
+    hyperparameters:
+      max_depth: 10
+      min_samples_split: 2
+      min_samples_leaf: 1
+      criterion: "squared_error"  # for regression, "gini" or "entropy" for classification
+  
+  random_forest:
+    enabled: true
+    model_type: "regression"  # or "classification"
+    hyperparameters:
+      n_estimators: 100
+      max_depth: 10
+      min_samples_split: 2
+      min_samples_leaf: 1
+      n_jobs: -1
+      random_state: 42
+  
+  xgboost:
+    enabled: true
+    model_type: "regression"  # or "classification"
+    hyperparameters:
+      n_estimators: 100
+      max_depth: 6
+      learning_rate: 0.1
+      subsample: 0.8
+      colsample_bytree: 0.8
+      min_child_weight: 1
+      gamma: 0
+      reg_alpha: 0
+      reg_lambda: 1
+      random_state: 42
+
+# Neural Network Models Configuration
+neural_models:
+  lstm:
+    enabled: true
+    model_type: "regression"  # or "classification"
+    hyperparameters:
+      sequence_length: 60
+      hidden_units: 64
+      num_layers: 2
+      dropout: 0.2
+      learning_rate: 0.001
+      batch_size: 32
+      epochs: 50
+      device: "cuda"  # "cuda" or "cpu"
+      scheduler:
+        type: "step"  # "step", "cosine", "exponential", "plateau"
+        step_size: 10
+        gamma: 0.1
+  
+  gru:
+    enabled: true
+    model_type: "regression"  # or "classification"
+    hyperparameters:
+      sequence_length: 60
+      hidden_units: 64
+      num_layers: 2
+      dropout: 0.2
+      learning_rate: 0.001
+      batch_size: 32
+      epochs: 50
+      device: "cuda"  # "cuda" or "cpu"
+      scheduler:
+        type: "cosine"
+        T_max: 50
+        eta_min: 0.0
+
+# Clustering Models Configuration
+clustering_models:
+  kmeans:
+    enabled: false  # Enable for market regime detection
+    hyperparameters:
+      n_clusters: 3  # Bullish, Bearish, Neutral
+      random_state: 42
+      n_init: 10
+      max_iter: 300
+
+# Ensemble Configuration
+ensemble:
+  enabled: true
+  method: "weighted_voting"  # "weighted_voting", "stacking", "averaging"
+  performance_window_days: 7
+  min_performance_samples: 10
+  reweight_frequency: "daily"  # "daily", "weekly", "manual"
+  use_sharpe_for_weighting: true
+
+# Feedback Loop Configuration
+feedback:
+  enabled: true
+  # Performance thresholds
+  sharpe_threshold: 0.5
+  rmse_threshold: 100.0
+  win_rate_threshold: 0.45
+  # Auto-tuning
+  auto_retrain_enabled: true
+  auto_reweight_enabled: true
+  auto_prune_enabled: true
+  # Retraining
+  retrain_threshold_days: 7
+  min_samples_for_retrain: 100
+  # Pruning
+  prune_threshold_days: 14
+  min_models_to_keep: 3
+  # Database
+  db_path: null  # PostgreSQL DSN or SQLite path
+  use_s3: false
+  s3_bucket: null
+
+# Model Storage
+storage:
+  base_path: "models/ml_framework"
+  save_format: "pickle"  # "pickle" or "joblib"
+  version_models: true
+  keep_previous_versions: 3
+
+# Logging
+logging:
+  level: "INFO"  # "DEBUG", "INFO", "WARNING", "ERROR"
+  log_file: "logs/ml_framework.log"
+  log_predictions: false  # Log individual predictions (can be verbose)
+
+# Training Configuration
+training:
+  mode: "batch"  # "batch" or "live"
+  validation_split: 0.2
+  test_split: 0.1
+  random_state: 42
+  n_jobs: -1  # Number of parallel jobs (-1 = all cores)
+  use_cross_validation: true
+  cv_folds: 5
+  use_time_series_split: true  # Preserve temporal order
+
+# Feature Selection Configuration
+feature_selection:
+  enabled: false
+  method: "importance"  # "importance", "correlation", "mutual_info", "f_test"
+  n_features: null  # Number of features to select (null = auto)
+  percentile: 50  # Percentile of features to select
+  threshold: null  # Threshold for selection
+
+# Prediction Configuration
+prediction:
+  use_ensemble: true
+  fallback_to_best_model: true
+  confidence_threshold: 0.5  # Minimum confidence for predictions
+

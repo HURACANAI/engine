@@ -6,8 +6,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional
 
-import psycopg2
-import structlog
+import psycopg2  # type: ignore[reportMissingModuleSource]
+import structlog  # type: ignore[reportMissingImports]
 
 from .types import HealthAlert, AlertSeverity
 
@@ -56,15 +56,45 @@ class AutoRemediator:
 
     def connect(self) -> None:
         """Establish database connection."""
-        if self._conn is None or self._conn.closed:
-            self._conn = psycopg2.connect(self.dsn)
-            logger.info("auto_remediation_db_connected")
+        try:
+            # Check if connection exists and is still open
+            if self._conn is not None:
+                # Check if connection is closed
+                if self._conn.closed:
+                    logger.warning("database_connection_closed_reconnecting")
+                    self._conn = None
+                else:
+                    # Connection is valid, no need to reconnect
+                    return
+            
+            # Create new connection
+            if self._conn is None:
+                self._conn = psycopg2.connect(self.dsn)
+                logger.info("auto_remediation_db_connected")
+            
+            # Final validation
+            if self._conn is None or self._conn.closed:
+                raise RuntimeError("Failed to establish database connection")
+        except psycopg2.Error as e:
+            logger.error(
+                "database_connection_failed",
+                error=str(e),
+                dsn_masked=self.dsn.split("@")[-1] if "@" in self.dsn else "***",
+            )
+            self._conn = None
+            raise RuntimeError(f"Failed to establish database connection: {e}") from e
 
     def close(self) -> None:
         """Close database connection."""
-        if self._conn and not self._conn.closed:
-            self._conn.close()
-            logger.info("auto_remediation_db_closed")
+        if self._conn is not None:
+            try:
+                if not self._conn.closed:
+                    self._conn.close()
+                    logger.info("auto_remediation_db_closed")
+            except Exception as e:
+                logger.warning("error_closing_connection", error=str(e))
+            finally:
+                self._conn = None
 
     def handle_alert(self, alert: HealthAlert) -> Optional[RemediationAction]:
         """
@@ -133,22 +163,26 @@ class AutoRemediator:
         try:
             if not self.dry_run:
                 self.connect()
-                with self._conn.cursor() as cur:
-                    # Soft disable by setting reliability to 0
-                    cur.execute(
-                        """
-                        UPDATE pattern_library
-                        SET
-                            reliability_score = 0.0,
-                            last_updated = NOW()
-                        WHERE pattern_id = %s
-                        RETURNING pattern_name, win_rate
-                        """,
-                        (pattern_id,),
-                    )
-                    result = cur.fetchone()
-                    self._conn.commit()
-
+                if self._conn is None:
+                    raise RuntimeError("Database connection is None after connect()")
+                try:
+                    with self._conn.cursor() as cur:
+                        # Soft disable by setting reliability to 0
+                        cur.execute(
+                            """
+                            UPDATE pattern_library
+                            SET
+                                reliability_score = 0.0,
+                                last_updated = NOW()
+                            WHERE pattern_id = %s
+                            RETURNING pattern_name, win_rate
+                            """,
+                            (pattern_id,),
+                        )
+                        result = cur.fetchone()
+                        self._conn.commit()
+                    
+                    # Extract results after successful commit
                     pattern_name = result[0] if result else f"Pattern{pattern_id}"
                     win_rate = result[1] if result else 0.0
 
@@ -159,6 +193,19 @@ class AutoRemediator:
                         previous_win_rate=win_rate,
                         method="reliability_score_0",
                     )
+                except psycopg2.Error as db_error:
+                    # Rollback on database error
+                    if self._conn:
+                        try:
+                            self._conn.rollback()
+                        except Exception:
+                            pass
+                    logger.error(
+                        "pattern_pause_db_error",
+                        pattern_id=pattern_id,
+                        error=str(db_error),
+                    )
+                    raise
             else:
                 pattern_name = f"Pattern{pattern_id}"
                 logger.info("pattern_pause_simulated", pattern_id=pattern_id, dry_run=True)
@@ -200,25 +247,28 @@ class AutoRemediator:
 
         try:
             self.connect()
-            with self._conn.cursor() as cur:
-                # Get recent losing trades for analysis
-                cur.execute(
-                    """
-                    SELECT
-                        symbol,
-                        exit_reason,
-                        market_regime,
-                        gross_profit_bps,
-                        entry_timestamp
-                    FROM trade_memory
-                    WHERE is_winner = FALSE
-                      AND entry_timestamp >= NOW() - INTERVAL '24 hours'
-                    ORDER BY entry_timestamp DESC
-                    LIMIT 20
-                    """
-                )
-                recent_losses = cur.fetchall()
-
+            if self._conn is None:
+                raise RuntimeError("Database connection is None after connect()")
+            try:
+                with self._conn.cursor() as cur:
+                    # Get recent losing trades for analysis
+                    cur.execute(
+                        """
+                        SELECT
+                            symbol,
+                            exit_reason,
+                            market_regime,
+                            gross_profit_bps,
+                            entry_timestamp
+                        FROM trade_memory
+                        WHERE is_winner = FALSE
+                          AND entry_timestamp >= NOW() - INTERVAL '24 hours'
+                        ORDER BY entry_timestamp DESC
+                        LIMIT 20
+                        """
+                    )
+                    recent_losses = cur.fetchall()
+                
                 logger.info(
                     "win_rate_context_captured",
                     recent_losses_count=len(recent_losses),
@@ -226,6 +276,18 @@ class AutoRemediator:
                     affected_symbols=list(set(row[0] for row in recent_losses)),
                     regimes=list(set(row[2] for row in recent_losses)),
                 )
+            except psycopg2.Error as db_error:
+                # Rollback on database error
+                if self._conn:
+                    try:
+                        self._conn.rollback()
+                    except Exception:
+                        pass
+                logger.error(
+                    "win_rate_context_db_error",
+                    error=str(db_error),
+                )
+                raise
 
             return RemediationAction(
                 action_id=f"log_context_{datetime.now(tz=timezone.utc).timestamp()}",
@@ -339,10 +401,43 @@ class AutoRemediator:
 
         try:
             if not self.dry_run:
+                # Validate reversal command to prevent SQL injection
+                if not action.reversal_command:
+                    raise ValueError("Reversal command is empty")
+                
+                # Only allow UPDATE statements for safety
+                cmd_upper = action.reversal_command.strip().upper()
+                if not cmd_upper.startswith("UPDATE"):
+                    raise ValueError(
+                        f"Reversal command must be an UPDATE statement, got: {cmd_upper[:50]}"
+                    )
+                
                 self.connect()
-                with self._conn.cursor() as cur:
-                    cur.execute(action.reversal_command)
-                    self._conn.commit()
+                if self._conn is None:
+                    raise RuntimeError("Database connection is None after connect()")
+                try:
+                    with self._conn.cursor() as cur:
+                        # Execute reversal command
+                        cur.execute(action.reversal_command)
+                        self._conn.commit()
+                        logger.info(
+                            "reversal_command_executed",
+                            action_id=action.action_id,
+                            rows_affected=cur.rowcount,
+                        )
+                except psycopg2.Error as db_error:
+                    # Rollback on database error
+                    if self._conn:
+                        try:
+                            self._conn.rollback()
+                        except Exception:
+                            pass
+                    logger.error(
+                        "action_reversal_db_error",
+                        action_id=action.action_id,
+                        error=str(db_error),
+                    )
+                    raise
 
             logger.info(
                 "action_reversed",

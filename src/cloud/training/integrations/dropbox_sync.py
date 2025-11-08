@@ -334,11 +334,94 @@ class DropboxSync:
             recursive=True,
         )
     
+    def upload_reports(self, reports_dir: str | Path = "reports") -> int:
+        """Upload reports and analytics to Dropbox.
+        
+        Args:
+            reports_dir: Local reports directory
+            
+        Returns:
+            Number of files uploaded
+        """
+        reports_dir = Path(reports_dir)
+        if not reports_dir.exists():
+            return 0
+        
+        total_synced = 0
+        # Sync multiple file types
+        for pattern in ["*.json", "*.csv", "*.html", "*.pdf", "*.txt"]:
+            count = self.sync_directory(
+                local_dir=reports_dir,
+                remote_dir="/reports",
+                pattern=pattern,
+                recursive=True,
+            )
+            total_synced += count
+        
+        return total_synced
+    
+    def upload_exports(self, exports_dir: str | Path = "exports") -> int:
+        """Upload exported data files to Dropbox.
+        
+        Args:
+            exports_dir: Local exports directory
+            
+        Returns:
+            Number of files uploaded
+        """
+        exports_dir = Path(exports_dir)
+        if not exports_dir.exists():
+            return 0
+        
+        total_synced = 0
+        # Sync all exported files (CSV, JSON, etc.)
+        for pattern in ["*.csv", "*.json", "*.parquet"]:
+            count = self.sync_directory(
+                local_dir=exports_dir,
+                remote_dir="/exports",
+                pattern=pattern,
+                recursive=True,
+            )
+            total_synced += count
+        
+        return total_synced
+    
+    def upload_configs(self, config_dir: str | Path = "config") -> int:
+        """Upload configuration files to Dropbox.
+        
+        Args:
+            config_dir: Local config directory
+            
+        Returns:
+            Number of files uploaded
+        """
+        config_dir = Path(config_dir)
+        if not config_dir.exists():
+            return 0
+        
+        total_synced = 0
+        # Sync multiple file types
+        for pattern in ["*.yaml", "*.yml", "*.json", "*.toml"]:
+            count = self.sync_directory(
+                local_dir=config_dir,
+                remote_dir="/config",
+                pattern=pattern,
+                recursive=True,
+            )
+            total_synced += count
+        
+        return total_synced
+    
     def sync_all(
         self,
         logs_dir: str | Path = "logs",
         models_dir: str | Path = "models",
         monitoring_dir: str | Path = "logs",
+        learning_dir: str | Path = "logs/learning",
+        data_cache_dir: str | Path = "data/candles",
+        reports_dir: str | Path = "reports",
+        config_dir: str | Path = "config",
+        exports_dir: str | Path = "exports",
     ) -> dict[str, int]:
         """Sync all data to Dropbox.
         
@@ -346,6 +429,10 @@ class DropboxSync:
             logs_dir: Local logs directory
             models_dir: Local models directory
             monitoring_dir: Local monitoring data directory
+            learning_dir: Local learning data directory
+            data_cache_dir: Local historical data cache directory
+            reports_dir: Local reports directory
+            config_dir: Local config directory
             
         Returns:
             Dictionary with sync counts
@@ -355,6 +442,34 @@ class DropboxSync:
             "models": self.upload_models(models_dir),
             "monitoring": self.upload_monitoring_data(monitoring_dir),
         }
+        
+        # Sync learning data if directory exists
+        if Path(learning_dir).exists():
+            results["learning"] = self.sync_directory(
+                local_dir=learning_dir,
+                remote_dir="/learning",
+                pattern="*.json",
+                recursive=True,
+            )
+        
+        # Sync data cache if directory exists
+        if Path(data_cache_dir).exists():
+            results["data_cache"] = self.upload_data_cache(
+                data_cache_dir=data_cache_dir,
+                use_dated_folder=True,
+            )
+        
+        # Sync reports if directory exists
+        if Path(reports_dir).exists():
+            results["reports"] = self.upload_reports(reports_dir)
+        
+        # Sync configs if directory exists
+        if Path(config_dir).exists():
+            results["config"] = self.upload_configs(config_dir)
+        
+        # Sync exported data (trade history, performance metrics, etc.)
+        if Path(exports_dir).exists():
+            results["exports"] = self.upload_exports(exports_dir)
         
         logger.info(
             "dropbox_sync_complete",
@@ -411,6 +526,7 @@ class DropboxSync:
         """Normalize Dropbox path.
         
         All paths are organized under the dated folder created at startup.
+        Structure: /Runpodhuracan/YYYY-MM-DD/data_type/file
         
         Args:
             path: Path to normalize
@@ -472,100 +588,271 @@ class DropboxSync:
     
     def start_continuous_sync(
         self,
-        interval_seconds: int = 60,
         logs_dir: str | Path = "logs",
         models_dir: str | Path = "models",
         learning_dir: str | Path = "logs/learning",
         monitoring_dir: str | Path = "logs",
         data_cache_dir: str | Path = "data/candles",
-    ) -> threading.Thread:
-        """Start continuous sync in background thread.
+        sync_intervals: Optional[dict[str, int]] = None,
+    ) -> list[threading.Thread]:
+        """Start continuous sync with different intervals for different data types.
         
         Args:
-            interval_seconds: Sync interval in seconds (default: 60 = 1 minute)
             logs_dir: Local logs directory
             models_dir: Local models directory
             learning_dir: Local learning data directory
             monitoring_dir: Local monitoring data directory
             data_cache_dir: Local historical data cache directory
+            sync_intervals: Dict with sync intervals in seconds for each data type:
+                - learning: interval for learning data (default: 300 = 5 min)
+                - logs: interval for logs (default: 300 = 5 min)
+                - models: interval for models (default: 1800 = 30 min)
+                - data_cache: interval for historical data (default: 7200 = 2 hours)
             
         Returns:
-            Background thread running continuous sync
+            List of background threads running continuous sync
         """
         if not self._enabled:
             logger.warning("continuous_sync_disabled")
-            return None
+            return []
         
-        def sync_loop():
-            logger.info(
-                "continuous_sync_started",
-                interval_seconds=interval_seconds,
-            )
-            
+        # Default sync intervals (can be overridden)
+        intervals = sync_intervals or {}
+        learning_interval = intervals.get("learning", 300)  # 5 minutes
+        logs_interval = intervals.get("logs", 300)  # 5 minutes
+        models_interval = intervals.get("models", 1800)  # 30 minutes
+        data_cache_interval = intervals.get("data_cache", 7200)  # 2 hours
+        
+        threads = []
+        
+        # Sync learning data (frequently - captures insights quickly)
+        def sync_learning_loop():
+            logger.info("continuous_sync_learning_started", interval_seconds=learning_interval)
             while True:
                 try:
-                    # Sync all data
-                    self.sync_all(
-                        logs_dir=logs_dir,
-                        models_dir=models_dir,
-                        monitoring_dir=monitoring_dir,
-                    )
-                    
-                    # Sync learning data
                     if Path(learning_dir).exists():
-                        self.sync_directory(
+                        count = self.sync_directory(
                             local_dir=learning_dir,
                             remote_dir="/learning",
                             pattern="*.json",
                             recursive=True,
                         )
+                        if count > 0:
+                            logger.info(
+                                "learning_data_synced",
+                                files_synced=count,
+                                interval_seconds=learning_interval,
+                            )
+                except Exception as e:
+                    logger.error("learning_sync_error", error=str(e))
+                time.sleep(learning_interval)
+        
+        # Sync logs & monitoring (frequently - for real-time monitoring)
+        def sync_logs_loop():
+            logger.info("continuous_sync_logs_started", interval_seconds=logs_interval)
+            while True:
+                try:
+                    # Sync logs
+                    log_count = self.upload_logs(logs_dir) if Path(logs_dir).exists() else 0
                     
-                    # Sync historical data cache (so we don't need to redownload)
-                    # Note: Historical data goes to a shared location, not dated folder
-                    # (so it can be reused across days)
-                    if Path(data_cache_dir).exists():
-                        # Use shared location for historical data (not dated folder)
-                        shared_data_path = f"/{self._app_folder}/data/candles"
-                        self.sync_directory(
-                            local_dir=data_cache_dir,
-                            remote_dir=shared_data_path,
-                            pattern="*.parquet",
-                            recursive=True,
+                    # Sync monitoring data
+                    monitoring_count = (
+                        self.upload_monitoring_data(monitoring_dir)
+                        if Path(monitoring_dir).exists()
+                        else 0
+                    )
+                    
+                    # Sync reports if they exist
+                    reports_count = 0
+                    if Path("reports").exists():
+                        reports_count = self.upload_reports("reports")
+                    
+                    # Sync exports (comprehensive data export) - less frequently but still regularly
+                    exports_count = 0
+                    if Path("exports").exists():
+                        # Only sync exports every 30 minutes (not every 5 minutes)
+                        # Exports are large files, don't need real-time sync
+                        exports_count = self.upload_exports("exports")
+                    
+                    if log_count > 0 or monitoring_count > 0 or reports_count > 0 or exports_count > 0:
+                        logger.info(
+                            "logs_synced",
+                            logs_synced=log_count,
+                            monitoring_synced=monitoring_count,
+                            reports_synced=reports_count,
+                            exports_synced=exports_count,
+                            interval_seconds=logs_interval,
                         )
+                except Exception as e:
+                    logger.error("logs_sync_error", error=str(e))
+                time.sleep(logs_interval)
+        
+        # Sync models (less frequently - models don't change often)
+        def sync_models_loop():
+            logger.info("continuous_sync_models_started", interval_seconds=models_interval)
+            while True:
+                try:
+                    if Path(models_dir).exists():
+                        count = self.upload_models(models_dir)
+                        if count > 0:
+                            logger.info(
+                                "models_synced",
+                                files_synced=count,
+                                interval_seconds=models_interval,
+                            )
+                except Exception as e:
+                    logger.error("models_sync_error", error=str(e))
+                time.sleep(models_interval)
+        
+        # Sync historical data cache
+        # Store in dated folder: /Runpodhuracan/YYYY-MM-DD/data/candles/
+        # Also checks for recently modified files and syncs them immediately
+        def sync_data_cache_loop():
+            logger.info(
+                "continuous_sync_data_cache_started",
+                interval_seconds=data_cache_interval,
+            )
+            last_sync_time = time.time()
+            # Check for new files every 5 minutes (more frequent than full sync)
+            quick_check_interval = 300  # 5 minutes
+            
+            while True:
+                try:
+                    if Path(data_cache_dir).exists():
+                        current_time = time.time()
+                        time_since_last_sync = current_time - last_sync_time
+                        
+                        # If it's been more than the full interval, do a full sync
+                        # Otherwise, check for recently modified files and sync those immediately
+                        if time_since_last_sync >= data_cache_interval:
+                            # Full sync of all files
+                            count = self.sync_directory(
+                                local_dir=data_cache_dir,
+                                remote_dir="/data/candles",  # Will be normalized to dated folder
+                                pattern="*.parquet",
+                                recursive=True,
+                            )
+                            if count > 0:
+                                logger.info(
+                                    "data_cache_synced_full",
+                                    files_synced=count,
+                                    interval_seconds=data_cache_interval,
+                                )
+                            last_sync_time = current_time
+                        else:
+                            # Quick check: sync only files modified in the last 10 minutes
+                            recent_files = []
+                            cutoff_time = current_time - 600  # 10 minutes ago
+                            
+                            for parquet_file in Path(data_cache_dir).rglob("*.parquet"):
+                                try:
+                                    if parquet_file.stat().st_mtime > cutoff_time:
+                                        recent_files.append(parquet_file)
+                                except (OSError, FileNotFoundError):
+                                    continue
+                            
+                            if recent_files:
+                                # Sync recently modified files immediately
+                                synced_count = 0
+                                for file_path in recent_files:
+                                    try:
+                                        # Get relative path
+                                        rel_path = file_path.relative_to(Path(data_cache_dir))
+                                        remote_path = f"/data/candles/{rel_path.as_posix()}"
+                                        remote_path = self._normalize_path(remote_path)
+                                        
+                                        if self.upload_file(file_path, remote_path):
+                                            synced_count += 1
+                                            logger.info(
+                                                "coin_data_synced_immediately",
+                                                file=str(file_path),
+                                                remote_path=remote_path,
+                                                message="Newly downloaded coin data synced to Dropbox",
+                                            )
+                                    except Exception as file_error:
+                                        logger.warning(
+                                            "recent_file_sync_failed",
+                                            file=str(file_path),
+                                            error=str(file_error),
+                                        )
+                                
+                                if synced_count > 0:
+                                    logger.info(
+                                        "recent_coin_data_synced",
+                                        files_synced=synced_count,
+                                        total_recent_files=len(recent_files),
+                                        message="Recently downloaded coin data synced immediately",
+                                    )
                     
-                    logger.debug("continuous_sync_complete", interval_seconds=interval_seconds)
+                    # Sleep for quick check interval (5 minutes) instead of full interval
+                    # This allows us to catch newly downloaded files faster
+                    time.sleep(min(quick_check_interval, data_cache_interval))
                     
                 except Exception as e:
-                    logger.error("continuous_sync_error", error=str(e))
-                
-                # Wait for next interval
-                time.sleep(interval_seconds)
+                    logger.error("data_cache_sync_error", error=str(e))
+                    time.sleep(60)  # Short sleep on error
         
-        thread = threading.Thread(target=sync_loop, daemon=True, name="DropboxSync")
-        thread.start()
+        # Start all sync threads
+        if learning_interval > 0:
+            thread = threading.Thread(
+                target=sync_learning_loop, daemon=True, name="DropboxSync-Learning"
+            )
+            thread.start()
+            threads.append(thread)
         
-        logger.info("continuous_sync_thread_started", interval_seconds=interval_seconds)
-        return thread
+        if logs_interval > 0:
+            thread = threading.Thread(
+                target=sync_logs_loop, daemon=True, name="DropboxSync-Logs"
+            )
+            thread.start()
+            threads.append(thread)
+        
+        if models_interval > 0:
+            thread = threading.Thread(
+                target=sync_models_loop, daemon=True, name="DropboxSync-Models"
+            )
+            thread.start()
+            threads.append(thread)
+        
+        if data_cache_interval > 0:
+            thread = threading.Thread(
+                target=sync_data_cache_loop, daemon=True, name="DropboxSync-DataCache"
+            )
+            thread.start()
+            threads.append(thread)
+        
+        logger.info(
+            "continuous_sync_threads_started",
+            learning_interval=learning_interval,
+            logs_interval=logs_interval,
+            models_interval=models_interval,
+            data_cache_interval=data_cache_interval,
+            total_threads=len(threads),
+        )
+        return threads
     
     def upload_data_cache(
         self,
         data_cache_dir: str | Path = "data/candles",
-        use_shared_location: bool = True,
+        use_dated_folder: bool = True,
     ) -> int:
         """Upload historical data cache to Dropbox.
         
         Args:
             data_cache_dir: Local data cache directory
-            use_shared_location: If True, use shared location (not dated folder) for reuse
+            use_dated_folder: If True, store in dated folder (default). If False, use shared location.
             
         Returns:
             Number of files uploaded
         """
-        if use_shared_location:
-            # Use shared location for historical data (not dated folder)
-            remote_dir = f"/{self._app_folder}/data/candles"
-        else:
+        if use_dated_folder:
+            # Store in dated folder: /Runpodhuracan/YYYY-MM-DD/data/candles/
             remote_dir = "/data/candles"
+        else:
+            # Use shared location: /Runpodhuracan/data/candles/
+            remote_dir = f"/{self._app_folder}/data/candles"
+            # Normalize without dated folder
+            remote_dir = self._normalize_path(remote_dir, use_dated_folder=False)
         
         return self.sync_directory(
             local_dir=data_cache_dir,
@@ -578,15 +865,20 @@ class DropboxSync:
         self,
         data_cache_dir: str | Path = "data/candles",
         remote_dir: Optional[str] = None,
+        use_latest_dated_folder: bool = True,
     ) -> int:
         """Restore historical data cache from Dropbox.
         
+        This is a convenience function - if Dropbox is empty (first startup),
+        the training pipeline will download data normally from the exchange.
+        
         Args:
             data_cache_dir: Local data cache directory
-            remote_dir: Remote Dropbox directory
+            remote_dir: Remote Dropbox directory (if None, uses latest dated folder or shared location)
+            use_latest_dated_folder: If True, try to restore from latest dated folder first
             
         Returns:
-            Number of files restored
+            Number of files restored (0 if Dropbox is empty - this is OK for first startup)
         """
         if not self._enabled:
             return 0
@@ -594,16 +886,40 @@ class DropboxSync:
         local_dir = Path(data_cache_dir)
         local_dir.mkdir(parents=True, exist_ok=True)
         
-        # Use shared location for historical data (not dated folder)
+        # Determine remote directory
         if remote_dir is None:
-            remote_dir = f"/{self._app_folder}/data/candles"
+            if use_latest_dated_folder:
+                # Try to restore from latest dated folder first
+                # This will be set by the caller or use current dated folder
+                if hasattr(self, "_dated_folder") and self._dated_folder:
+                    remote_dir = f"{self._dated_folder}/data/candles"
+                else:
+                    # Fallback to shared location
+                    remote_dir = f"/{self._app_folder}/data/candles"
+            else:
+                # Use shared location
+                remote_dir = f"/{self._app_folder}/data/candles"
         else:
-            # Don't use dated folder for historical data (use shared location)
-            remote_dir = self._normalize_path(remote_dir, use_dated_folder=False)
+            # Don't normalize - use as-is (caller specifies exact path)
+            pass
         
         try:
             # List files in Dropbox
-            result = self._dbx.files_list_folder(remote_dir)
+            # This will raise ApiError if folder doesn't exist (first startup)
+            try:
+                result = self._dbx.files_list_folder(remote_dir)
+            except ApiError as e:
+                # Folder doesn't exist in Dropbox - this is OK for first startup
+                if "not_found" in str(e.error):
+                    logger.info(
+                        "data_cache_folder_not_found",
+                        remote_dir=remote_dir,
+                        message="Dropbox folder doesn't exist yet (first startup) - data will be downloaded during training",
+                    )
+                    return 0
+                else:
+                    raise
+            
             restored_count = 0
             
             for entry in result.entries:
@@ -634,14 +950,23 @@ class DropboxSync:
                                 error=str(e),
                             )
             
-            logger.info(
-                "data_cache_restore_complete",
-                files_restored=restored_count,
-                local_dir=str(local_dir),
-            )
+            if restored_count > 0:
+                logger.info(
+                    "data_cache_restore_complete",
+                    files_restored=restored_count,
+                    local_dir=str(local_dir),
+                )
+            else:
+                logger.info(
+                    "data_cache_restore_empty",
+                    remote_dir=remote_dir,
+                    message="Dropbox folder exists but is empty - data will be downloaded during training",
+                )
+            
             return restored_count
             
         except Exception as e:
             logger.error("data_cache_restore_failed", error=str(e))
+            # Return 0 on error - training will download data normally
             return 0
 

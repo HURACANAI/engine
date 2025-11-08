@@ -197,11 +197,24 @@ class NotificationSettings(BaseModel):
 class DropboxSettings(BaseModel):
     enabled: bool = True  # Enabled by default
     # Token can be set via environment variable DROPBOX_ACCESS_TOKEN or hardcoded here
-    access_token: Optional[str] = os.getenv("DROPBOX_ACCESS_TOKEN") or "sl.u.AGE0b2yjwoCn0RRDbBC4b5h6OelZYKtucGcNRaxCHNX-VA-TE3ttsE7sq56pcF7-G0SWhoKZa70z_MnphSGlVh6YEGlnN_LShMp0iJfcQ7MgGHgDiBwGicZ_f-IyPsP36au_SWphJFEFldUky4hcRFcvd_gBSnoQfUHSXKjf16s0msjcv60JCwbhIlwTvEUeEugfoLSC4zCbsAWb0esVNo_RbmPDRZuLbEyQO6tzehsE2k8y8iLRgJx_8a1o4_zJgoZFRsE058Y5lrG9l9WKCSQq5xAh-LoBXE_QnsB00BKih1DuAwVl_0XW-ViKIohltVBlrrsTGJmMXAqC1P-0URW-XiX8EdYfyq9ke2UN8oIR5yFLVxrNLyeNCnStTRpZaGAkSof6KHxEEUzdQfwrsVGLCW-h9h2ChHYvQXKosM0ezB-EID21cP4-46O0azR-fCF4fRtOcw1_e1JSsNquJ3TJjmH_sZXqmlQZe1SNyMAEF87of9bG_HdjjKkdP57KZwoLjFtByGRjrV-txwwbUJj6QJZ3ydlxWU3RuYDHsA9y806hl3TsebAjcAFppnJa7PukUnOmaVDazkN9nv8GGg8ezGhudMYokvNUyHQNIjDweKc7iu9RVDi1E0C6H6wNjHxKyrrUCOUaytpW_s9T1Mt7dk_Sg1HBQlj6QDGWQpbRZCEmisKanE6pG08dBueGX2yDYJ1i_fRJqwibR2qLzCxmbr0HJCHqE9__9a5A2mzhypnQj2rNJEli5ItIA49RpBAhsvdru4jcz7NqEyW_INpy2-TlIlFnxnl5WWGMyjL0gzAHuN70RZ7pyfZyjfBt7G9Saer-UGMjmIJqYvwjbvsfj1bXcOnOgLhKZBmV5wO9Ls-l_JPjWUzKmkS9qo1VZCGAZ9EoBsb2yRWI_NTLzv4twwDBu0QJC522JV1_CsXTIxkV5SkieOAePDjG6FvRs87slf4Vf-uyGONfpM1UAwjvwp1yc4uEAsBQqz_PwwmL7GXrRJfzqRU2IvY1FWEB3sElWSnkzlkPp-Kv24_Sv86rpJCg3DhLmZRoIakQ5thYs-AStMqzKdd_5mlFGIXF96b9MBVGjZNEgKaXQtW2ed0kInN42bkf9j5sbUHy1Dw_FYj3QBo5xBU0XAhxaY6emqASYgrpKQ78_CHVvj7E12BXkF9wOGUh2YAjwpUv7XFVC1BhEFqQI8bZD4q4tQ5SkLPDThMHDvx-fwV0iUk8pHemkpWqFi88Nd6wGh1PtLvKnsSUA4sw_Xp4Tmm_seW1npDAbkyEm-sxWOlB3RMVr8Kv"
+    access_token: Optional[str] = os.getenv("DROPBOX_ACCESS_TOKEN") or "sl.u.AGGHS11iAzSe4qKe6wzea4pxU6ilDfckS3z-huUVsW9kgytgHB0pEVSub8_6H8ypIsukAGm0ai7RBl5PWTEvd45uI7UybBsG_E_KwboZGwYErU0gzXFComp-uWt24OkyJsf1D5sYja7gtEo_FS1AFlLOsqiUjuZFQNEANjO8f-ShUaUj_by9sN6KMbhpAynzbpztLkYi21Ppr89Xdd27bBRzM7WLZZ7sqBy9mBCep0jav21WqGfJgu9qZpw01nQPWc23Q_c96lgDiIWcu7z5VEhDstNtP0jMRKhzj9vzC7Yx2-VLxye_SkxDEvS4h--20cgosUe3znyRy-c2BC_kVj7gnL8xPcfJnuJl528aYOjEsHrD662PnD7tQzT8sMef90RGWVXbp842BZ_2WcMmbjdCz7HpDZ-EzCB9_6GWBIpJMxYEOAd6rqAFhP9glSBG-7W2hSw3mpwRUVRxCvhKU5IAnWe3Jsu8OGli7RXQ-yMUxwORu7--Y5PKe2_6bRh1y_hv6mtCawiYq1F-RmTseIbApBppI4H1o04YxFFFcnR7nYilMDV_-rnoktRpAusFCzJe6ol9JyEuFugTCwuJFU48eUQ5-i_7EfNT26IG-4WrY8Bfah11Sll5crlD7iCS96aFDUGZzg11a25oJ6CelMtEguSv6X6lcH901_IXkKMpdE0NpQtiOlJKyOqFIEAUb8MJjWuiRIJaPG_YM9bQYFNKFfC7hMjn0YSZpZ6rm-L49zigtr2KGQEIeN9HwLKHb596NbSwBJ_cRT5N1JhJcwVefCTXfSpUhLGmEngzAw7UXE4ZQoHHn46vzWLDFglfwervcLqAzzyX9pTl0ciO7kvmKrehkdKNDHbX2dBvZ5Asn0HDTOgUDnoXoLXrhNeycOVSMj92MPlK_UG2Mo3W4k4PU5YLMUuSIahedFnWxKJiAdPlnmbTHiSSLn_ToVpZMgMgP81gFytDFXVKQzSIylrUHRsugOZLApVF0TehYm4ED_7IOGNEnjUa3ZkbVvyiFbnozX-wC9sS3OA8b19H2pENy2K-oejmG4VSVBjS9Xk4GVy4FICOpRunZ0mNt2xBAlBS6M3TW-LSSu7pLexp7XB3VYhuoQ2M1lJ8vlLKhp0K3-TVP9neLKrKpDTbj8TJiYTec1PVEH_7hVOCx09VGvF47xus8kEs8ZNZcxBz4-0ra5SueynSVbKN5xmT2TDXOofeafHZix0k57ics1fw_ZYd3Ig7075PeHliZtYzRSUDCtuMAIJhEaYEivi-cIFdvPg"
     app_folder: str = "Runpodhuracan"
     sync_logs: bool = True
     sync_models: bool = True
     sync_monitoring: bool = True
+    sync_learning: bool = True  # Sync learning data (patterns, insights, etc.)
+    sync_data_cache: bool = True  # Sync historical coin data (parquet files)
+    # Sync intervals in seconds
+    # Learning data: sync frequently (every 5 min) to capture insights quickly
+    sync_interval_learning_seconds: int = 300  # 5 minutes
+    # Logs & monitoring: sync frequently (every 5 min) for real-time monitoring
+    sync_interval_logs_seconds: int = 300  # 5 minutes
+    # Models: sync less frequently (every 30 min) - models don't change as often
+    sync_interval_models_seconds: int = 1800  # 30 minutes
+    # Historical data cache: sync less frequently (every 2 hours) - large files, don't change often
+    sync_interval_data_cache_seconds: int = 7200  # 2 hours
+    # Enable automatic restore of historical data from Dropbox on startup
+    restore_data_cache_on_startup: bool = True
 
 
 class ExchangeCredential(BaseModel):

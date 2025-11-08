@@ -103,7 +103,7 @@ def run_daily_retrain() -> None:
     dropbox_sync = None
     # Get Dropbox token - clean it (remove whitespace, newlines, etc.)
     # Token can come from environment variable DROPBOX_ACCESS_TOKEN or settings
-    dropbox_token_raw = os.getenv("DROPBOX_ACCESS_TOKEN") or settings.dropbox.access_token or "sl.u.AGE0b2yjwoCn0RRDbBC4b5h6OelZYKtucGcNRaxCHNX-VA-TE3ttsE7sq56pcF7-G0SWhoKZa70z_MnphSGlVh6YEGlnN_LShMp0iJfcQ7MgGHgDiBwGicZ_f-IyPsP36au_SWphJFEFldUky4hcRFcvd_gBSnoQfUHSXKjf16s0msjcv60JCwbhIlwTvEUeEugfoLSC4zCbsAWb0esVNo_RbmPDRZuLbEyQO6tzehsE2k8y8iLRgJx_8a1o4_zJgoZFRsE058Y5lrG9l9WKCSQq5xAh-LoBXE_QnsB00BKih1DuAwVl_0XW-ViKIohltVBlrrsTGJmMXAqC1P-0URW-XiX8EdYfyq9ke2UN8oIR5yFLVxrNLyeNCnStTRpZaGAkSof6KHxEEUzdQfwrsVGLCW-h9h2ChHYvQXKosM0ezB-EID21cP4-46O0azR-fCF4fRtOcw1_e1JSsNquJ3TJjmH_sZXqmlQZe1SNyMAEF87of9bG_HdjjKkdP57KZwoLjFtByGRjrV-txwwbUJj6QJZ3ydlxWU3RuYDHsA9y806hl3TsebAjcAFppnJa7PukUnOmaVDazkN9nv8GGg8ezGhudMYokvNUyHQNIjDweKc7iu9RVDi1E0C6H6wNjHxKyrrUCOUaytpW_s9T1Mt7dk_Sg1HBQlj6QDGWQpbRZCEmisKanE6pG08dBueGX2yDYJ1i_fRJqwibR2qLzCxmbr0HJCHqE9__9a5A2mzhypnQj2rNJEli5ItIA49RpBAhsvdru4jcz7NqEyW_INpy2-TlIlFnxnl5WWGMyjL0gzAHuN70RZ7pyfZyjfBt7G9Saer-UGMjmIJqYvwjbvsfj1bXcOnOgLhKZBmV5wO9Ls-l_JPjWUzKmkS9qo1VZCGAZ9EoBsb2yRWI_NTLzv4twwDBu0QJC522JV1_CsXTIxkV5SkieOAePDjG6FvRs87slf4Vf-uyGONfpM1UAwjvwp1yc4uEAsBQqz_PwwmL7GXrRJfzqRU2IvY1FWEB3sElWSnkzlkPp-Kv24_Sv86rpJCg3DhLmZRoIakQ5thYs-AStMqzKdd_5mlFGIXF96b9MBVGjZNEgKaXQtW2ed0kInN42bkf9j5sbUHy1Dw_FYj3QBo5xBU0XAhxaY6emqASYgrpKQ78_CHVvj7E12BXkF9wOGUh2YAjwpUv7XFVC1BhEFqQI8bZD4q4tQ5SkLPDThMHDvx-fwV0iUk8pHemkpWqFi88Nd6wGh1PtLvKnsSUA4sw_Xp4Tmm_seW1npDAbkyEm-sxWOlB3RMVr8Kv"
+    dropbox_token_raw = os.getenv("DROPBOX_ACCESS_TOKEN") or settings.dropbox.access_token or "sl.u.AGGHS11iAzSe4qKe6wzea4pxU6ilDfckS3z-huUVsW9kgytgHB0pEVSub8_6H8ypIsukAGm0ai7RBl5PWTEvd45uI7UybBsG_E_KwboZGwYErU0gzXFComp-uWt24OkyJsf1D5sYja7gtEo_FS1AFlLOsqiUjuZFQNEANjO8f-ShUaUj_by9sN6KMbhpAynzbpztLkYi21Ppr89Xdd27bBRzM7WLZZ7sqBy9mBCep0jav21WqGfJgu9qZpw01nQPWc23Q_c96lgDiIWcu7z5VEhDstNtP0jMRKhzj9vzC7Yx2-VLxye_SkxDEvS4h--20cgosUe3znyRy-c2BC_kVj7gnL8xPcfJnuJl528aYOjEsHrD662PnD7tQzT8sMef90RGWVXbp842BZ_2WcMmbjdCz7HpDZ-EzCB9_6GWBIpJMxYEOAd6rqAFhP9glSBG-7W2hSw3mpwRUVRxCvhKU5IAnWe3Jsu8OGli7RXQ-yMUxwORu7--Y5PKe2_6bRh1y_hv6mtCawiYq1F-RmTseIbApBppI4H1o04YxFFFcnR7nYilMDV_-rnoktRpAusFCzJe6ol9JyEuFugTCwuJFU48eUQ5-i_7EfNT26IG-4WrY8Bfah11Sll5crlD7iCS96aFDUGZzg11a25oJ6CelMtEguSv6X6lcH901_IXkKMpdE0NpQtiOlJKyOqFIEAUb8MJjWuiRIJaPG_YM9bQYFNKFfC7hMjn0YSZpZ6rm-L49zigtr2KGQEIeN9HwLKHb596NbSwBJ_cRT5N1JhJcwVefCTXfSpUhLGmEngzAw7UXE4ZQoHHn46vzWLDFglfwervcLqAzzyX9pTl0ciO7kvmKrehkdKNDHbX2dBvZ5Asn0HDTOgUDnoXoLXrhNeycOVSMj92MPlK_UG2Mo3W4k4PU5YLMUuSIahedFnWxKJiAdPlnmbTHiSSLn_ToVpZMgMgP81gFytDFXVKQzSIylrUHRsugOZLApVF0TehYm4ED_7IOGNEnjUa3ZkbVvyiFbnozX-wC9sS3OA8b19H2pENy2K-oejmG4VSVBjS9Xk4GVy4FICOpRunZ0mNt2xBAlBS6M3TW-LSSu7pLexp7XB3VYhuoQ2M1lJ8vlLKhp0K3-TVP9neLKrKpDTbj8TJiYTec1PVEH_7hVOCx09VGvF47xus8kEs8ZNZcxBz4-0ra5SueynSVbKN5xmT2TDXOofeafHZix0k57ics1fw_ZYd3Ig7075PeHliZtYzRSUDCtuMAIJhEaYEivi-cIFdvPg"
     # Clean token (remove any whitespace, newlines, quotes, etc.)
     dropbox_token = dropbox_token_raw.strip().strip('"').strip("'").strip()
     dropbox_folder = settings.dropbox.app_folder or "Runpodhuracan"
@@ -155,47 +155,84 @@ def run_daily_retrain() -> None:
     if dropbox_sync:
         try:
             logger.info("dropbox_starting_continuous_sync")
-            print("🔄 Starting Dropbox continuous sync (every 1 minute)...\n")
+            print("🔄 Starting Dropbox continuous sync with optimized intervals...\n")
+            print(f"   📚 Learning data: every {settings.dropbox.sync_interval_learning_seconds // 60} min")
+            print(f"   📝 Logs & monitoring: every {settings.dropbox.sync_interval_logs_seconds // 60} min")
+            print(f"   🤖 Models: every {settings.dropbox.sync_interval_models_seconds // 60} min")
+            print(f"   📊 Historical data: every {settings.dropbox.sync_interval_data_cache_seconds // 60} min\n")
             
-            # Start continuous sync (every 1 minute) - syncs data as it's generated
-            sync_thread = dropbox_sync.start_continuous_sync(
-                interval_seconds=60,  # 1 minute
+            # Start continuous sync with configurable intervals for different data types
+            sync_intervals = {
+                "learning": settings.dropbox.sync_interval_learning_seconds,
+                "logs": settings.dropbox.sync_interval_logs_seconds,
+                "models": settings.dropbox.sync_interval_models_seconds,
+                "data_cache": settings.dropbox.sync_interval_data_cache_seconds,
+            }
+            
+            sync_threads = dropbox_sync.start_continuous_sync(
                 logs_dir="logs",
                 models_dir="models",
                 learning_dir="logs/learning",
                 monitoring_dir="logs",
                 data_cache_dir="data/candles",  # Historical coin data cache
+                sync_intervals=sync_intervals,
             )
             
-            logger.info("dropbox_continuous_sync_started", interval_seconds=60)
+            logger.info(
+                "dropbox_continuous_sync_started",
+                learning_interval=settings.dropbox.sync_interval_learning_seconds,
+                logs_interval=settings.dropbox.sync_interval_logs_seconds,
+                models_interval=settings.dropbox.sync_interval_models_seconds,
+                data_cache_interval=settings.dropbox.sync_interval_data_cache_seconds,
+                total_threads=len(sync_threads),
+            )
             
-            # Restore historical data cache from Dropbox (if available)
-            # This avoids re-downloading data we already have
-            # Historical data is stored in shared location (not dated folder)
-            if Path("data/candles").exists() or True:  # Always try to restore
+            # Restore historical data cache from Dropbox (if enabled)
+            # Try to restore from today's dated folder first, then fallback to previous days
+            # NOTE: If this is first startup (no data in Dropbox), training will download data normally
+            if settings.dropbox.restore_data_cache_on_startup:
+                logger.info("attempting_data_cache_restore", message="Checking Dropbox for existing historical data...")
+                # Try to restore from today's dated folder (where new data will be stored)
                 restored_count = dropbox_sync.restore_data_cache(
                     data_cache_dir="data/candles",
-                    remote_dir=None,  # Uses shared location automatically
+                    remote_dir=None,  # Will use today's dated folder
+                    use_latest_dated_folder=True,
                 )
                 if restored_count > 0:
                     logger.info(
                         "data_cache_restored",
                         files_restored=restored_count,
-                        message="Restored historical data from Dropbox - no need to redownload",
+                        message="Restored historical data from Dropbox - will skip re-downloading",
                     )
                     print(f"📥 Restored {restored_count} historical data files from Dropbox\n")
+                else:
+                    logger.info(
+                        "data_cache_restore_empty",
+                        message="No historical data in Dropbox yet (first startup) - data will be downloaded during training"
+                    )
+                    print("📊 No historical data in Dropbox yet (first startup)\n")
+                    print("   Data will be downloaded from exchange during training...\n")
+            else:
+                logger.info("data_cache_restore_disabled", reason="restore_data_cache_on_startup=false")
             
             # Initial sync of existing data (if any)
+            # Everything goes into dated folder: /Runpodhuracan/YYYY-MM-DD/
             sync_results = {}
+            
+            # Sync logs
             if settings.dropbox.sync_logs and Path("logs").exists():
                 sync_results["logs"] = dropbox_sync.upload_logs("logs")
+            
+            # Sync models (for Hamilton to use)
             if settings.dropbox.sync_models and Path("models").exists():
                 sync_results["models"] = dropbox_sync.upload_models("models")
+            
+            # Sync monitoring data
             if settings.dropbox.sync_monitoring and Path("logs").exists():
                 sync_results["monitoring"] = dropbox_sync.upload_monitoring_data("logs")
             
-            # Sync learning data
-            if Path("logs/learning").exists():
+            # Sync learning data (everything the engine learned)
+            if settings.dropbox.sync_learning and Path("logs/learning").exists():
                 sync_results["learning"] = dropbox_sync.sync_directory(
                     local_dir="logs/learning",
                     remote_dir="/learning",
@@ -203,17 +240,70 @@ def run_daily_retrain() -> None:
                     recursive=True,
                 )
             
-            # Sync historical data cache to Dropbox
-            # Historical data goes to shared location (not dated folder) for reuse
-            if Path("data/candles").exists():
-                # Use shared location for historical data
-                shared_data_path = f"/{dropbox_folder}/data/candles"
-                sync_results["data_cache"] = dropbox_sync.sync_directory(
-                    local_dir="data/candles",
-                    remote_dir=shared_data_path,
-                    pattern="*.parquet",
-                    recursive=True,
+            # Sync historical coin data (in dated folder)
+            if settings.dropbox.sync_data_cache and Path("data/candles").exists():
+                sync_results["data_cache"] = dropbox_sync.upload_data_cache(
+                    data_cache_dir="data/candles",
+                    use_dated_folder=True,  # Store in dated folder
                 )
+            
+            # Sync reports/analytics (if they exist)
+            if Path("reports").exists():
+                sync_results["reports"] = dropbox_sync.upload_reports("reports")
+            
+            # Sync config files (if they exist)
+            if Path("config").exists():
+                sync_results["config"] = dropbox_sync.upload_configs("config")
+            
+            # ===== COMPREHENSIVE DATA EXPORT & SYNC =====
+            # Export ALL data to files (A-Z comprehensive export)
+            try:
+                from ..integrations.data_exporter import ComprehensiveDataExporter
+                from ..config.settings import settings
+                
+                logger.info("starting_comprehensive_data_export", message="Exporting ALL engine data A-Z...")
+                print("📊 Exporting ALL engine data (A-Z comprehensive export)...\n")
+                
+                # Initialize exporter with database connection
+                # Get database DSN from settings (PostgreSQL connection string)
+                db_dsn = None
+                if hasattr(settings, 'postgres') and settings.postgres and hasattr(settings.postgres, 'dsn'):
+                    db_dsn = settings.postgres.dsn
+                elif hasattr(settings, 'database_dsn'):
+                    db_dsn = settings.database_dsn
+                else:
+                    db_dsn = os.getenv("DATABASE_DSN") or os.getenv("POSTGRES_DSN")
+                
+                exporter = ComprehensiveDataExporter(
+                    dsn=db_dsn,
+                    output_dir=Path("exports"),
+                )
+                
+                # Export everything
+                export_results = exporter.export_all(run_date=start_ts.date())
+                
+                total_exported = sum(export_results.values())
+                logger.info(
+                    "comprehensive_data_export_complete",
+                    **export_results,
+                    total_exports=total_exported,
+                )
+                print(f"✅ Comprehensive export complete: {total_exported} items exported\n")
+                
+                # Sync exported data to Dropbox
+                if Path("exports").exists():
+                    sync_results["exports"] = dropbox_sync.upload_exports("exports")
+                    logger.info("exports_synced_to_dropbox", files_synced=sync_results["exports"])
+                    print(f"📤 Exported data synced to Dropbox: {sync_results['exports']} files\n")
+                
+            except Exception as export_error:
+                # Export errors are non-fatal - continue without exports
+                logger.warning(
+                    "comprehensive_data_export_failed",
+                    error=str(export_error),
+                    message="Continuing without comprehensive export - engine will still run",
+                )
+                print(f"⚠️  Comprehensive export failed (non-fatal): {str(export_error)}\n")
             
             total_files = sum(sync_results.values())
             if total_files > 0:

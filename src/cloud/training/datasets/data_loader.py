@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed, Future
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Iterable, Optional, Callable
 
 import polars as pl
 import structlog
@@ -41,7 +41,19 @@ class CandleDataLoader:
         quality_suite: Optional[DataQualitySuite] = None,
         fallback_exchanges: Optional[list[str]] = None,
         exchange_credentials: Optional[dict] = None,
+        on_data_saved: Optional[Callable[[Path], None]] = None,
     ) -> None:
+        """Initialize CandleDataLoader.
+        
+        Args:
+            exchange_client: Exchange client for downloading data
+            cache_dir: Directory to cache downloaded data
+            quality_suite: Data quality validation suite
+            fallback_exchanges: List of fallback exchange IDs
+            exchange_credentials: Credentials for fallback exchanges
+            on_data_saved: Optional callback function called after data is saved to cache.
+                          Receives the cache_path as argument. Useful for triggering Dropbox sync.
+        """
         self._exchange = exchange_client
         self._cache_dir = Path(cache_dir or Path.cwd() / "data" / "candles")
         self._cache_dir.mkdir(parents=True, exist_ok=True)
@@ -52,6 +64,9 @@ class CandleDataLoader:
         self._fallback_exchanges = fallback_exchanges or ["coinbasepro", "kraken", "okx", "bybit"]
         self._exchange_credentials = exchange_credentials or {}
         self._fallback_clients: dict[str, ExchangeClient] = {}
+        
+        # Optional callback for when data is saved (e.g., trigger Dropbox sync)
+        self._on_data_saved = on_data_saved
 
     def load(self, query: CandleQuery, use_cache: bool = True) -> pl.DataFrame:
         cache_path = self._cache_path(query)
@@ -67,6 +82,30 @@ class CandleDataLoader:
         if len(frame) > 0:  # Only write if we got data
             try:
                 frame.write_parquet(cache_path)
+                
+                # Update file modification time to ensure it's detected as "recent" by sync
+                import os
+                os.utime(cache_path, None)  # Update to current time
+                
+                logger.info(
+                    "coin_data_cached",
+                    symbol=query.symbol,
+                    cache_path=str(cache_path),
+                    rows=len(frame),
+                    message="Coin data saved - will be synced to Dropbox within 5 minutes",
+                )
+                
+                # Trigger callback if provided (e.g., sync to Dropbox)
+                if self._on_data_saved:
+                    try:
+                        self._on_data_saved(cache_path)
+                    except Exception as callback_error:
+                        # Callback errors are non-fatal - don't break data loading
+                        logger.warning(
+                            "on_data_saved_callback_failed",
+                            cache_path=str(cache_path),
+                            error=str(callback_error),
+                        )
             except Exception as e:
                 logger.warning("cache_write_failed", path=str(cache_path), error=str(e))
         return frame
