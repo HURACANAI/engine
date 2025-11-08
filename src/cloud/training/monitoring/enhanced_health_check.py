@@ -852,16 +852,19 @@ class EnhancedHealthChecker:
             )
             
             # Try to list buckets (or head bucket if bucket is specified)
-            if self.settings.s3.bucket:
-                s3_client.head_bucket(Bucket=self.settings.s3.bucket)
+            bucket = self.settings.s3.bucket if hasattr(self.settings.s3, 'bucket') and self.settings.s3.bucket else None
+            endpoint = self.settings.s3.endpoint_url if hasattr(self.settings.s3, 'endpoint_url') else None
+            
+            if bucket:
+                s3_client.head_bucket(Bucket=bucket)
                 return HealthCheckResult(
                     name="S3",
                     status="HEALTHY",
-                    message=f"S3 connected: {self.settings.s3.bucket}",
+                    message=f"S3 connected: {bucket}",
                     details={
                         "connected": True,
-                        "bucket": self.settings.s3.bucket,
-                        "endpoint": self.settings.s3.endpoint_url,
+                        "bucket": bucket,
+                        "endpoint": endpoint,
                     },
                     last_checked=datetime.now(tz=timezone.utc),
                 )
@@ -871,7 +874,7 @@ class EnhancedHealthChecker:
                     name="S3",
                     status="HEALTHY",
                     message="S3 connected",
-                    details={"connected": True, "endpoint": self.settings.s3.endpoint_url},
+                    details={"connected": True, "endpoint": endpoint},
                     last_checked=datetime.now(tz=timezone.utc),
                 )
         except ImportError:
