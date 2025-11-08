@@ -304,36 +304,101 @@ class ComprehensiveTelegramMonitor:
         warnings: List[Dict[str, Any]],
         healthy_services: int,
         total_services: int,
+        health_report: Optional[Any] = None,
     ):
-        """Notify about health check results."""
+        """Notify about health check results with comprehensive details."""
         if not self.enable_health_alerts:
             return
         
         emoji = "✅" if status == "HEALTHY" else "⚠️" if status == "DEGRADED" else "🚨"
         
-        message = f"*Health Check*\n\n"
-        message += f"Status: {status}\n"
-        message += f"Services: {healthy_services}/{total_services} healthy\n"
+        # Build comprehensive message
+        message = f"*🏥 Comprehensive Health Check*\n\n"
+        message += f"*Status:* {emoji} {status}\n"
+        message += f"*Services:* {healthy_services}/{total_services} healthy\n"
+        message += f"*Time:* {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}\n"
         
-        if alerts:
-            message += f"\n🚨 *Alerts ({len(alerts)}):*\n"
-            for alert in alerts[:3]:
-                message += f"• {alert.get('message', 'Unknown')}\n"
+        # If we have enhanced health report, use it
+        if health_report and hasattr(health_report, 'checks'):
+            message += self._format_enhanced_health_report(health_report)
+        else:
+            # Fallback to basic format
+            if alerts:
+                message += f"\n🚨 *Critical Issues ({len(alerts)}):*\n"
+                for alert in alerts[:5]:
+                    message += f"• {alert.get('message', 'Unknown')}\n"
+            
+            if warnings:
+                message += f"\n⚠️ *Warnings ({len(warnings)}):*\n"
+                for warning in warnings[:5]:
+                    message += f"• {warning.get('message', 'Unknown')}\n"
         
-        if warnings:
-            message += f"\n⚠️ *Warnings ({len(warnings)}):*\n"
-            for warning in warnings[:3]:
-                message += f"• {warning.get('message', 'Unknown')}\n"
-        
-        level = NotificationLevel.CRITICAL if alerts else NotificationLevel.HIGH if warnings else NotificationLevel.MEDIUM
+        level = NotificationLevel.CRITICAL if status == "CRITICAL" else NotificationLevel.HIGH if status == "DEGRADED" else NotificationLevel.MEDIUM
         
         self._send_notification(
             level,
             "Health Check",
             message,
             emoji,
-            action_required=len(alerts) > 0,
+            action_required=status == "CRITICAL",
         )
+    
+    def _format_enhanced_health_report(self, report: Any) -> str:
+        """Format enhanced health check report for Telegram."""
+        message = ""
+        
+        # Group checks by status
+        critical_checks = [c for c in report.checks if c.status == "CRITICAL"]
+        warning_checks = [c for c in report.checks if c.status == "WARNING"]
+        healthy_checks = [c for c in report.checks if c.status == "HEALTHY"]
+        disabled_checks = [c for c in report.checks if c.status == "DISABLED"]
+        
+        # Critical issues
+        if critical_checks:
+            message += f"\n🚨 *Critical Issues ({len(critical_checks)}):*\n"
+            for check in critical_checks[:5]:  # Limit to 5
+                message += f"• *{check.name}:* {check.message}\n"
+                if check.issues:
+                    for issue in check.issues[:2]:  # Limit to 2 issues per check
+                        message += f"  └ {issue}\n"
+        
+        # Warnings
+        if warning_checks:
+            message += f"\n⚠️ *Warnings ({len(warning_checks)}):*\n"
+            for check in warning_checks[:5]:  # Limit to 5
+                message += f"• *{check.name}:* {check.message}\n"
+                if check.issues:
+                    for issue in check.issues[:1]:  # Limit to 1 issue per check
+                        message += f"  └ {issue}\n"
+        
+        # Resource usage
+        if report.resource_usage:
+            resources = report.resource_usage
+            cpu = resources.get("cpu_percent", 0)
+            memory = resources.get("memory_percent", 0)
+            disk = resources.get("disk_percent", 0)
+            
+            message += f"\n💻 *Resources:*\n"
+            message += f"• CPU: {cpu:.1f}%\n"
+            message += f"• Memory: {memory:.1f}%\n"
+            if disk:
+                message += f"• Disk: {disk:.1f}%\n"
+        
+        # Summary
+        message += f"\n📊 *Summary:*\n"
+        message += f"• Healthy: {len(healthy_checks)}/{len(report.checks)}\n"
+        message += f"• Warnings: {len(warning_checks)}\n"
+        message += f"• Critical: {len(critical_checks)}\n"
+        if disabled_checks:
+            message += f"• Disabled: {len(disabled_checks)}\n"
+        
+        # Recommendations (if any)
+        if report.recommendations:
+            message += f"\n💡 *Recommendations:*\n"
+            for rec in report.recommendations[:3]:  # Limit to 3
+                message += f"• {rec}\n"
+        
+        return message
 
     def notify_performance_summary(
         self,
