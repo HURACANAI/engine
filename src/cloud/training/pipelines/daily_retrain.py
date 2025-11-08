@@ -184,6 +184,24 @@ def run_daily_retrain() -> None:
                 print("   💡 To fix: Generate a new token at https://www.dropbox.com/developers/apps\n")
                 print("   💡 Then update DROPBOX_ACCESS_TOKEN environment variable\n")
                 print("   Engine will continue without Dropbox sync\n")
+            elif "invalid_access_token" in error_msg or "invalid" in error_msg.lower():
+                logger.warning(
+                    "dropbox_token_invalid_non_fatal",
+                    error=error_msg,
+                    token_source=token_source if 'token_source' in locals() else "unknown",
+                    message="Dropbox token is invalid - continuing without Dropbox sync",
+                    help_message=(
+                        "Token appears to be invalid or corrupted. "
+                        "Generate a NEW token at https://www.dropbox.com/developers/apps "
+                        "and make sure to copy the ENTIRE token (it's very long)"
+                    ),
+                )
+                print(f"⚠️  Dropbox token is invalid (non-fatal): {error_msg}\n")
+                print("   💡 Token may be corrupted, truncated, or revoked\n")
+                print("   💡 Generate a NEW token at https://www.dropbox.com/developers/apps\n")
+                print("   💡 Make sure to copy the ENTIRE token (it's ~1000+ characters long)\n")
+                print("   💡 Set it as: export DROPBOX_ACCESS_TOKEN='your_full_token_here'\n")
+                print("   Engine will continue without Dropbox sync\n")
             else:
                 logger.warning(
                     "dropbox_folder_creation_failed_non_fatal",

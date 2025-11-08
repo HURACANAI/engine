@@ -86,12 +86,31 @@ class DropboxSync:
             )
             raise ValueError(f"Invalid Dropbox token format - token should start with 'sl.' (got: {self._access_token[:20]}...)")
         
-        # Validate token length (Dropbox tokens are typically long)
-        if len(self._access_token) < 50:
+        # Validate token length (Dropbox tokens are typically very long - 1000+ characters)
+        if len(self._access_token) < 100:
+            logger.error(
+                "dropbox_token_too_short",
+                token_length=len(self._access_token),
+                message=(
+                    f"Token is too short ({len(self._access_token)} chars). "
+                    f"Dropbox tokens are typically 1000+ characters. "
+                    f"The token may have been truncated or not copied completely."
+                ),
+            )
+            raise ValueError(
+                f"Dropbox token is too short ({len(self._access_token)} characters). "
+                f"Valid tokens are typically 1000+ characters. "
+                f"Please ensure you copied the entire token from Dropbox App Console."
+            )
+        elif len(self._access_token) < 500:
             logger.warning(
                 "dropbox_token_short",
                 token_length=len(self._access_token),
-                message="Token seems unusually short - may be invalid",
+                message=(
+                    f"Token seems shorter than expected ({len(self._access_token)} chars). "
+                    f"Valid tokens are typically 1000+ characters. "
+                    f"This may still work, but verify the token is complete."
+                ),
             )
         
         # Log token prefix for debugging (not full token for security)
@@ -131,6 +150,7 @@ class DropboxSync:
                     "dropbox_token_expired",
                     error=error_msg,
                     token_prefix=self._access_token[:20],
+                    token_length=len(self._access_token),
                     message=(
                         "Dropbox access token has expired. "
                         "To fix this:\n"
@@ -142,11 +162,35 @@ class DropboxSync:
                     ),
                     help_url="https://www.dropbox.com/developers/apps",
                 )
+            elif "invalid_access_token" in error_msg or "invalid" in error_msg.lower():
+                logger.error(
+                    "dropbox_token_invalid",
+                    error=error_msg,
+                    token_prefix=self._access_token[:20],
+                    token_length=len(self._access_token),
+                    token_starts_with_sl=self._access_token.startswith("sl."),
+                    message=(
+                        "Dropbox access token is invalid. "
+                        "Possible causes:\n"
+                        "1. Token format is incorrect (should start with 'sl.')\n"
+                        "2. Token was truncated or corrupted\n"
+                        "3. Token was revoked in Dropbox App Console\n"
+                        "4. Token has special characters that need escaping\n"
+                        "To fix:\n"
+                        "1. Go to https://www.dropbox.com/developers/apps\n"
+                        "2. Generate a NEW access token\n"
+                        "3. Copy the ENTIRE token (it's very long, ~1000+ characters)\n"
+                        "4. Set it as: export DROPBOX_ACCESS_TOKEN='your_full_token_here'\n"
+                        "5. Restart the engine"
+                    ),
+                    help_url="https://www.dropbox.com/developers/apps",
+                )
             else:
                 logger.error(
                     "dropbox_auth_failed",
                     error=error_msg,
                     token_prefix=self._access_token[:20],
+                    token_length=len(self._access_token),
                     message="Token authentication failed - check if token is valid and not expired",
                 )
             raise
