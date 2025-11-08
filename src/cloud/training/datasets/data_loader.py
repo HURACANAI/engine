@@ -92,19 +92,26 @@ class CandleDataLoader:
                     symbol=query.symbol,
                     cache_path=str(cache_path),
                     rows=len(frame),
-                    message="Coin data saved - will be synced to Dropbox within 5 minutes",
+                    message="Coin data saved" + (" - uploading to Dropbox immediately" if self._on_data_saved else " - will be synced to Dropbox within 5 minutes"),
                 )
                 
-                # Trigger callback if provided (e.g., sync to Dropbox)
+                # Trigger callback if provided (e.g., immediate Dropbox upload)
                 if self._on_data_saved:
                     try:
                         self._on_data_saved(cache_path)
+                        logger.info(
+                            "coin_data_callback_triggered",
+                            symbol=query.symbol,
+                            cache_path=str(cache_path),
+                            message="Immediate upload callback executed",
+                        )
                     except Exception as callback_error:
                         # Callback errors are non-fatal - don't break data loading
                         logger.warning(
                             "on_data_saved_callback_failed",
                             cache_path=str(cache_path),
                             error=str(callback_error),
+                            message="Callback failed, data will be synced by background sync",
                         )
             except Exception as e:
                 logger.warning("cache_write_failed", path=str(cache_path), error=str(e))

@@ -5,11 +5,12 @@ from __future__ import annotations
 import json
 import pickle
 from dataclasses import asdict, dataclass
+from pathlib import Path
 import time as time_module
 from datetime import date, datetime, time, timezone, timedelta
 from io import BytesIO
 from statistics import median
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ..monitoring.comprehensive_telegram_monitor import ComprehensiveTelegramMonitor
@@ -530,6 +531,77 @@ class TrainingOrchestrator:
             self._notifier.send_reject(result, run_date=self._run_date)
 
 
+def _create_dropbox_upload_callback(
+    access_token: Optional[str],
+    app_folder: str = "Runpodhuracan",
+) -> Optional[Callable[[Path], None]]:
+    """Create a callback function that immediately uploads files to Dropbox.
+    
+    Args:
+        access_token: Dropbox access token (if None, returns None - no upload)
+        app_folder: Dropbox app folder name
+        
+    Returns:
+        Callback function that takes a Path and uploads it to Dropbox, or None if no token
+    """
+    if not access_token:
+        return None
+    
+    try:
+        import dropbox
+        
+        # Create Dropbox client
+        dbx = dropbox.Dropbox(access_token)
+        
+        def upload_callback(cache_path: Path) -> None:
+            """Immediately upload coin data file to Dropbox shared location."""
+            try:
+                # Get relative path from data/candles/
+                cache_dir = Path("data/candles")
+                if str(cache_path).startswith(str(cache_dir)):
+                    rel_path = cache_path.relative_to(cache_dir)
+                else:
+                    # Fallback: try to extract symbol from filename
+                    rel_path = Path(cache_path.name)
+                
+                # Upload to shared location: /Runpodhuracan/data/candles/
+                remote_path = f"/{app_folder}/data/candles/{rel_path.as_posix()}"
+                
+                # Read file and upload
+                with open(cache_path, "rb") as f:
+                    file_data = f.read()
+                    dbx.files_upload(
+                        file_data,
+                        remote_path,
+                        mode=dropbox.files.WriteMode.overwrite,
+                    )
+                
+                logger.info(
+                    "coin_data_uploaded_immediately",
+                    symbol=rel_path.stem if rel_path.stem else "unknown",
+                    local_path=str(cache_path),
+                    remote_path=remote_path,
+                    size_bytes=len(file_data),
+                    message="Coin data immediately uploaded to Dropbox",
+                )
+            except Exception as e:
+                # Non-fatal - don't break data loading
+                logger.warning(
+                    "immediate_dropbox_upload_failed",
+                    cache_path=str(cache_path),
+                    error=str(e),
+                    message="Failed to upload to Dropbox immediately, will be synced by background sync",
+                )
+        
+        return upload_callback
+    except ImportError:
+        logger.warning("dropbox_not_available_for_immediate_upload")
+        return None
+    except Exception as e:
+        logger.warning("dropbox_callback_creation_failed", error=str(e))
+        return None
+
+
 @ray.remote  # type: ignore[misc]
 def _train_symbol(
     symbol: str,
@@ -558,11 +630,22 @@ def _train_symbol(
     all_exchange_credentials = settings.exchange.credentials or {}
     fallback_exchanges = ["coinbasepro", "kraken", "okx", "bybit"]  # Major exchanges with good API limits
     
+    # Create immediate Dropbox upload callback if Dropbox is enabled
+    dropbox_callback = None
+    if settings.dropbox.enabled and settings.dropbox.access_token:
+        dropbox_callback = _create_dropbox_upload_callback(
+            access_token=settings.dropbox.access_token,
+            app_folder=settings.dropbox.app_folder,
+        )
+        if dropbox_callback:
+            logger.info("immediate_dropbox_upload_enabled", symbol=symbol)
+    
     loader = CandleDataLoader(
         exchange_client=exchange,
         quality_suite=quality_suite,
         fallback_exchanges=fallback_exchanges,
         exchange_credentials=all_exchange_credentials,
+        on_data_saved=dropbox_callback,  # Immediate upload callback
     )
     start_at, end_at = _window_bounds(run_date, settings.scheduler.daily_run_time_utc, settings.training.window_days)
     query = CandleQuery(symbol=symbol, start_at=start_at, end_at=end_at)
