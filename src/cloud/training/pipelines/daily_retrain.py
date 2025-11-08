@@ -307,13 +307,13 @@ def run_daily_retrain() -> None:
             # Export ALL data to files (A-Z comprehensive export)
             try:
                 from ..integrations.data_exporter import ComprehensiveDataExporter
-                from ..config.settings import settings
                 
                 logger.info("starting_comprehensive_data_export", message="Exporting ALL engine data A-Z...")
                 print("📊 Exporting ALL engine data (A-Z comprehensive export)...\n")
                 
                 # Initialize exporter with database connection
                 # Get database DSN from settings (PostgreSQL connection string)
+                # settings is already loaded at the top of the function
                 db_dsn = None
                 if hasattr(settings, 'postgres') and settings.postgres and hasattr(settings.postgres, 'dsn'):
                     db_dsn = settings.postgres.dsn

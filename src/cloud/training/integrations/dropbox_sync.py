@@ -597,31 +597,38 @@ class DropboxSync:
             use_dated_folder: If True, use dated folder (default). If False, use app folder root.
             
         Returns:
-            Normalized path
+            Normalized path (always starts with /)
         """
-        # Remove leading slash if present
-        if path.startswith("/"):
-            path = path[1:]
+        # Remove leading slash for processing
+        path_no_slash = path.lstrip("/")
         
-        # If path doesn't start with app folder, prepend it
-        if not path.startswith(f"{self._app_folder}/"):
-            # Use dated folder if available and requested, otherwise use app folder
-            if use_dated_folder and hasattr(self, "_dated_folder") and self._dated_folder:
-                # Combine with dated folder
-                path = f"{self._dated_folder}/{path}"
-            else:
-                path = f"/{self._app_folder}/{path}"
+        # Get dated folder path (without leading slash for comparison)
+        dated_folder_no_slash = ""
+        if use_dated_folder and hasattr(self, "_dated_folder") and self._dated_folder:
+            dated_folder_no_slash = self._dated_folder.lstrip("/")
+        
+        # Check if path already contains the dated folder
+        if dated_folder_no_slash and path_no_slash.startswith(dated_folder_no_slash):
+            # Path already uses dated folder - just ensure leading slash
+            return f"/{path_no_slash}"
+        
+        # Check if path starts with app folder
+        if path_no_slash.startswith(f"{self._app_folder}/"):
+            # Path has app folder but not dated folder
+            if use_dated_folder and dated_folder_no_slash:
+                # Replace app folder root with dated folder
+                # Example: Runpodhuracan/logs/file -> Runpodhuracan/2025-11-08/logs/file
+                path_no_slash = path_no_slash.replace(f"{self._app_folder}/", f"{dated_folder_no_slash}/", 1)
+            # Ensure leading slash
+            return f"/{path_no_slash}"
+        
+        # Path doesn't start with app folder - prepend dated folder or app folder
+        if use_dated_folder and dated_folder_no_slash:
+            # Use dated folder
+            return f"/{dated_folder_no_slash}/{path_no_slash}"
         else:
-            # Path already has app folder, but ensure it uses dated folder if requested
-            if use_dated_folder and hasattr(self, "_dated_folder") and self._dated_folder:
-                # Replace app folder with dated folder
-                path = path.replace(f"/{self._app_folder}/", f"{self._dated_folder}/", 1)
-            else:
-                # Ensure leading slash
-                if not path.startswith("/"):
-                    path = f"/{path}"
-        
-        return path
+            # Use app folder root
+            return f"/{self._app_folder}/{path_no_slash}"
     
     def list_files(self, remote_dir: str = "/") -> list[str]:
         """List files in Dropbox directory.
