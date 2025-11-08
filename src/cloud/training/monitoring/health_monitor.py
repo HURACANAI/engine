@@ -291,9 +291,14 @@ class HealthMonitorOrchestrator:
             critical_alerts=sum(1 for a in all_alerts if a.severity.value == "CRITICAL"),
             warning_alerts=sum(1 for a in all_alerts if a.severity.value == "WARNING"),
             remediation_actions=len(self.auto_remediator.get_action_history(hours=1)),
+            enhanced_report_available=enhanced_report is not None,
         )
 
         return all_alerts
+    
+    def get_enhanced_health_report(self) -> Optional[ComprehensiveHealthReport]:
+        """Get the last enhanced health check report."""
+        return self._last_enhanced_report
 
     def run_continuous(self, interval_seconds: int = 300) -> None:
         """
