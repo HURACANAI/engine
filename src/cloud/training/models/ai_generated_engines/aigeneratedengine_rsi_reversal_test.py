@@ -6,7 +6,7 @@ Strategy Type: reversal
 """
 
 try:
-    from cloud.training.models.alpha_engines import AlphaSignal, TradingTechnique
+from cloud.training.models.alpha_engines import AlphaSignal, TradingTechnique
 except ImportError:
     # Fallback for relative import when loaded as part of package
     from ..alpha_engines import AlphaSignal, TradingTechnique

@@ -609,6 +609,33 @@ def _leader_volatility(benchmark_close: pl.Expr, window: int = 20) -> pl.Expr:
     return vol.fill_null(0.02).alias("leader_vol")  # Default 2% volatility
 
 
+def _entropy(close: pl.Expr, window: int = 20) -> pl.Expr:
+    """
+    Calculate price entropy (compression measure).
+    Higher entropy = more compression, lower entropy = more expansion.
+    """
+    returns = close.pct_change()
+    # Simple entropy: variance of returns (higher variance = lower compression)
+    returns_abs = returns.abs()
+    entropy = returns_abs.rolling_std(window_size=window, min_periods=window // 2)
+    # Normalize to 0-1 scale (inverted: higher = more compression)
+    entropy_max = entropy.rolling_max(window_size=window * 2, min_periods=window)
+    entropy_norm = (entropy / (entropy_max + 1e-9)).clip(0.0, 1.0)
+    return (1.0 - entropy_norm).alias("entropy")  # Invert: higher = more compression
+
+
+def _residual_zscore(close: pl.Expr, window: int = 20) -> pl.Expr:
+    """
+    Calculate z-score of price vs rolling VWAP or Bollinger mid.
+    Used for mean reversion strategies.
+    """
+    # Use rolling mean as proxy for VWAP
+    rolling_mean = close.rolling_mean(window_size=window, min_periods=window // 2)
+    rolling_std = close.rolling_std(window_size=window, min_periods=window // 2)
+    zscore = ((close - rolling_mean) / (rolling_std + 1e-9)).fill_null(0.0)
+    return zscore.alias("residual_z")
+
+
 def _cross_asset_momentum(close: pl.Expr, benchmark_close: pl.Expr, window: int = 10) -> pl.Expr:
     """
     Momentum relative to benchmark.
@@ -816,6 +843,64 @@ class FeatureRecipe:
 
         if optional_features:
             feature_frame = feature_frame.with_columns(optional_features)
+        
+        # ========================================
+        # NEW ADVANCED FEATURES
+        # ========================================
+        
+        # Realized volatility at 1m and 5m
+        realized_vol_1m = pl.col("close").pct_change().rolling_std(window_size=1, min_periods=1).alias("realized_vol_1m")
+        realized_vol_5m = pl.col("close").pct_change().rolling_std(window_size=5, min_periods=3).alias("realized_vol_5m")
+        
+        # Microprice and imbalance (if order book data available)
+        microprice_features = []
+        if {"bid_price", "ask_price", "bid_volume", "ask_volume"}.issubset(set(frame.columns)):
+            # Microprice: weighted average of bid/ask
+            microprice = (
+                (pl.col("bid_price") * pl.col("ask_volume") + pl.col("ask_price") * pl.col("bid_volume")) /
+                (pl.col("bid_volume") + pl.col("ask_volume") + 1e-9)
+            ).alias("microprice")
+            
+            # Order book imbalance (top N levels)
+            book_imbalance = (
+                (pl.col("bid_volume") - pl.col("ask_volume")) / 
+                (pl.col("bid_volume") + pl.col("ask_volume") + 1e-9)
+            ).alias("book_imbalance")
+            
+            microprice_features.extend([microprice, book_imbalance])
+        
+        # Entropy (compression measure)
+        price_entropy = _entropy(pl.col("close"), window=20)
+        
+        # Residual z-score (for mean reversion)
+        residual_z = _residual_zscore(pl.col("close"), window=20)
+        
+        # Basis and carry PnL (if funding rate available)
+        basis_features = []
+        if "funding_rate" in frame.columns:
+            basis = pl.col("funding_rate").alias("basis")
+            # Carry PnL: funding rate * position size (simplified)
+            carry_pnl = (pl.col("funding_rate") * 10000.0).alias("carry_pnl")  # Assuming $10k position
+            basis_features.extend([basis, carry_pnl])
+        
+        # Liquidation heat (placeholder - would need external data)
+        liquidation_heat = pl.lit(0.0).alias("liquidation_heat")  # Placeholder
+        
+        # Sentiment score (placeholder - would need external data)
+        sentiment_score = pl.lit(0.5).alias("sentiment_score")  # Placeholder (0-1 scale)
+        
+        # Add new features
+        new_features = [
+            realized_vol_1m,
+            realized_vol_5m,
+            price_entropy,
+            residual_z,
+            liquidation_heat,
+            sentiment_score,
+        ] + microprice_features + basis_features
+        
+        if new_features:
+            feature_frame = feature_frame.with_columns(new_features)
 
         # Compute VWAP and drift after we have typical_price column
         # cumsum() must be called on column references, not expressions

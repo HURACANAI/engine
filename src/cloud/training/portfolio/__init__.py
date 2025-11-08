@@ -1,15 +1,15 @@
-"""
-Portfolio management and risk optimization modules.
-"""
+"""Portfolio modules for capital allocation and portfolio construction."""
 
-from .position_sizer import DynamicPositionSizer, PositionSizingConfig, PositionSizeRecommendation
-from .risk_budget_optimizer import PortfolioRiskOptimizer, RiskBudgetAllocation, PortfolioRiskMetrics
+from .portfolio_allocator import (
+    PortfolioAllocator,
+    AllocationMethod,
+    PortfolioAllocation,
+    AllocationConstraints,
+)
 
 __all__ = [
-    'DynamicPositionSizer',
-    'PositionSizingConfig',
-    'PositionSizeRecommendation',
-    'PortfolioRiskOptimizer',
-    'RiskBudgetAllocation',
-    'PortfolioRiskMetrics',
+    "PortfolioAllocator",
+    "AllocationMethod",
+    "PortfolioAllocation",
+    "AllocationConstraints",
 ]

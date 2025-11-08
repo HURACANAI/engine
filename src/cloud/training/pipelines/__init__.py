@@ -1,11 +1,21 @@
 """
-Training pipelines and curriculum learning.
+Pipelines Module
+
+Event-driven pipelines, strategy design hierarchy, and data processing.
 """
 
-from .curriculum_learning import CurriculumLearner, CurriculumConfig, CurriculumStage
+from .event_driven_pipeline import (
+    EventDrivenPipeline,
+    EventQueue,
+    MarketEvent,
+    EventType,
+    EventProcessingResult,
+)
 
 __all__ = [
-    'CurriculumLearner',
-    'CurriculumConfig',
-    'CurriculumStage',
+    "EventDrivenPipeline",
+    "EventQueue",
+    "MarketEvent",
+    "EventType",
+    "EventProcessingResult",
 ]

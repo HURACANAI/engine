@@ -755,7 +755,7 @@ class AlphaEngineCoordinator:
         
         if HAS_REGIME:
             self.engines[TradingTechnique.REGIME] = RegimeDetector()
-        
+
         # Load AI-generated engines (optional)
         self.ai_engines: Dict[str, Any] = {}
         try:

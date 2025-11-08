@@ -83,11 +83,12 @@ def run_daily_retrain() -> None:
     This is the main function for Engine daily baseline training.
     It:
     1. Loads configuration and initializes services
-    2. Selects trading universe
-    3. Trains models on historical data
-    4. Validates with walk-forward testing
-    5. Saves models and metrics to S3/Postgres
-    6. Generates reports
+    2. Runs comprehensive health check
+    3. Selects trading universe
+    4. Trains models on historical data
+    5. Validates with walk-forward testing
+    6. Saves models and metrics to S3/Postgres
+    7. Generates reports
     
     Runs daily at 02:00 UTC (configured via APScheduler).
     """
@@ -98,6 +99,21 @@ def run_daily_retrain() -> None:
     logger.info("run_start", timestamp=start_ts.isoformat())
 
     settings = EngineSettings.load()
+    
+    # ===== COMPREHENSIVE HEALTH CHECK =====
+    # Run health check before starting - exit if critical failures
+    logger.info("running_health_check")
+    print("\n" + "=" * 80)
+    print("🏥 RUNNING COMPREHENSIVE HEALTH CHECK")
+    print("=" * 80)
+    print()
+    
+    from ..services.health_check import validate_health_and_exit
+    
+    if not validate_health_and_exit(settings=settings, exit_on_failure=True):
+        # This should not be reached if exit_on_failure=True, but handle it anyway
+        logger.error("health_check_failed", message="Health check failed, shutting down")
+        sys.exit(1)
     
     # Initialize feature manager for graceful degradation
     from .feature_manager import get_feature_manager

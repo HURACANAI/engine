@@ -82,8 +82,8 @@ try:
     # Try to import ModelFactory from strategy-research
     # First ensure the path is correct
     if STRATEGY_RESEARCH_PATH.exists():
-        model_factory_module = importlib.import_module("models.model_factory")
-        ModelFactoryType = getattr(model_factory_module, "ModelFactory", None)
+    model_factory_module = importlib.import_module("models.model_factory")
+    ModelFactoryType = getattr(model_factory_module, "ModelFactory", None)
     else:
         logger.warning(
             "strategy_research_path_not_found",
@@ -161,17 +161,17 @@ class ModelFactoryAdapter:
                 # ModelFactory uses get_model() method, not create_model()
                 model = self.factory.get_model(provider, model_name)
                 if model:
-                    self.models[analyst_name] = {
-                        "provider": provider,
-                        "model_name": model_name,
-                        "instance": model
-                    }
-                    logger.info(
-                        "analyst_model_initialized",
-                        analyst=analyst_name,
-                        provider=provider,
-                        model=model_name
-                    )
+                self.models[analyst_name] = {
+                    "provider": provider,
+                    "model_name": model_name,
+                    "instance": model
+                }
+                logger.info(
+                    "analyst_model_initialized",
+                    analyst=analyst_name,
+                    provider=provider,
+                    model=model_name
+                )
                 else:
                     logger.warning(
                         "analyst_model_not_available",
