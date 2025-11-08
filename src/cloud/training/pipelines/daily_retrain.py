@@ -318,23 +318,28 @@ def run_daily_retrain() -> None:
             )
             
             # Restore historical data cache from Dropbox (if enabled)
-            # Try to restore from today's dated folder first, then fallback to previous days
+            # Historical data is stored in SHARED location (/Runpodhuracan/data/candles/)
+            # so it persists across days and can be restored on every startup
             # NOTE: If this is first startup (no data in Dropbox), training will download data normally
             if settings.dropbox.restore_data_cache_on_startup:
                 logger.info("attempting_data_cache_restore", message="Checking Dropbox for existing historical data...")
-                # Try to restore from today's dated folder (where new data will be stored)
+                print("📥 Checking Dropbox for existing historical data...\n")
+                
+                # Restore from shared location (not dated folder) - this ensures data persists across days
                 restored_count = dropbox_sync.restore_data_cache(
                     data_cache_dir="data/candles",
-                    remote_dir=None,  # Will use today's dated folder
-                    use_latest_dated_folder=True,
+                    remote_dir=None,  # Will use shared location: /Runpodhuracan/data/candles/
+                    use_latest_dated_folder=False,  # Use shared location, not dated folder
                 )
+                
                 if restored_count > 0:
                     logger.info(
                         "data_cache_restored",
                         files_restored=restored_count,
-                        message="Restored historical data from Dropbox - will skip re-downloading",
+                        message="Restored historical data from Dropbox - will skip re-downloading existing data",
                     )
-                    print(f"📥 Restored {restored_count} historical data files from Dropbox\n")
+                    print(f"✅ Restored {restored_count} historical data files from Dropbox\n")
+                    print("   Only new/missing data will be downloaded from exchange\n")
                 else:
                     logger.info(
                         "data_cache_restore_empty",
@@ -344,6 +349,7 @@ def run_daily_retrain() -> None:
                     print("   Data will be downloaded from exchange during training...\n")
             else:
                 logger.info("data_cache_restore_disabled", reason="restore_data_cache_on_startup=false")
+                print("⚠️  Data cache restore is disabled in settings\n")
             
             # Initial sync of existing data (if any)
             # Everything goes into dated folder: /Runpodhuracan/YYYY-MM-DD/
@@ -370,11 +376,12 @@ def run_daily_retrain() -> None:
                     recursive=True,
                 )
             
-            # Sync historical coin data (in dated folder)
+            # Sync historical coin data (in SHARED location - not dated folder)
+            # Historical data should persist across days, so store in shared location
             if settings.dropbox.sync_data_cache and Path("data/candles").exists():
                 sync_results["data_cache"] = dropbox_sync.upload_data_cache(
                     data_cache_dir="data/candles",
-                    use_dated_folder=True,  # Store in dated folder
+                    use_dated_folder=False,  # Store in shared location (persists across days)
                 )
             
             # Sync reports/analytics (if they exist)

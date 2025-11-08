@@ -837,11 +837,10 @@ class DropboxSync:
                         # Otherwise, check for recently modified files and sync those immediately
                         if time_since_last_sync >= data_cache_interval:
                             # Full sync of all files
-                            count = self.sync_directory(
-                                local_dir=data_cache_dir,
-                                remote_dir="/data/candles",  # Will be normalized to dated folder
-                                pattern="*.parquet",
-                                recursive=True,
+                            # Full sync: sync all data cache files to SHARED location (not dated folder)
+                            count = self.upload_data_cache(
+                                data_cache_dir=data_cache_dir,
+                                use_dated_folder=False,  # Use shared location (persists across days)
                             )
                             if count > 0:
                                 logger.info(
@@ -869,8 +868,9 @@ class DropboxSync:
                                     try:
                                         # Get relative path
                                         rel_path = file_path.relative_to(Path(data_cache_dir))
-                                        remote_path = f"/data/candles/{rel_path.as_posix()}"
-                                        remote_path = self._normalize_path(remote_path)
+                                        # Use shared location: /Runpodhuracan/data/candles/ (not dated folder)
+                                        remote_path = f"/{self._app_folder}/data/candles/{rel_path.as_posix()}"
+                                        remote_path = self._normalize_path(remote_path, use_dated_folder=False)
                                         
                                         if self.upload_file(file_path, remote_path):
                                             synced_count += 1
@@ -945,13 +945,16 @@ class DropboxSync:
     def upload_data_cache(
         self,
         data_cache_dir: str | Path = "data/candles",
-        use_dated_folder: bool = True,
+        use_dated_folder: bool = False,  # Changed default: Historical data should be in shared location
     ) -> int:
         """Upload historical data cache to Dropbox.
         
+        Historical coin data should be stored in a SHARED location (not dated folders)
+        so it persists across days and can be restored on startup without re-downloading.
+        
         Args:
             data_cache_dir: Local data cache directory
-            use_dated_folder: If True, store in dated folder (default). If False, use shared location.
+            use_dated_folder: If False (default), use shared location. If True, store in dated folder.
             
         Returns:
             Number of files uploaded
@@ -960,9 +963,9 @@ class DropboxSync:
             # Store in dated folder: /Runpodhuracan/YYYY-MM-DD/data/candles/
             remote_dir = "/data/candles"
         else:
-            # Use shared location: /Runpodhuracan/data/candles/
+            # Use shared location: /Runpodhuracan/data/candles/ (persists across days)
             remote_dir = f"/{self._app_folder}/data/candles"
-            # Normalize without dated folder
+            # Normalize without dated folder to ensure it goes to shared location
             remote_dir = self._normalize_path(remote_dir, use_dated_folder=False)
         
         return self.sync_directory(
@@ -970,23 +973,28 @@ class DropboxSync:
             remote_dir=remote_dir,
             pattern="*.parquet",
             recursive=True,
+            use_dated_folder=False,  # Always use shared location for historical data
         )
     
     def restore_data_cache(
         self,
         data_cache_dir: str | Path = "data/candles",
         remote_dir: Optional[str] = None,
-        use_latest_dated_folder: bool = True,
+        use_latest_dated_folder: bool = False,  # Changed default: Always use shared location
     ) -> int:
         """Restore historical data cache from Dropbox.
         
-        This is a convenience function - if Dropbox is empty (first startup),
-        the training pipeline will download data normally from the exchange.
+        Historical coin data is stored in a SHARED location (not dated folders)
+        so it persists across days. This function restores ALL historical data
+        from the shared location to avoid re-downloading on every startup.
+        
+        If Dropbox is empty (first startup), this returns 0 and training will
+        download data normally from the exchange.
         
         Args:
             data_cache_dir: Local data cache directory
-            remote_dir: Remote Dropbox directory (if None, uses latest dated folder or shared location)
-            use_latest_dated_folder: If True, try to restore from latest dated folder first
+            remote_dir: Remote Dropbox directory (if None, uses shared location)
+            use_latest_dated_folder: If True, try to restore from latest dated folder first (not recommended)
             
         Returns:
             Number of files restored (0 if Dropbox is empty - this is OK for first startup)
@@ -997,30 +1005,126 @@ class DropboxSync:
         local_dir = Path(data_cache_dir)
         local_dir.mkdir(parents=True, exist_ok=True)
         
-        # Determine remote directory
+        # Determine remote directory - ALWAYS use shared location for historical data
         if remote_dir is None:
-            if use_latest_dated_folder:
-                # Try to restore from latest dated folder first
-                # This will be set by the caller or use current dated folder
-                if hasattr(self, "_dated_folder") and self._dated_folder:
-                    remote_dir = f"{self._dated_folder}/data/candles"
-                else:
-                    # Fallback to shared location
-                    remote_dir = f"/{self._app_folder}/data/candles"
+            # Always use shared location: /Runpodhuracan/data/candles/
+            # This ensures data persists across days
+            remote_dir = f"/{self._app_folder}/data/candles"
+            # Normalize without dated folder
+            remote_dir = self._normalize_path(remote_dir, use_dated_folder=False)
+        elif use_latest_dated_folder:
+            # Only if explicitly requested, try dated folder first
+            if hasattr(self, "_dated_folder") and self._dated_folder:
+                remote_dir = f"{self._dated_folder}/data/candles"
             else:
-                # Use shared location
+                # Fallback to shared location
                 remote_dir = f"/{self._app_folder}/data/candles"
+                remote_dir = self._normalize_path(remote_dir, use_dated_folder=False)
         else:
             # Don't normalize - use as-is (caller specifies exact path)
             pass
         
         try:
-            # List files in Dropbox
+            # List files in Dropbox (recursively)
             # This will raise ApiError if folder doesn't exist (first startup)
+            restored_count = 0
+            
+            def _restore_folder(folder_path: str, local_base: Path) -> int:
+                """Recursively restore files from a Dropbox folder."""
+                count = 0
+                try:
+                    result = self._dbx.files_list_folder(folder_path)
+                except ApiError as e:
+                    # Folder doesn't exist in Dropbox - this is OK for first startup
+                    if "not_found" in str(e.error):
+                        logger.debug(
+                            "data_cache_subfolder_not_found",
+                            remote_dir=folder_path,
+                        )
+                        return 0
+                    else:
+                        raise
+                
+                # Process all entries (files and folders)
+                for entry in result.entries:
+                    if isinstance(entry, dropbox.files.FileMetadata):
+                        # It's a file - download it
+                        # Remove the remote_dir prefix to get relative path
+                        if entry.path_display.startswith(remote_dir):
+                            rel_path = entry.path_display[len(remote_dir):].lstrip("/")
+                        else:
+                            # Fallback: try to extract relative path
+                            rel_path = entry.path_display.split("/data/candles/")[-1] if "/data/candles/" in entry.path_display else entry.name
+                        local_path = local_base / rel_path
+                        
+                        # Create parent directory if needed
+                        local_path.parent.mkdir(parents=True, exist_ok=True)
+                        
+                        # Download file if it doesn't exist locally or is older
+                        if not local_path.exists() or local_path.stat().st_mtime < entry.server_modified.timestamp():
+                            try:
+                                metadata, response = self._dbx.files_download(entry.path_display)
+                                with open(local_path, "wb") as f:
+                                    f.write(response.content)
+                                count += 1
+                                logger.debug(
+                                    "data_cache_file_restored",
+                                    remote_path=entry.path_display,
+                                    local_path=str(local_path),
+                                    size_bytes=len(response.content),
+                                )
+                            except Exception as e:
+                                logger.warning(
+                                    "data_cache_file_restore_failed",
+                                    remote_path=entry.path_display,
+                                    error=str(e),
+                                )
+                    elif isinstance(entry, dropbox.files.FolderMetadata):
+                        # It's a folder - recurse into it
+                        count += _restore_folder(entry.path_display, local_base)
+                
+                # Check if there are more entries (pagination)
+                while result.has_more:
+                    result = self._dbx.files_list_folder_continue(result.cursor)
+                    for entry in result.entries:
+                        if isinstance(entry, dropbox.files.FileMetadata):
+                            # Remove the remote_dir prefix to get relative path
+                            if entry.path_display.startswith(remote_dir):
+                                rel_path = entry.path_display[len(remote_dir):].lstrip("/")
+                            else:
+                                # Fallback: try to extract relative path
+                                rel_path = entry.path_display.split("/data/candles/")[-1] if "/data/candles/" in entry.path_display else entry.name
+                            local_path = local_base / rel_path
+                            local_path.parent.mkdir(parents=True, exist_ok=True)
+                            
+                            if not local_path.exists() or local_path.stat().st_mtime < entry.server_modified.timestamp():
+                                try:
+                                    metadata, response = self._dbx.files_download(entry.path_display)
+                                    with open(local_path, "wb") as f:
+                                        f.write(response.content)
+                                    count += 1
+                                    logger.debug(
+                                        "data_cache_file_restored",
+                                        remote_path=entry.path_display,
+                                        local_path=str(local_path),
+                                        size_bytes=len(response.content),
+                                    )
+                                except Exception as e:
+                                    logger.warning(
+                                        "data_cache_file_restore_failed",
+                                        remote_path=entry.path_display,
+                                        error=str(e),
+                                    )
+                        elif isinstance(entry, dropbox.files.FolderMetadata):
+                            count += _restore_folder(entry.path_display, local_base)
+                
+                return count
+            
+            # Start recursive restoration
             try:
-                result = self._dbx.files_list_folder(remote_dir)
+                restored_count = _restore_folder(remote_dir, local_dir)
             except ApiError as e:
-                # Folder doesn't exist in Dropbox - this is OK for first startup
+                # Root folder doesn't exist in Dropbox - this is OK for first startup
                 if "not_found" in str(e.error):
                     logger.info(
                         "data_cache_folder_not_found",
@@ -1030,36 +1134,6 @@ class DropboxSync:
                     return 0
                 else:
                     raise
-            
-            restored_count = 0
-            
-            for entry in result.entries:
-                if isinstance(entry, dropbox.files.FileMetadata):
-                    # Get relative path
-                    rel_path = entry.path_display.replace(remote_dir, "").lstrip("/")
-                    local_path = local_dir / rel_path
-                    
-                    # Create parent directory if needed
-                    local_path.parent.mkdir(parents=True, exist_ok=True)
-                    
-                    # Download file if it doesn't exist locally or is older
-                    if not local_path.exists() or local_path.stat().st_mtime < entry.server_modified.timestamp():
-                        try:
-                            metadata, response = self._dbx.files_download(entry.path_display)
-                            with open(local_path, "wb") as f:
-                                f.write(response.content)
-                            restored_count += 1
-                            logger.info(
-                                "data_cache_file_restored",
-                                remote_path=entry.path_display,
-                                local_path=str(local_path),
-                            )
-                        except Exception as e:
-                            logger.warning(
-                                "data_cache_file_restore_failed",
-                                remote_path=entry.path_display,
-                                error=str(e),
-                            )
             
             if restored_count > 0:
                 logger.info(
