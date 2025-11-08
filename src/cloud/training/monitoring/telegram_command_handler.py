@@ -335,10 +335,16 @@ class TelegramCommandHandler:
             logger.warning("polling_already_running")
             return
 
-        self.running = True
-        self.thread = threading.Thread(target=self._poll_loop, daemon=True)
-        self.thread.start()
-        logger.info("telegram_command_polling_started")
+        try:
+            self.running = True
+            self.thread = threading.Thread(target=self._poll_loop, daemon=True)
+            self.thread.start()
+            logger.info("telegram_command_polling_started", chat_id=self.chat_id)
+            print(f"✅ Telegram command handler started - listening for /health, /status, /help")
+        except Exception as e:
+            logger.exception("telegram_command_polling_start_failed", error=str(e))
+            self.running = False
+            raise
 
     def stop_polling(self) -> None:
         """Stop polling for commands."""
