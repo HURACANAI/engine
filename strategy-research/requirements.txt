@@ -21,7 +21,7 @@ polars>=0.20.0
 
 # Backtesting (optional - for validation)
 backtesting>=0.3.3
-pandas-ta>=0.3.14b
+# pandas-ta>=0.3.14b  # Note: Currently unavailable, install separately if needed
 
 # Utilities
 pathlib>=1.0.1

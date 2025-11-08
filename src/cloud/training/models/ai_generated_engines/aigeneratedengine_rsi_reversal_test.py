@@ -5,7 +5,11 @@ Auto-generated from backtest by Strategy Translator.
 Strategy Type: reversal
 """
 
-from cloud.training.models.alpha_engines import AlphaSignal, TradingTechnique
+try:
+    from cloud.training.models.alpha_engines import AlphaSignal, TradingTechnique
+except ImportError:
+    # Fallback for relative import when loaded as part of package
+    from ..alpha_engines import AlphaSignal, TradingTechnique
 import pandas as pd
 
 

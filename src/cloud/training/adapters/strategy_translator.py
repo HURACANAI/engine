@@ -84,11 +84,16 @@ class StrategyTranslator:
         if ModelFactory:
             self.factory = ModelFactory()
             try:
+                # ModelFactory uses get_model() method
                 if llm_model:
-                    self.model = self.factory.create_model(llm_provider, llm_model)
+                    self.model = self.factory.get_model(llm_provider, llm_model)
                 else:
-                    self.model = self.factory.create_model(llm_provider)
-                print(f"✅ Strategy Translator initialized with {llm_provider}/{llm_model or 'default'}")
+                    self.model = self.factory.get_model(llm_provider)
+                if self.model:
+                    print(f"✅ Strategy Translator initialized with {llm_provider}/{llm_model or 'default'}")
+                else:
+                    print(f"⚠️  Model not available - check API keys for {llm_provider}")
+                    self.model = None
             except Exception as e:
                 print(f"❌ Failed to initialize LLM model: {e}")
                 self.model = None

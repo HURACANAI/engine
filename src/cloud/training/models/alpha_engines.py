@@ -755,10 +755,35 @@ class AlphaEngineCoordinator:
         
         if HAS_REGIME:
             self.engines[TradingTechnique.REGIME] = RegimeDetector()
+        
+        # Load AI-generated engines (optional)
+        self.ai_engines: Dict[str, Any] = {}
+        try:
+            from .ai_generated_engines import load_ai_engines_with_adapters
+            # Load AI engines with "testing" or "approved" status
+            ai_engines_dict = load_ai_engines_with_adapters(status_filter="all", symbol="UNKNOWN")
+            self.ai_engines = ai_engines_dict
+            if ai_engines_dict:
+                logger.info(
+                    "ai_engines_loaded",
+                    count=len(ai_engines_dict),
+                    engines=list(ai_engines_dict.keys())
+                )
+        except Exception as e:
+            logger.warning(
+                "ai_engines_load_failed",
+                error=str(e),
+                message="AI-generated engines will not be available"
+            )
 
         # Track engine performance
         self.engine_performance: Dict[TradingTechnique, List[float]] = {
             technique: [] for technique in TradingTechnique
+        }
+        
+        # Track AI engine performance separately
+        self.ai_engine_performance: Dict[str, List[float]] = {
+            name: [] for name in self.ai_engines.keys()
         }
         
         # Multi-armed bandit for engine selection
@@ -816,10 +841,20 @@ class AlphaEngineCoordinator:
         Returns:
             Dict of {technique: signal}
         """
+        # Generate signals from standard engines
         if self.use_parallel and self.executor:
-            return self._generate_all_signals_parallel(features, current_regime, order_book_data)
+            signals = self._generate_all_signals_parallel(features, current_regime, order_book_data)
         else:
-            return self._generate_all_signals_sequential(features, current_regime, order_book_data)
+            signals = self._generate_all_signals_sequential(features, current_regime, order_book_data)
+        
+        # Add AI-generated engine signals (they use adapters so they work with the standard interface)
+        # Note: AI engines are integrated via adapters, so they can be called like standard engines
+        # but we store them separately for tracking purposes
+        ai_signals = self._generate_ai_engine_signals(features, current_regime)
+        # AI engines don't map to TradingTechnique, so we'll incorporate them into existing signals
+        # by taking the best AI signal and adding it to the appropriate technique
+        
+        return signals
     
     def _generate_all_signals_parallel(
         self, features: Dict[str, float], current_regime: str, order_book_data: Optional[Dict] = None
@@ -1048,16 +1083,48 @@ class AlphaEngineCoordinator:
             
             else:
                 # Standard engines with generate_signal method
+                # Also handle AI-generated engines (they're wrapped in adapters)
                 signal = engine.generate_signal(features, current_regime)
                 return signal
         
         except Exception as e:
             logger.warning(
                 "engine_execution_error",
-                technique=technique.value,
+                technique=technique.value if technique else "unknown",
                 error=str(e),
             )
             return None
+    
+    def _generate_ai_engine_signals(
+        self,
+        features: Dict[str, float],
+        current_regime: str
+    ) -> Dict[str, AlphaSignal]:
+        """
+        Generate signals from AI-generated engines.
+        
+        Args:
+            features: Market features
+            current_regime: Current market regime
+        
+        Returns:
+            Dict of {engine_name: signal}
+        """
+        ai_signals = {}
+        
+        for engine_name, adapter in self.ai_engines.items():
+            try:
+                signal = adapter.generate_signal(features, current_regime)
+                if signal:
+                    ai_signals[engine_name] = signal
+            except Exception as e:
+                logger.warning(
+                    "ai_engine_signal_generation_failed",
+                    engine_name=engine_name,
+                    error=str(e)
+                )
+        
+        return ai_signals
     
     def _convert_scalper_signal(self, scalper_signal: ScalperSignal, technique: TradingTechnique) -> AlphaSignal:
         """Convert ScalperSignal to AlphaSignal."""

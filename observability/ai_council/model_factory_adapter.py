@@ -66,7 +66,12 @@ else:
     logger = _StructlogShim(__name__)
 
 # Add strategy-research to path
-STRATEGY_RESEARCH_PATH = Path(__file__).parent.parent.parent.parent / "strategy-research"
+# From observability/ai_council/model_factory_adapter.py
+# Go up to project root: observability/ai_council -> observability -> (project root)
+# Then look for strategy-research in project root
+_adapter_file = Path(__file__).resolve()
+_project_root = _adapter_file.parent.parent.parent  # observability -> project root
+STRATEGY_RESEARCH_PATH = _project_root / "strategy-research"
 if str(STRATEGY_RESEARCH_PATH) not in sys.path:
     sys.path.insert(0, str(STRATEGY_RESEARCH_PATH))
 
@@ -74,8 +79,17 @@ MODEL_FACTORY_AVAILABLE = False
 ModelFactoryType: Optional[type[Any]] = None
 
 try:
-    model_factory_module = importlib.import_module("models.model_factory")
-    ModelFactoryType = getattr(model_factory_module, "ModelFactory", None)
+    # Try to import ModelFactory from strategy-research
+    # First ensure the path is correct
+    if STRATEGY_RESEARCH_PATH.exists():
+        model_factory_module = importlib.import_module("models.model_factory")
+        ModelFactoryType = getattr(model_factory_module, "ModelFactory", None)
+    else:
+        logger.warning(
+            "strategy_research_path_not_found",
+            path=str(STRATEGY_RESEARCH_PATH),
+            message="Strategy-research directory not found"
+        )
 except ImportError as import_err:
     logger.warning(
         "model_factory_import_failed",
@@ -144,18 +158,28 @@ class ModelFactoryAdapter:
 
         for analyst_name, (provider, model_name) in self.ANALYST_TO_PROVIDER.items():
             try:
-                model = self.factory.create_model(provider, model_name)
-                self.models[analyst_name] = {
-                    "provider": provider,
-                    "model_name": model_name,
-                    "instance": model
-                }
-                logger.info(
-                    "analyst_model_initialized",
-                    analyst=analyst_name,
-                    provider=provider,
-                    model=model_name
-                )
+                # ModelFactory uses get_model() method, not create_model()
+                model = self.factory.get_model(provider, model_name)
+                if model:
+                    self.models[analyst_name] = {
+                        "provider": provider,
+                        "model_name": model_name,
+                        "instance": model
+                    }
+                    logger.info(
+                        "analyst_model_initialized",
+                        analyst=analyst_name,
+                        provider=provider,
+                        model=model_name
+                    )
+                else:
+                    logger.warning(
+                        "analyst_model_not_available",
+                        analyst=analyst_name,
+                        provider=provider,
+                        model=model_name,
+                        message="Model factory returned None (API key may be missing)"
+                    )
             except Exception as e:
                 logger.warning(
                     "analyst_model_failed",
