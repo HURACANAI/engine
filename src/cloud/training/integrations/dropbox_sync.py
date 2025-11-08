@@ -872,7 +872,8 @@ class DropboxSync:
                                         remote_path = f"/{self._app_folder}/data/candles/{rel_path.as_posix()}"
                                         remote_path = self._normalize_path(remote_path, use_dated_folder=False)
                                         
-                                        if self.upload_file(file_path, remote_path):
+                                        # remote_path is already normalized to shared location, don't normalize again
+                                        if self.upload_file(file_path, remote_path, use_dated_folder=False):
                                             synced_count += 1
                                             logger.info(
                                                 "coin_data_synced_immediately",
