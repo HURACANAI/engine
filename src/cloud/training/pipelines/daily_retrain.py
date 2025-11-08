@@ -387,6 +387,22 @@ def run_daily_retrain() -> None:
             min_notification_level=NotificationLevel.LOW,
         )
         logger.info("telegram_monitoring_initialized", log_file=str(log_file))
+        
+        # Initialize command handler for interactive commands (/health, /status, /help)
+        try:
+            from ..monitoring.telegram_command_handler import TelegramCommandHandler
+            telegram_command_handler = TelegramCommandHandler(
+                bot_token=bot_token,
+                chat_id=settings.notifications.telegram_chat_id,
+                settings=settings,
+                dropbox_sync=dropbox_sync,
+            )
+            telegram_command_handler.start_polling()
+            logger.info("telegram_command_handler_started", commands=["/health", "/status", "/help"])
+            print("🤖 Telegram bot commands enabled: /health, /status, /help")
+        except Exception as e:
+            logger.warning("telegram_command_handler_init_failed", error=str(e))
+            print(f"⚠️  Telegram command handler failed to start: {e}")
     else:
         logger.warning("telegram_monitoring_disabled", reason="not configured")
 
