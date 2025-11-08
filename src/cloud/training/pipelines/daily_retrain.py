@@ -484,37 +484,60 @@ def run_daily_retrain() -> None:
                 warning=len(warnings),
             )
             
-            # Notify Telegram about health check (enhanced)
+            # Notify Telegram about health check (enhanced comprehensive)
             if telegram_monitor:
-                from ..monitoring.enhanced_health_check import EnhancedHealthChecker
-                
-                # Run enhanced comprehensive health check
-                health_checker = EnhancedHealthChecker(
-                    dsn=settings.postgres.dsn if settings.postgres else None,
-                    settings=settings,
-                    dropbox_sync=dropbox_sync,
-                )
-                enhanced_report = health_checker.run_comprehensive_check()
-                
-                # Also get status from SystemStatusReporter for compatibility
-                status_reporter = SystemStatusReporter(dsn=settings.postgres.dsn if settings.postgres else "")
                 try:
-                    status_report = status_reporter.generate_full_report()
-                    healthy_count = sum(1 for s in status_report.services if s.healthy)
-                    total_count = len(status_report.services)
-                except Exception:
-                    # If SystemStatusReporter fails, use enhanced report
+                    from ..monitoring.enhanced_health_check import EnhancedHealthChecker
+                    
+                    logger.info("running_enhanced_comprehensive_health_check")
+                    
+                    # Run enhanced comprehensive health check
+                    health_checker = EnhancedHealthChecker(
+                        dsn=settings.postgres.dsn if settings.postgres else None,
+                        settings=settings,
+                        dropbox_sync=dropbox_sync,
+                    )
+                    enhanced_report = health_checker.run_comprehensive_check()
+                    
+                    logger.info(
+                        "enhanced_health_check_complete",
+                        overall_status=enhanced_report.overall_status,
+                        total_checks=len(enhanced_report.checks),
+                        healthy=enhanced_report.summary.get("healthy", 0),
+                        warnings=enhanced_report.summary.get("warnings", 0),
+                        critical=enhanced_report.summary.get("critical", 0),
+                    )
+                    
+                    # Calculate service counts from enhanced report
                     healthy_count = enhanced_report.summary.get("healthy", 0)
                     total_count = enhanced_report.summary.get("total_checks", 0)
-                
-                telegram_monitor.notify_health_check(
-                    status=enhanced_report.overall_status,
-                    alerts=[{"message": a.message, "severity": a.severity.value} for a in critical_alerts],
-                    warnings=[{"message": a.message, "severity": a.severity.value} for a in warnings],
-                    healthy_services=healthy_count,
-                    total_services=total_count,
-                    health_report=enhanced_report,
-                )
+                    
+                    # Send enhanced Telegram notification with comprehensive details
+                    telegram_monitor.notify_health_check(
+                        status=enhanced_report.overall_status,
+                        alerts=[{"message": a.message, "severity": a.severity.value} for a in critical_alerts],
+                        warnings=[{"message": a.message, "severity": a.severity.value} for a in warnings],
+                        healthy_services=healthy_count,
+                        total_services=total_count,
+                        health_report=enhanced_report,
+                    )
+                except Exception as e:
+                    logger.exception("enhanced_health_check_failed", error=str(e))
+                    # Fallback to old system if enhanced check fails
+                    status_reporter = SystemStatusReporter(dsn=settings.postgres.dsn if settings.postgres else "")
+                    try:
+                        status_report = status_reporter.generate_full_report()
+                        healthy_count = sum(1 for s in status_report.services if s.healthy)
+                        total_count = len(status_report.services)
+                        telegram_monitor.notify_health_check(
+                            status=status_report.overall_status,
+                            alerts=[{"message": a.message, "severity": a.severity.value} for a in critical_alerts],
+                            warnings=[{"message": a.message, "severity": a.severity.value} for a in warnings],
+                            healthy_services=healthy_count,
+                            total_services=total_count,
+                        )
+                    except Exception as fallback_error:
+                        logger.exception("fallback_health_check_failed", error=str(fallback_error))
 
         # Run main training
         results = orchestrator.run()
@@ -551,37 +574,60 @@ def run_daily_retrain() -> None:
                 warning=len(warnings),
             )
             
-            # Notify Telegram about health check (enhanced)
+            # Notify Telegram about health check (enhanced comprehensive)
             if telegram_monitor:
-                from ..monitoring.enhanced_health_check import EnhancedHealthChecker
-                
-                # Run enhanced comprehensive health check
-                health_checker = EnhancedHealthChecker(
-                    dsn=settings.postgres.dsn if settings.postgres else None,
-                    settings=settings,
-                    dropbox_sync=dropbox_sync,
-                )
-                enhanced_report = health_checker.run_comprehensive_check()
-                
-                # Also get status from SystemStatusReporter for compatibility
-                status_reporter = SystemStatusReporter(dsn=settings.postgres.dsn if settings.postgres else "")
                 try:
-                    status_report = status_reporter.generate_full_report()
-                    healthy_count = sum(1 for s in status_report.services if s.healthy)
-                    total_count = len(status_report.services)
-                except Exception:
-                    # If SystemStatusReporter fails, use enhanced report
+                    from ..monitoring.enhanced_health_check import EnhancedHealthChecker
+                    
+                    logger.info("running_enhanced_comprehensive_health_check")
+                    
+                    # Run enhanced comprehensive health check
+                    health_checker = EnhancedHealthChecker(
+                        dsn=settings.postgres.dsn if settings.postgres else None,
+                        settings=settings,
+                        dropbox_sync=dropbox_sync,
+                    )
+                    enhanced_report = health_checker.run_comprehensive_check()
+                    
+                    logger.info(
+                        "enhanced_health_check_complete",
+                        overall_status=enhanced_report.overall_status,
+                        total_checks=len(enhanced_report.checks),
+                        healthy=enhanced_report.summary.get("healthy", 0),
+                        warnings=enhanced_report.summary.get("warnings", 0),
+                        critical=enhanced_report.summary.get("critical", 0),
+                    )
+                    
+                    # Calculate service counts from enhanced report
                     healthy_count = enhanced_report.summary.get("healthy", 0)
                     total_count = enhanced_report.summary.get("total_checks", 0)
-                
-                telegram_monitor.notify_health_check(
-                    status=enhanced_report.overall_status,
-                    alerts=[{"message": a.message, "severity": a.severity.value} for a in critical_alerts],
-                    warnings=[{"message": a.message, "severity": a.severity.value} for a in warnings],
-                    healthy_services=healthy_count,
-                    total_services=total_count,
-                    health_report=enhanced_report,
-                )
+                    
+                    # Send enhanced Telegram notification with comprehensive details
+                    telegram_monitor.notify_health_check(
+                        status=enhanced_report.overall_status,
+                        alerts=[{"message": a.message, "severity": a.severity.value} for a in critical_alerts],
+                        warnings=[{"message": a.message, "severity": a.severity.value} for a in warnings],
+                        healthy_services=healthy_count,
+                        total_services=total_count,
+                        health_report=enhanced_report,
+                    )
+                except Exception as e:
+                    logger.exception("enhanced_health_check_failed", error=str(e))
+                    # Fallback to old system if enhanced check fails
+                    status_reporter = SystemStatusReporter(dsn=settings.postgres.dsn if settings.postgres else "")
+                    try:
+                        status_report = status_reporter.generate_full_report()
+                        healthy_count = sum(1 for s in status_report.services if s.healthy)
+                        total_count = len(status_report.services)
+                        telegram_monitor.notify_health_check(
+                            status=status_report.overall_status,
+                            alerts=[{"message": a.message, "severity": a.severity.value} for a in critical_alerts],
+                            warnings=[{"message": a.message, "severity": a.severity.value} for a in warnings],
+                            healthy_services=healthy_count,
+                            total_services=total_count,
+                        )
+                    except Exception as fallback_error:
+                        logger.exception("fallback_health_check_failed", error=str(fallback_error))
 
     except Exception as exc:  # noqa: BLE001
         logger.exception("run_failed", error=str(exc))
