@@ -511,13 +511,13 @@ class TradingCoordinator:
             positions = self.book_manager._get_book_positions(book_type, open_only=True)
 
             if positions:  # Check if positions list is not None/empty
-            for position in positions:
+                for position in positions:
                     if position and hasattr(position, 'symbol') and position.symbol == symbol:
                         if hasattr(position, 'position_id'):
-                    self.book_manager.update_position_price(
-                        position.position_id,
-                        current_price,
-                    )
+                            self.book_manager.update_position_price(
+                                position.position_id,
+                                current_price,
+                            )
 
     def simulate_pending_counterfactuals(self) -> int:
         """Simulate all pending counterfactuals with current prices."""
