@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import time
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Any, List, Optional
 
 import structlog
 
@@ -21,6 +21,7 @@ from .error_monitor import ErrorMonitor, ErrorMonitorConfig
 from .pattern_health import PatternHealthConfig, PatternHealthMonitor
 from .system_status import SystemStatusReporter
 from .types import HealthAlert
+from .enhanced_health_check import EnhancedHealthChecker, ComprehensiveHealthReport
 
 logger = structlog.get_logger(__name__)
 
@@ -33,9 +34,10 @@ class HealthMonitorOrchestrator:
     and coordinates alerts and remediation.
     """
 
-    def __init__(self, settings: EngineSettings, dsn: str):
+    def __init__(self, settings: EngineSettings, dsn: str, dropbox_sync: Optional[Any] = None):
         self.settings = settings
         self.dsn = dsn
+        self.dropbox_sync = dropbox_sync
 
         logger.info(
             "===== INITIALIZING HEALTH MONITOR =====",
@@ -81,9 +83,22 @@ class HealthMonitorOrchestrator:
         self.system_status = SystemStatusReporter(dsn=dsn)
         logger.info("component_initialized", component="SystemStatusReporter", status="OK")
 
+        # Initialize enhanced health checker
+        try:
+            self.enhanced_health_checker = EnhancedHealthChecker(
+                dsn=dsn,
+                settings=settings,
+                dropbox_sync=dropbox_sync,
+            )
+            logger.info("component_initialized", component="EnhancedHealthChecker", status="OK")
+        except Exception as e:
+            logger.warning("enhanced_health_checker_init_failed", error=str(e))
+            self.enhanced_health_checker = None
+
         self._running = False
         self._check_count = 0
         self._last_check_time: Optional[datetime] = None
+        self._last_enhanced_report: Optional[ComprehensiveHealthReport] = None
 
         logger.info(
             "===== HEALTH MONITOR INITIALIZED =====",
@@ -112,7 +127,36 @@ class HealthMonitorOrchestrator:
 
         all_alerts: List[HealthAlert] = []
 
-        # Step 1: System status check
+        # Step 0: Enhanced comprehensive health check (NEW - runs FIRST for complete visibility)
+        enhanced_report = None
+        if self.enhanced_health_checker:
+            logger.info("health_check_step", step=0, operation="ENHANCED_COMPREHENSIVE_HEALTH_CHECK")
+            try:
+                enhanced_report = self.enhanced_health_checker.run_comprehensive_check()
+                self._last_enhanced_report = enhanced_report
+                logger.info(
+                    "enhanced_health_check_complete",
+                    overall_status=enhanced_report.overall_status,
+                    total_checks=len(enhanced_report.checks),
+                    healthy=enhanced_report.summary.get("healthy", 0),
+                    warnings=enhanced_report.summary.get("warnings", 0),
+                    critical=enhanced_report.summary.get("critical", 0),
+                    disabled=enhanced_report.summary.get("disabled", 0),
+                )
+                # Log each check result
+                for check in enhanced_report.checks:
+                    logger.info(
+                        "health_check_result",
+                        name=check.name,
+                        status=check.status,
+                        message=check.message,
+                        issues_count=len(check.issues),
+                        recommendations_count=len(check.recommendations),
+                    )
+            except Exception as exc:
+                logger.exception("enhanced_health_check_failed", error=str(exc))
+
+        # Step 1: System status check (legacy - still runs for compatibility)
         logger.info("health_check_step", step=1, operation="SYSTEM_STATUS_CHECK")
         try:
             system_report = self.system_status.generate_full_report()

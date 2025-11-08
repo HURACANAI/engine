@@ -441,7 +441,11 @@ def run_daily_retrain() -> None:
             "===== INITIALIZING HEALTH MONITORING =====",
             check_interval=settings.training.monitoring.check_interval_seconds,
         )
-        health_monitor = HealthMonitorOrchestrator(settings=settings, dsn=settings.postgres.dsn)
+        health_monitor = HealthMonitorOrchestrator(
+            settings=settings,
+            dsn=settings.postgres.dsn,
+            dropbox_sync=dropbox_sync,
+        )
 
         # Run initial system status check
         logger.info("===== STARTUP STATUS CHECK =====", operation="STARTUP_HEALTH_CHECK")
@@ -486,33 +490,23 @@ def run_daily_retrain() -> None:
             
             # Notify Telegram about health check (enhanced comprehensive)
             if telegram_monitor:
-                try:
-                    from ..monitoring.enhanced_health_check import EnhancedHealthChecker
-                    
-                    logger.info("running_enhanced_comprehensive_health_check")
-                    
-                    # Run enhanced comprehensive health check
-                    health_checker = EnhancedHealthChecker(
-                        dsn=settings.postgres.dsn if settings.postgres else None,
-                        settings=settings,
-                        dropbox_sync=dropbox_sync,
-                    )
-                    enhanced_report = health_checker.run_comprehensive_check()
-                    
-                    logger.info(
-                        "enhanced_health_check_complete",
-                        overall_status=enhanced_report.overall_status,
-                        total_checks=len(enhanced_report.checks),
-                        healthy=enhanced_report.summary.get("healthy", 0),
-                        warnings=enhanced_report.summary.get("warnings", 0),
-                        critical=enhanced_report.summary.get("critical", 0),
-                    )
-                    
-                    # Calculate service counts from enhanced report
+                # Get enhanced report from health monitor (already ran during health check)
+                enhanced_report = health_monitor.get_enhanced_health_report()
+                
+                if enhanced_report:
+                    # Use enhanced report for Telegram notification
                     healthy_count = enhanced_report.summary.get("healthy", 0)
                     total_count = enhanced_report.summary.get("total_checks", 0)
                     
-                    # Send enhanced Telegram notification with comprehensive details
+                    logger.info(
+                        "sending_enhanced_health_check_to_telegram",
+                        overall_status=enhanced_report.overall_status,
+                        healthy=healthy_count,
+                        total=total_count,
+                        critical=enhanced_report.summary.get("critical", 0),
+                        warnings=enhanced_report.summary.get("warnings", 0),
+                    )
+                    
                     telegram_monitor.notify_health_check(
                         status=enhanced_report.overall_status,
                         alerts=[{"message": a.message, "severity": a.severity.value} for a in critical_alerts],
@@ -521,9 +515,9 @@ def run_daily_retrain() -> None:
                         total_services=total_count,
                         health_report=enhanced_report,
                     )
-                except Exception as e:
-                    logger.exception("enhanced_health_check_failed", error=str(e))
-                    # Fallback to old system if enhanced check fails
+                else:
+                    # Fallback to old system if enhanced report not available
+                    logger.warning("enhanced_health_report_not_available_using_fallback")
                     status_reporter = SystemStatusReporter(dsn=settings.postgres.dsn if settings.postgres else "")
                     try:
                         status_report = status_reporter.generate_full_report()
@@ -576,33 +570,23 @@ def run_daily_retrain() -> None:
             
             # Notify Telegram about health check (enhanced comprehensive)
             if telegram_monitor:
-                try:
-                    from ..monitoring.enhanced_health_check import EnhancedHealthChecker
-                    
-                    logger.info("running_enhanced_comprehensive_health_check")
-                    
-                    # Run enhanced comprehensive health check
-                    health_checker = EnhancedHealthChecker(
-                        dsn=settings.postgres.dsn if settings.postgres else None,
-                        settings=settings,
-                        dropbox_sync=dropbox_sync,
-                    )
-                    enhanced_report = health_checker.run_comprehensive_check()
-                    
-                    logger.info(
-                        "enhanced_health_check_complete",
-                        overall_status=enhanced_report.overall_status,
-                        total_checks=len(enhanced_report.checks),
-                        healthy=enhanced_report.summary.get("healthy", 0),
-                        warnings=enhanced_report.summary.get("warnings", 0),
-                        critical=enhanced_report.summary.get("critical", 0),
-                    )
-                    
-                    # Calculate service counts from enhanced report
+                # Get enhanced report from health monitor (already ran during health check)
+                enhanced_report = health_monitor.get_enhanced_health_report()
+                
+                if enhanced_report:
+                    # Use enhanced report for Telegram notification
                     healthy_count = enhanced_report.summary.get("healthy", 0)
                     total_count = enhanced_report.summary.get("total_checks", 0)
                     
-                    # Send enhanced Telegram notification with comprehensive details
+                    logger.info(
+                        "sending_enhanced_health_check_to_telegram",
+                        overall_status=enhanced_report.overall_status,
+                        healthy=healthy_count,
+                        total=total_count,
+                        critical=enhanced_report.summary.get("critical", 0),
+                        warnings=enhanced_report.summary.get("warnings", 0),
+                    )
+                    
                     telegram_monitor.notify_health_check(
                         status=enhanced_report.overall_status,
                         alerts=[{"message": a.message, "severity": a.severity.value} for a in critical_alerts],
@@ -611,9 +595,9 @@ def run_daily_retrain() -> None:
                         total_services=total_count,
                         health_report=enhanced_report,
                     )
-                except Exception as e:
-                    logger.exception("enhanced_health_check_failed", error=str(e))
-                    # Fallback to old system if enhanced check fails
+                else:
+                    # Fallback to old system if enhanced report not available
+                    logger.warning("enhanced_health_report_not_available_using_fallback")
                     status_reporter = SystemStatusReporter(dsn=settings.postgres.dsn if settings.postgres else "")
                     try:
                         status_report = status_reporter.generate_full_report()
