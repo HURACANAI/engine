@@ -18,8 +18,8 @@ from .enhanced_health_check import (
     EnhancedHealthChecker,
     ComprehensiveHealthReport,
     HealthCheckResult,
-    TelegramCommandHandler,
 )
+from .telegram_command_handler import TelegramCommandHandler
 
 __all__ = [
     "ComprehensiveTelegramMonitor",
@@ -28,4 +28,5 @@ __all__ = [
     "EnhancedHealthChecker",
     "ComprehensiveHealthReport",
     "HealthCheckResult",
+    "TelegramCommandHandler",
 ]
