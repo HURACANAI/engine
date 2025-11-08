@@ -193,6 +193,7 @@ def run_daily_retrain() -> None:
     
     # Initialize comprehensive Telegram monitoring
     telegram_monitor = None
+    telegram_command_handler = None
     log_file = Path("logs") / f"engine_monitoring_{start_ts.strftime('%Y%m%d_%H%M%S')}.log"
     
     # Initialize learning tracker
@@ -389,7 +390,6 @@ def run_daily_retrain() -> None:
         logger.info("telegram_monitoring_initialized", log_file=str(log_file))
         
         # Initialize command handler for interactive commands (/health, /status, /help)
-        telegram_command_handler = None
         try:
             from ..monitoring.telegram_command_handler import TelegramCommandHandler
             telegram_command_handler = TelegramCommandHandler(
