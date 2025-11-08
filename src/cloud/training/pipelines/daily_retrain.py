@@ -103,7 +103,40 @@ def run_daily_retrain() -> None:
     dropbox_sync = None
     # Get Dropbox token - clean it (remove whitespace, newlines, etc.)
     # Token can come from environment variable DROPBOX_ACCESS_TOKEN or settings
-    dropbox_token_raw = os.getenv("DROPBOX_ACCESS_TOKEN") or settings.dropbox.access_token or "sl.u.AGGHS11iAzSe4qKe6wzea4pxU6ilDfckS3z-huUVsW9kgytgHB0pEVSub8_6H8ypIsukAGm0ai7RBl5PWTEvd45uI7UybBsG_E_KwboZGwYErU0gzXFComp-uWt24OkyJsf1D5sYja7gtEo_FS1AFlLOsqiUjuZFQNEANjO8f-ShUaUj_by9sN6KMbhpAynzbpztLkYi21Ppr89Xdd27bBRzM7WLZZ7sqBy9mBCep0jav21WqGfJgu9qZpw01nQPWc23Q_c96lgDiIWcu7z5VEhDstNtP0jMRKhzj9vzC7Yx2-VLxye_SkxDEvS4h--20cgosUe3znyRy-c2BC_kVj7gnL8xPcfJnuJl528aYOjEsHrD662PnD7tQzT8sMef90RGWVXbp842BZ_2WcMmbjdCz7HpDZ-EzCB9_6GWBIpJMxYEOAd6rqAFhP9glSBG-7W2hSw3mpwRUVRxCvhKU5IAnWe3Jsu8OGli7RXQ-yMUxwORu7--Y5PKe2_6bRh1y_hv6mtCawiYq1F-RmTseIbApBppI4H1o04YxFFFcnR7nYilMDV_-rnoktRpAusFCzJe6ol9JyEuFugTCwuJFU48eUQ5-i_7EfNT26IG-4WrY8Bfah11Sll5crlD7iCS96aFDUGZzg11a25oJ6CelMtEguSv6X6lcH901_IXkKMpdE0NpQtiOlJKyOqFIEAUb8MJjWuiRIJaPG_YM9bQYFNKFfC7hMjn0YSZpZ6rm-L49zigtr2KGQEIeN9HwLKHb596NbSwBJ_cRT5N1JhJcwVefCTXfSpUhLGmEngzAw7UXE4ZQoHHn46vzWLDFglfwervcLqAzzyX9pTl0ciO7kvmKrehkdKNDHbX2dBvZ5Asn0HDTOgUDnoXoLXrhNeycOVSMj92MPlK_UG2Mo3W4k4PU5YLMUuSIahedFnWxKJiAdPlnmbTHiSSLn_ToVpZMgMgP81gFytDFXVKQzSIylrUHRsugOZLApVF0TehYm4ED_7IOGNEnjUa3ZkbVvyiFbnozX-wC9sS3OA8b19H2pENy2K-oejmG4VSVBjS9Xk4GVy4FICOpRunZ0mNt2xBAlBS6M3TW-LSSu7pLexp7XB3VYhuoQ2M1lJ8vlLKhp0K3-TVP9neLKrKpDTbj8TJiYTec1PVEH_7hVOCx09VGvF47xus8kEs8ZNZcxBz4-0ra5SueynSVbKN5xmT2TDXOofeafHZix0k57ics1fw_ZYd3Ig7075PeHliZtYzRSUDCtuMAIJhEaYEivi-cIFdvPg"
+    env_token = os.getenv("DROPBOX_ACCESS_TOKEN")
+    settings_token = settings.dropbox.access_token
+    hardcoded_fallback = "sl.u.AGGHS11iAzSe4qKe6wzea4pxU6ilDfckS3z-huUVsW9kgytgHB0pEVSub8_6H8ypIsukAGm0ai7RBl5PWTEvd45uI7UybBsG_E_KwboZGwYErU0gzXFComp-uWt24OkyJsf1D5sYja7gtEo_FS1AFlLOsqiUjuZFQNEANjO8f-ShUaUj_by9sN6KMbhpAynzbpztLkYi21Ppr89Xdd27bBRzM7WLZZ7sqBy9mBCep0jav21WqGfJgu9qZpw01nQPWc23Q_c96lgDiIWcu7z5VEhDstNtP0jMRKhzj9vzC7Yx2-VLxye_SkxDEvS4h--20cgosUe3znyRy-c2BC_kVj7gnL8xPcfJnuJl528aYOjEsHrD662PnD7tQzT8sMef90RGWVXbp842BZ_2WcMmbjdCz7HpDZ-EzCB9_6GWBIpJMxYEOAd6rqAFhP9glSBG-7W2hSw3mpwRUVRxCvhKU5IAnWe3Jsu8OGli7RXQ-yMUxwORu7--Y5PKe2_6bRh1y_hv6mtCawiYq1F-RmTseIbApBppI4H1o04YxFFFcnR7nYilMDV_-rnoktRpAusFCzJe6ol9JyEuFugTCwuJFU48eUQ5-i_7EfNT26IG-4WrY8Bfah11Sll5crlD7iCS96aFDUGZzg11a25oJ6CelMtEguSv6X6lcH901_IXkKMpdE0NpQtiOlJKyOqFIEAUb8MJjWuiRIJaPG_YM9bQYFNKFfC7hMjn0YSZpZ6rm-L49zigtr2KGQEIeN9HwLKHb596NbSwBJ_cRT5N1JhJcwVefCTXfSpUhLGmEngzAw7UXE4ZQoHHn46vzWLDFglfwervcLqAzzyX9pTl0ciO7kvmKrehkdKNDHbX2dBvZ5Asn0HDTOgUDnoXoLXrhNeycOVSMj92MPlK_UG2Mo3W4k4PU5YLMUuSIahedFnWxKJiAdPlnmbTHiSSLn_ToVpZMgMgP81gFytDFXVKQzSIylrUHRsugOZLApVF0TehYm4ED_7IOGNEnjUa3ZkbVvyiFbnozX-wC9sS3OA8b19H2pENy2K-oejmG4VSVBjS9Xk4GVy4FICOpRunZ0mNt2xBAlBS6M3TW-LSSu7pLexp7XB3VYhuoQ2M1lJ8vlLKhp0K3-TVP9neLKrKpDTbj8TJiYTec1PVEH_7hVOCx09VGvF47xus8kEs8ZNZcxBz4-0ra5SueynSVbKN5xmT2TDXOofeafHZix0k57ics1fw_ZYd3Ig7075PeHliZtYzRSUDCtuMAIJhEaYEivi-cIFdvPg"
+    
+    # Determine token source for debugging
+    if env_token:
+        token_source = "environment_variable"
+        dropbox_token_raw = env_token
+        logger.info(
+            "dropbox_token_source",
+            source=token_source,
+            token_prefix=env_token[:30] if len(env_token) > 30 else env_token,
+            token_length=len(env_token),
+        )
+    elif settings_token and settings_token != hardcoded_fallback:
+        token_source = "settings_file"
+        dropbox_token_raw = settings_token
+        logger.info(
+            "dropbox_token_source",
+            source=token_source,
+            token_prefix=settings_token[:30] if len(settings_token) > 30 else settings_token,
+            token_length=len(settings_token),
+        )
+    else:
+        token_source = "hardcoded_fallback"
+        dropbox_token_raw = hardcoded_fallback
+        logger.warning(
+            "dropbox_token_source",
+            source=token_source,
+            token_prefix=hardcoded_fallback[:30],
+            token_length=len(hardcoded_fallback),
+            message="Using hardcoded fallback token - consider setting DROPBOX_ACCESS_TOKEN environment variable",
+        )
+    
     # Clean token (remove any whitespace, newlines, quotes, etc.)
     dropbox_token = dropbox_token_raw.strip().strip('"').strip("'").strip()
     dropbox_folder = settings.dropbox.app_folder or "Runpodhuracan"
