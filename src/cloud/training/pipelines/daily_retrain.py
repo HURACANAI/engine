@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -141,76 +142,54 @@ def run_daily_retrain() -> None:
     dropbox_token = dropbox_token_raw.strip().strip('"').strip("'").strip()
     dropbox_folder = settings.dropbox.app_folder or "Runpodhuracan"
     
-    if settings.dropbox.enabled and dropbox_token:
-        try:
-            logger.info("dropbox_creating_dated_folder_immediately")
-            print("\n📁 Creating Dropbox dated folder...")
-            
-            # Initialize Dropbox sync - this will create dated folder as FIRST action
-            dropbox_sync = DropboxSync(
-                access_token=dropbox_token,
-                app_folder=dropbox_folder,
-                enabled=True,
-                create_dated_folder=True,  # Create dated folder immediately
+    if settings.dropbox.enabled:
+        # Dropbox is REQUIRED - bot will not run if Dropbox fails
+        if not dropbox_token:
+            logger.error(
+                "dropbox_token_missing_fatal",
+                message="Dropbox is enabled but no token provided. Engine cannot start.",
+                help_message=(
+                    "Dropbox sync is required but no token found. "
+                    "Please set DROPBOX_ACCESS_TOKEN environment variable or disable Dropbox in settings."
+                ),
             )
-            
-            # Log the dated folder that was created
-            if hasattr(dropbox_sync, "_dated_folder") and dropbox_sync._dated_folder:
-                logger.info(
-                    "dropbox_dated_folder_created_successfully",
-                    folder=dropbox_sync._dated_folder,
-                    message="✅ Dated folder created - ready for data sync",
-                )
-                print(f"✅ Dropbox folder created: {dropbox_sync._dated_folder}\n")
-            else:
-                logger.warning("dropbox_dated_folder_creation_failed", message="Folder not created")
-                print("⚠️  Dropbox folder creation failed - check logs\n")
-        except Exception as sync_error:
-            # Dropbox errors are non-fatal - continue without Dropbox sync
-            error_msg = str(sync_error)
-            
-            # Check if it's an expired token error
-            if "expired" in error_msg.lower() or "expired_access_token" in error_msg:
-                logger.warning(
-                    "dropbox_token_expired_non_fatal",
-                    error=error_msg,
-                    message="Dropbox token expired - continuing without Dropbox sync",
-                    help_message=(
-                        "To fix: Generate a new token at https://www.dropbox.com/developers/apps "
-                        "and update DROPBOX_ACCESS_TOKEN environment variable"
-                    ),
-                )
-                print(f"⚠️  Dropbox token expired (non-fatal): {error_msg}\n")
-                print("   💡 To fix: Generate a new token at https://www.dropbox.com/developers/apps\n")
-                print("   💡 Then update DROPBOX_ACCESS_TOKEN environment variable\n")
-                print("   Engine will continue without Dropbox sync\n")
-            elif "invalid_access_token" in error_msg or "invalid" in error_msg.lower():
-                logger.warning(
-                    "dropbox_token_invalid_non_fatal",
-                    error=error_msg,
-                    token_source=token_source if 'token_source' in locals() else "unknown",
-                    message="Dropbox token is invalid - continuing without Dropbox sync",
-                    help_message=(
-                        "Token appears to be invalid or corrupted. "
-                        "Generate a NEW token at https://www.dropbox.com/developers/apps "
-                        "and make sure to copy the ENTIRE token (it's very long)"
-                    ),
-                )
-                print(f"⚠️  Dropbox token is invalid (non-fatal): {error_msg}\n")
-                print("   💡 Token may be corrupted, truncated, or revoked\n")
-                print("   💡 Generate a NEW token at https://www.dropbox.com/developers/apps\n")
-                print("   💡 Make sure to copy the ENTIRE token (it's ~1000+ characters long)\n")
-                print("   💡 Set it as: export DROPBOX_ACCESS_TOKEN='your_full_token_here'\n")
-                print("   Engine will continue without Dropbox sync\n")
-            else:
-                logger.warning(
-                    "dropbox_folder_creation_failed_non_fatal",
-                    error=error_msg,
-                    message="Continuing without Dropbox sync - engine will still run",
-                )
-                print(f"⚠️  Dropbox folder creation failed (non-fatal): {error_msg}\n")
-                print("   Engine will continue without Dropbox sync\n")
-            dropbox_sync = None
+            print("\n❌ FATAL ERROR: Dropbox is enabled but no access token provided\n")
+            print("   💡 To fix: Set DROPBOX_ACCESS_TOKEN environment variable\n")
+            print("   💡 Or disable Dropbox in settings if not needed\n")
+            print("   Engine will NOT start without Dropbox\n")
+            sys.exit(1)
+        
+        logger.info("dropbox_creating_dated_folder_immediately")
+        print("\n📁 Creating Dropbox dated folder...")
+        print("   ⚠️  Dropbox is REQUIRED - engine will stop if Dropbox fails\n")
+        
+        # Initialize Dropbox sync - this will create dated folder as FIRST action
+        # If this fails, the exception will propagate and stop execution
+        dropbox_sync = DropboxSync(
+            access_token=dropbox_token,
+            app_folder=dropbox_folder,
+            enabled=True,
+            create_dated_folder=True,  # Create dated folder immediately
+        )
+        
+        # Log the dated folder that was created
+        if hasattr(dropbox_sync, "_dated_folder") and dropbox_sync._dated_folder:
+            logger.info(
+                "dropbox_dated_folder_created_successfully",
+                folder=dropbox_sync._dated_folder,
+                message="✅ Dated folder created - ready for data sync",
+            )
+            print(f"✅ Dropbox folder created: {dropbox_sync._dated_folder}\n")
+        else:
+            logger.error("dropbox_dated_folder_creation_failed", message="Folder not created - this is fatal")
+            print("❌ FATAL ERROR: Dropbox folder creation failed\n")
+            print("   Engine cannot continue without Dropbox\n")
+            sys.exit(1)
+    else:
+        # Dropbox is disabled - allow bot to run
+        logger.info("dropbox_disabled", message="Dropbox sync is disabled - engine will run without Dropbox")
+        print("\n⚠️  Dropbox sync is disabled in settings\n")
+        dropbox_sync = None
     
     # Initialize comprehensive Telegram monitoring
     telegram_monitor = None
