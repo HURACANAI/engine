@@ -16,6 +16,7 @@ Usage:
 import argparse
 import os
 import sys
+import time
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
@@ -29,7 +30,7 @@ from src.cloud.training.datasets.data_loader import CandleDataLoader, CandleQuer
 from src.cloud.training.datasets.quality_checks import DataQualitySuite
 from src.cloud.training.integrations.dropbox_sync import DropboxSync
 from src.cloud.training.services.exchange import ExchangeClient
-import structlog
+import structlog  # type: ignore[reportMissingImports]
 
 logger = structlog.get_logger(__name__)
 
@@ -55,20 +56,30 @@ def download_and_upload_candles(
     # Load settings (loads from config files)
     settings = EngineSettings.load(environment=os.getenv("HURACAN_ENV", "local"))
     
-    # Initialize Dropbox
+    # Initialize Dropbox (optional - will skip upload if token is invalid)
     dropbox_access_token = dropbox_token or settings.dropbox.access_token
-    if not dropbox_access_token:
-        logger.error("dropbox_token_missing", message="Dropbox token is required")
-        print("❌ Error: Dropbox token is required")
-        print("   Set DROPBOX_ACCESS_TOKEN environment variable or configure in settings")
-        sys.exit(1)
+    dropbox_sync = None
+    dropbox_enabled = False
     
-    dropbox_sync = DropboxSync(
-        access_token=dropbox_access_token,
-        app_folder=app_folder,
-        enabled=True,
-        create_dated_folder=False,  # Don't create dated folder for shared data
-    )
+    if dropbox_access_token:
+        try:
+            dropbox_sync = DropboxSync(
+                access_token=dropbox_access_token,
+                app_folder=app_folder,
+                enabled=True,
+                create_dated_folder=False,  # Don't create dated folder for shared data
+            )
+            dropbox_enabled = True
+            print("✅ Dropbox connection initialized\n")
+        except Exception as e:
+            logger.warning("dropbox_init_failed", error=str(e))
+            print(f"⚠️  Warning: Dropbox initialization failed: {e}")
+            print("   Will download data locally but skip Dropbox upload")
+            print("   You can upload later using: python scripts/upload_local_candles_to_dropbox.py\n")
+    else:
+        print("⚠️  Warning: No Dropbox token found")
+        print("   Will download data locally but skip Dropbox upload")
+        print("   You can upload later using: python scripts/upload_local_candles_to_dropbox.py\n")
     
     # Initialize exchange client
     credentials = settings.exchange.credentials.get(exchange_id, {})
@@ -98,29 +109,60 @@ def download_and_upload_candles(
     uploaded_count = 0
     failed_count = 0
     
-    for symbol in symbols:
+    # Optimized delay - Binance allows 40 requests/second
+    # Each coin needs ~216 requests, so we can download faster
+    # 0.5 second delay = ~2 coins/second = safe margin
+    delay_between_downloads = 0.5  # 500ms delay between coins
+    
+    for idx, symbol in enumerate(symbols):
+        # Minimal delay between downloads - parallel exchanges handle rate limits
+        if idx > 0:
+            time.sleep(delay_between_downloads)
         try:
-            print(f"📥 Downloading {symbol}...")
+            # Normalize symbol format - remove futures suffix if present for spot exchanges
+            # Some exchanges don't support futures format like "BTC/USDT:USDT"
+            normalized_symbol = symbol
+            if ":USDT" in symbol or ":USDC" in symbol:
+                # Try spot version first (remove :USDT/:USDC suffix)
+                normalized_symbol = symbol.split(":")[0]
+                print(f"📥 Downloading {symbol} (normalized to {normalized_symbol})...")
+            else:
+                print(f"📥 Downloading {symbol}...")
             
-            # Create query
+            # Create query with normalized symbol
             query = CandleQuery(
-                symbol=symbol,
+                symbol=normalized_symbol,
                 timeframe=timeframe,
                 start_at=start_at,
                 end_at=end_at,
             )
             
-            # Download data
-            frame = loader.load(query, use_cache=True)
+            # Download data with better error handling
+            try:
+                frame = loader.load(query, use_cache=True)
+            except Exception as download_error:
+                # If normalized symbol fails, try original symbol
+                if normalized_symbol != symbol:
+                    logger.warning("normalized_symbol_failed", normalized=normalized_symbol, original=symbol, error=str(download_error))
+                    print(f"   ⚠️  Normalized symbol failed, trying original...")
+                    query = CandleQuery(
+                        symbol=symbol,
+                        timeframe=timeframe,
+                        start_at=start_at,
+                        end_at=end_at,
+                    )
+                    frame = loader.load(query, use_cache=True)
+                else:
+                    raise
             
             if frame.is_empty():
                 print(f"   ⚠️  No data available for {symbol}")
                 failed_count += 1
                 continue
             
-            # Get cache path (same logic as CandleDataLoader._cache_path)
-            symbol_safe = symbol.replace("/", "-")
-            filename = f"{symbol_safe}_{timeframe}_{start_at:%Y%m%d}_{end_at:%Y%m%d}.parquet"
+            # Get cache path (use normalized symbol for filename)
+            symbol_for_filename = normalized_symbol.replace("/", "-")
+            filename = f"{symbol_for_filename}_{timeframe}_{start_at:%Y%m%d}_{end_at:%Y%m%d}.parquet"
             cache_path = Path("data/candles") / filename
             
             # Ensure cache directory exists
@@ -137,37 +179,55 @@ def download_and_upload_candles(
             file_size = cache_path.stat().st_size
             print(f"   ✅ Downloaded {rows:,} rows ({file_size / 1024 / 1024:.2f} MB)")
             
-            # Upload to Dropbox
-            print(f"   📤 Uploading to Dropbox...")
-            try:
-                # Get relative path from data/candles/
-                rel_path = cache_path.relative_to(Path("data/candles"))
-                remote_path = f"/{app_folder}/data/candles/{rel_path.as_posix()}"
-                
-                # Upload to shared location (not dated folder)
-                success = dropbox_sync.upload_file(
-                    local_path=cache_path,
-                    remote_path=remote_path,
-                    use_dated_folder=False,  # Use shared location
-                    overwrite=True,
-                )
-                
-                if success:
-                    uploaded_count += 1
-                    print(f"   ✅ Uploaded to Dropbox: {remote_path}")
-                else:
-                    print(f"   ❌ Failed to upload to Dropbox")
-                    failed_count += 1
+            # Upload to Dropbox (if enabled)
+            if dropbox_enabled and dropbox_sync:
+                print(f"   📤 Uploading to Dropbox...")
+                try:
+                    # Get relative path from data/candles/
+                    rel_path = cache_path.relative_to(Path("data/candles"))
+                    remote_path = f"/{app_folder}/data/candles/{rel_path.as_posix()}"
                     
-            except Exception as upload_error:
-                print(f"   ❌ Upload failed: {upload_error}")
-                failed_count += 1
-                logger.warning("upload_failed", symbol=symbol, error=str(upload_error))
+                    # Upload to shared location (not dated folder)
+                    success = dropbox_sync.upload_file(
+                        local_path=cache_path,
+                        remote_path=remote_path,
+                        use_dated_folder=False,  # Use shared location
+                        overwrite=True,
+                    )
+                    
+                    if success:
+                        uploaded_count += 1
+                        print(f"   ✅ Uploaded to Dropbox: {remote_path}")
+                    else:
+                        print(f"   ❌ Failed to upload to Dropbox")
+                        failed_count += 1
+                        
+                except Exception as upload_error:
+                    print(f"   ⚠️  Upload failed (will retry later): {upload_error}")
+                    logger.warning("upload_failed", symbol=symbol, error=str(upload_error))
+                    # Don't count upload failures as failed downloads
+            else:
+                print(f"   ⏭️  Skipping Dropbox upload (token not available)")
             
+        except KeyboardInterrupt:
+            print(f"\n⚠️  Download interrupted by user")
+            raise
         except Exception as e:
-            print(f"   ❌ Error downloading {symbol}: {e}")
+            error_msg = str(e).lower()
+            # Check for common error types
+            if "rate limit" in error_msg or "429" in error_msg:
+                print(f"   ⚠️  Rate limited for {symbol} - will retry later")
+                logger.warning("rate_limited", symbol=symbol, error=str(e))
+            elif "not found" in error_msg or "invalid symbol" in error_msg or "does not exist" in error_msg:
+                print(f"   ⚠️  Symbol not available: {symbol} (may be delisted or invalid)")
+                logger.warning("symbol_not_available", symbol=symbol, error=str(e))
+            elif "network" in error_msg or "timeout" in error_msg or "connection" in error_msg:
+                print(f"   ⚠️  Network error for {symbol} - will retry later")
+                logger.warning("network_error", symbol=symbol, error=str(e))
+            else:
+                print(f"   ❌ Error downloading {symbol}: {e}")
+                logger.exception("download_failed", symbol=symbol, error=str(e))
             failed_count += 1
-            logger.exception("download_failed", symbol=symbol, error=str(e))
     
     # Summary
     print(f"\n{'='*60}")
@@ -182,9 +242,19 @@ def download_and_upload_candles(
         print(f"✅ Successfully uploaded {uploaded_count} coin(s) to Dropbox")
         print(f"   Location: /{app_folder}/data/candles/")
         print(f"   RunPod engine will restore this data on startup\n")
+    elif dropbox_enabled:
+        print(f"⚠️  No files were uploaded to Dropbox")
+        print(f"   Data is saved locally in data/candles/")
+        print(f"   Run: python scripts/upload_local_candles_to_dropbox.py to upload later\n")
+    else:
+        print(f"📦 Data downloaded locally to data/candles/")
+        print(f"   To upload to Dropbox later, run:")
+        print(f"   python scripts/upload_local_candles_to_dropbox.py\n")
     
-    if failed_count > 0:
-        print(f"⚠️  {failed_count} coin(s) failed to download/upload")
+    # Only exit with error if downloads failed
+    download_failures = len(symbols) - downloaded_count
+    if download_failures > 0:
+        print(f"⚠️  {download_failures} coin(s) failed to download")
         sys.exit(1)
 
 
@@ -194,6 +264,7 @@ def get_all_symbols_from_universe() -> List[str]:
         from src.cloud.training.services.universe import UniverseSelector
         from src.cloud.training.config.settings import EngineSettings
         from src.cloud.training.services.exchange import ExchangeClient
+        from src.cloud.training.datasets.data_loader import MarketMetadataLoader
         
         # Load settings (loads from config files)
         settings = EngineSettings.load(environment=os.getenv("HURACAN_ENV", "local"))
@@ -203,7 +274,16 @@ def get_all_symbols_from_universe() -> List[str]:
             credentials=settings.exchange.credentials.get("binance", {}),
             sandbox=settings.exchange.sandbox,
         )
-        universe_selector = UniverseSelector(exchange=exchange, settings=settings)
+        
+        # Initialize metadata loader
+        metadata_loader = MarketMetadataLoader(exchange_client=exchange)
+        
+        # Initialize universe selector with correct parameters
+        universe_selector = UniverseSelector(
+            exchange_client=exchange,
+            metadata_loader=metadata_loader,
+            settings=settings.universe,
+        )
         universe = universe_selector.select()
         rows = list(universe.iter_rows(named=True))
         symbols = [row["symbol"] for row in rows]

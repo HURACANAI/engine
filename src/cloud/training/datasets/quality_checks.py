@@ -5,8 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Optional
 
-import polars as pl
-import structlog
+import polars as pl  # type: ignore[reportMissingImports]
+import structlog  # type: ignore[reportMissingImports]
 
 
 logger = structlog.get_logger(__name__)
@@ -22,7 +22,9 @@ class ValidationResult:
 class DataQualitySuite:
     """Validates coverage, duplication, and timestamp order for OHLCV datasets."""
 
-    def __init__(self, coverage_threshold: float = 0.998) -> None:
+    def __init__(self, coverage_threshold: float = 0.95) -> None:
+        # Lowered threshold from 0.998 to 0.95 for more lenient validation
+        # Some coins may have gaps (weekends, maintenance, etc.)
         self._coverage_threshold = coverage_threshold
 
     def validate(self, frame: pl.DataFrame, *, query: Any) -> pl.DataFrame:

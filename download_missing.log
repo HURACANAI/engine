@@ -1,0 +1,132 @@
+
+🚀 Fast Parallel Download
+   Symbols: 8
+   Parallel workers: 4
+   Days: 150
+   Timeframe: 1m
+
+2025-11-08 14:28:30 [info     ] parallel_download_start        exchanges=['binance', 'kraken', 'okx', 'bybit'] num_exchanges=4 symbol=ATOM/USDT
+/Users/haq/ENGINE (HF1) Crsor/engine/src/cloud/training/datasets/data_loader.py:245: DataOrientationWarning: Row orientation inferred during DataFrame construction. Explicitly specify the orientation by passing `orient="row"` to silence this warning.
+  frame = pl.DataFrame(
+2025-11-08 14:28:30 [warning  ] parallel_download_failed       error='Coverage 0.0033 below threshold for ATOM/USDT (721 of 216001)' exchange=kraken symbol=ATOM/USDT
+2025-11-08 14:28:30 [info     ] parallel_download_start        exchanges=['binance', 'kraken', 'okx', 'bybit'] num_exchanges=4 symbol=MATIC/USDT
+2025-11-08 14:28:30 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol MATIC/USDT' error_type=BadSymbol symbol=MATIC/USDT timeframe=1m
+2025-11-08 14:28:30 [warning  ] ohlcv_fetch_retry              error='okx does not have market symbol MATIC/USDT' error_type=BadSymbol symbol=MATIC/USDT timeframe=1m
+2025-11-08 14:28:30 [warning  ] ohlcv_fetch_retry              error='bybit does not have market symbol MATIC/USDT' error_type=BadSymbol symbol=MATIC/USDT timeframe=1m
+2025-11-08 14:28:30 [warning  ] empty_ohlcv_result             symbol=MATIC/USDT timeframe=1m
+2025-11-08 14:28:31 [info     ] parallel_download_start        exchanges=['binance', 'kraken', 'okx', 'bybit'] num_exchanges=4 symbol=UNI/USDT
+2025-11-08 14:28:31 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol UNI/USDT' error_type=BadSymbol symbol=UNI/USDT timeframe=1m
+2025-11-08 14:28:31 [info     ] parallel_download_start        exchanges=['binance', 'kraken', 'okx', 'bybit'] num_exchanges=4 symbol=LINK/USDT
+2025-11-08 14:28:31 [warning  ] parallel_download_failed       error='Coverage 0.0033 below threshold for LINK/USDT (721 of 216001)' exchange=kraken symbol=LINK/USDT
+2025-11-08 14:28:36 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=ATOM/USDT timeframe=1m
+2025-11-08 14:28:36 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=LINK/USDT timeframe=1m
+2025-11-08 14:28:36 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=UNI/USDT timeframe=1m
+2025-11-08 14:28:40 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol MATIC/USDT' error_type=BadSymbol symbol=MATIC/USDT timeframe=1m
+2025-11-08 14:28:40 [warning  ] ohlcv_fetch_retry              error='bybit does not have market symbol MATIC/USDT' error_type=BadSymbol symbol=MATIC/USDT timeframe=1m
+2025-11-08 14:28:40 [warning  ] ohlcv_fetch_retry              error='okx does not have market symbol MATIC/USDT' error_type=BadSymbol symbol=MATIC/USDT timeframe=1m
+2025-11-08 14:28:41 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol UNI/USDT' error_type=BadSymbol symbol=UNI/USDT timeframe=1m
+2025-11-08 14:28:47 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=ATOM/USDT timeframe=1m
+2025-11-08 14:28:47 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=LINK/USDT timeframe=1m
+2025-11-08 14:28:47 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=UNI/USDT timeframe=1m
+2025-11-08 14:28:50 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol MATIC/USDT' error_type=BadSymbol symbol=MATIC/USDT timeframe=1m
+2025-11-08 14:28:50 [warning  ] ohlcv_fetch_retry              error='okx does not have market symbol MATIC/USDT' error_type=BadSymbol symbol=MATIC/USDT timeframe=1m
+2025-11-08 14:28:50 [warning  ] ohlcv_fetch_retry              error='bybit does not have market symbol MATIC/USDT' error_type=BadSymbol symbol=MATIC/USDT timeframe=1m
+2025-11-08 14:28:51 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol UNI/USDT' error_type=BadSymbol symbol=UNI/USDT timeframe=1m
+2025-11-08 14:28:58 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=ATOM/USDT timeframe=1m
+2025-11-08 14:28:58 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=LINK/USDT timeframe=1m
+2025-11-08 14:28:58 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=UNI/USDT timeframe=1m
+2025-11-08 14:29:00 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol MATIC/USDT' error_type=BadSymbol symbol=MATIC/USDT timeframe=1m
+2025-11-08 14:29:00 [warning  ] ohlcv_fetch_retry              error='okx does not have market symbol MATIC/USDT' error_type=BadSymbol symbol=MATIC/USDT timeframe=1m
+2025-11-08 14:29:00 [warning  ] ohlcv_fetch_retry              error='bybit does not have market symbol MATIC/USDT' error_type=BadSymbol symbol=MATIC/USDT timeframe=1m
+2025-11-08 14:29:01 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol UNI/USDT' error_type=BadSymbol symbol=UNI/USDT timeframe=1m
+2025-11-08 14:29:09 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=UNI/USDT timeframe=1m
+2025-11-08 14:29:09 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=ATOM/USDT timeframe=1m
+2025-11-08 14:29:09 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=LINK/USDT timeframe=1m
+2025-11-08 14:29:16 [warning  ] ohlcv_fetch_retry              error='okx does not have market symbol MATIC/USDT' error_type=BadSymbol symbol=MATIC/USDT timeframe=1m
+2025-11-08 14:29:16 [warning  ] ohlcv_fetch_retry              error='bybit does not have market symbol MATIC/USDT' error_type=BadSymbol symbol=MATIC/USDT timeframe=1m
+2025-11-08 14:29:16 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol MATIC/USDT' error_type=BadSymbol symbol=MATIC/USDT timeframe=1m
+2025-11-08 14:29:17 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol UNI/USDT' error_type=BadSymbol symbol=UNI/USDT timeframe=1m
+2025-11-08 14:29:20 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=LINK/USDT timeframe=1m
+2025-11-08 14:29:20 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=ATOM/USDT timeframe=1m
+2025-11-08 14:29:20 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=UNI/USDT timeframe=1m
+2025-11-08 14:29:25 [debug    ] data_quality_pass              coverage_ratio=1.0 duplicates=0 symbol=UNI/USDT
+2025-11-08 14:29:25 [info     ] parallel_download_success      exchange=bybit message='Using data from this exchange' rows=216001 symbol=UNI/USDT
+2025-11-08 14:29:29 [debug    ] data_quality_pass              coverage_ratio=1.0 duplicates=0 symbol=ATOM/USDT
+2025-11-08 14:29:29 [info     ] parallel_download_success      exchange=bybit message='Using data from this exchange' rows=216001 symbol=ATOM/USDT
+2025-11-08 14:29:31 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=LINK/USDT timeframe=1m
+2025-11-08 14:29:31 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=ATOM/USDT timeframe=1m
+2025-11-08 14:29:31 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=UNI/USDT timeframe=1m
+2025-11-08 14:29:31 [debug    ] data_quality_pass              coverage_ratio=1.0 duplicates=0 symbol=LINK/USDT
+2025-11-08 14:29:31 [info     ] parallel_download_success      exchange=bybit message='Using data from this exchange' rows=216001 symbol=LINK/USDT
+2025-11-08 14:29:35 [debug    ] data_quality_pass              coverage_ratio=0.9999953703918038 duplicates=0 symbol=ATOM/USDT
+2025-11-08 14:29:37 [debug    ] data_quality_pass              coverage_ratio=0.9999953703918038 duplicates=0 symbol=LINK/USDT
+2025-11-08 14:29:38 [debug    ] data_quality_pass              coverage_ratio=0.9999953703918038 duplicates=0 symbol=UNI/USDT
+2025-11-08 14:29:42 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=LINK/USDT timeframe=1m
+2025-11-08 14:29:42 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=ATOM/USDT timeframe=1m
+2025-11-08 14:29:42 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=UNI/USDT timeframe=1m
+2025-11-08 14:29:48 [warning  ] ohlcv_fetch_retry              error='bybit does not have market symbol MATIC/USDT' error_type=BadSymbol symbol=MATIC/USDT timeframe=1m
+2025-11-08 14:29:48 [warning  ] ohlcv_fetch_retry              error='okx does not have market symbol MATIC/USDT' error_type=BadSymbol symbol=MATIC/USDT timeframe=1m
+2025-11-08 14:29:48 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol MATIC/USDT' error_type=BadSymbol symbol=MATIC/USDT timeframe=1m
+2025-11-08 14:29:49 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol UNI/USDT' error_type=BadSymbol symbol=UNI/USDT timeframe=1m
+2025-11-08 14:29:53 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=UNI/USDT timeframe=1m
+2025-11-08 14:29:53 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=LINK/USDT timeframe=1m
+2025-11-08 14:29:53 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=ATOM/USDT timeframe=1m
+2025-11-08 14:30:04 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=LINK/USDT timeframe=1m
+2025-11-08 14:30:04 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=ATOM/USDT timeframe=1m
+2025-11-08 14:30:04 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=UNI/USDT timeframe=1m
+2025-11-08 14:30:15 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=ATOM/USDT timeframe=1m
+2025-11-08 14:30:15 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=UNI/USDT timeframe=1m
+2025-11-08 14:30:15 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=LINK/USDT timeframe=1m
+2025-11-08 14:30:26 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=UNI/USDT timeframe=1m
+2025-11-08 14:30:26 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=ATOM/USDT timeframe=1m
+2025-11-08 14:30:26 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=LINK/USDT timeframe=1m
+2025-11-08 14:30:37 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=UNI/USDT timeframe=1m
+2025-11-08 14:30:37 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=ATOM/USDT timeframe=1m
+2025-11-08 14:30:37 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=LINK/USDT timeframe=1m
+2025-11-08 14:30:48 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=ATOM/USDT timeframe=1m
+2025-11-08 14:30:48 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=LINK/USDT timeframe=1m
+2025-11-08 14:30:48 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=UNI/USDT timeframe=1m
+2025-11-08 14:30:52 [warning  ] ohlcv_fetch_retry              error='okx does not have market symbol MATIC/USDT' error_type=BadSymbol symbol=MATIC/USDT timeframe=1m
+2025-11-08 14:30:52 [warning  ] ohlcv_fetch_retry              error='bybit does not have market symbol MATIC/USDT' error_type=BadSymbol symbol=MATIC/USDT timeframe=1m
+2025-11-08 14:30:52 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol MATIC/USDT' error_type=BadSymbol symbol=MATIC/USDT timeframe=1m
+2025-11-08 14:30:53 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol UNI/USDT' error_type=BadSymbol symbol=UNI/USDT timeframe=1m
+2025-11-08 14:30:59 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=ATOM/USDT timeframe=1m
+2025-11-08 14:30:59 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=LINK/USDT timeframe=1m
+2025-11-08 14:30:59 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=UNI/USDT timeframe=1m
+2025-11-08 14:31:10 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=ATOM/USDT timeframe=1m
+2025-11-08 14:31:10 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=UNI/USDT timeframe=1m
+2025-11-08 14:31:10 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=LINK/USDT timeframe=1m
+2025-11-08 14:31:21 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=ATOM/USDT timeframe=1m
+2025-11-08 14:31:21 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=LINK/USDT timeframe=1m
+2025-11-08 14:31:21 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=UNI/USDT timeframe=1m
+2025-11-08 14:31:32 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=UNI/USDT timeframe=1m
+2025-11-08 14:31:32 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=LINK/USDT timeframe=1m
+2025-11-08 14:31:32 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=ATOM/USDT timeframe=1m
+2025-11-08 14:31:43 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=UNI/USDT timeframe=1m
+2025-11-08 14:31:43 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=ATOM/USDT timeframe=1m
+2025-11-08 14:31:43 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=LINK/USDT timeframe=1m
+2025-11-08 14:31:54 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=UNI/USDT timeframe=1m
+2025-11-08 14:31:54 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=LINK/USDT timeframe=1m
+2025-11-08 14:31:54 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=ATOM/USDT timeframe=1m
+2025-11-08 14:32:05 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=ATOM/USDT timeframe=1m
+2025-11-08 14:32:05 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=LINK/USDT timeframe=1m
+2025-11-08 14:32:05 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=UNI/USDT timeframe=1m
+2025-11-08 14:32:16 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=UNI/USDT timeframe=1m
+2025-11-08 14:32:16 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=LINK/USDT timeframe=1m
+2025-11-08 14:32:16 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=ATOM/USDT timeframe=1m
+2025-11-08 14:32:28 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=LINK/USDT timeframe=1m
+2025-11-08 14:32:28 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=ATOM/USDT timeframe=1m
+2025-11-08 14:32:28 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=UNI/USDT timeframe=1m
+2025-11-08 14:32:39 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=ATOM/USDT timeframe=1m
+2025-11-08 14:32:39 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=LINK/USDT timeframe=1m
+2025-11-08 14:32:39 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=UNI/USDT timeframe=1m
+2025-11-08 14:32:50 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=UNI/USDT timeframe=1m
+2025-11-08 14:32:50 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=ATOM/USDT timeframe=1m
+2025-11-08 14:32:50 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=LINK/USDT timeframe=1m
+2025-11-08 14:32:52 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol MATIC/USDT' error_type=BadSymbol symbol=MATIC/USDT timeframe=1m
+2025-11-08 14:32:52 [warning  ] ohlcv_fetch_retry              error='bybit does not have market symbol MATIC/USDT' error_type=BadSymbol symbol=MATIC/USDT timeframe=1m
+2025-11-08 14:32:52 [warning  ] ohlcv_fetch_retry              error='okx does not have market symbol MATIC/USDT' error_type=BadSymbol symbol=MATIC/USDT timeframe=1m
+2025-11-08 14:32:53 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol UNI/USDT' error_type=BadSymbol symbol=UNI/USDT timeframe=1m
+2025-11-08 14:33:01 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=UNI/USDT timeframe=1m
+2025-11-08 14:33:01 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=ATOM/USDT timeframe=1m
+2025-11-08 14:33:01 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=LINK/USDT timeframe=1m

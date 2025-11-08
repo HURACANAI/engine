@@ -1,0 +1,892 @@
+2025-11-08 14:03:04 [info     ] universe_symbols_loaded        count=20 symbols=['AIA/USDT:USDT', 'BTC/USDC', 'UAI/USDT:USDT', 'ETH/USDC', 'HYPE/USDT:USDT', 'H/USDT:USDT', 'SOON/USDT:USDT', 'FOLKS/USDT:USDT', 'HIPPO/USDT:USDT', 'FARTCOIN/USDT:USDT']
+📋 Found 20 symbols in universe
+
+2025-11-08 14:03:04 [info     ] dropbox_token_received         message='Token received and cleaned' token_length=1309 token_prefix=sl.u.AGEfLXv_9XC-CMSpJ-ICWQXMw
+2025-11-08 14:03:06 [info     ] dropbox_sync_initialized       account_email=haqhaleem06@gmail.com app_folder=Runpodhuracan
+✅ Dropbox connection initialized
+
+
+📊 Downloading historical candle data
+   Symbols: AIA/USDT:USDT, BTC/USDC, UAI/USDT:USDT, ETH/USDC, HYPE/USDT:USDT, H/USDT:USDT, SOON/USDT:USDT, FOLKS/USDT:USDT, HIPPO/USDT:USDT, FARTCOIN/USDT:USDT, 币安人生/USDT:USDT, SOL/USDC, MERL/USDT:USDT, COAI/USDT:USDT, FDUSD/USDC, XRP/USDC, JELLYJELLY/USDT:USDT, LAB/USDT:USDT, TRUST/USDT:USDT, STABLE/USDT:USDT
+   Exchange: binance
+   Timeframe: 1m
+   Days: 150
+   Start: 2025-06-11
+   End: 2025-11-08
+
+📥 Downloading AIA/USDT:USDT (normalized to AIA/USDT)...
+2025-11-08 14:03:08 [warning  ] fallback_exchange_init_failed  error="Unsupported exchange 'coinbasepro'" exchange=coinbasepro
+2025-11-08 14:03:13 [info     ] parallel_download_start        exchanges=['binance', 'kraken', 'okx', 'bybit'] num_exchanges=4 symbol=AIA/USDT
+2025-11-08 14:03:13 [warning  ] ohlcv_fetch_retry              error='binance does not have market symbol AIA/USDT' error_type=BadSymbol symbol=AIA/USDT timeframe=1m
+2025-11-08 14:03:13 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol AIA/USDT' error_type=BadSymbol symbol=AIA/USDT timeframe=1m
+2025-11-08 14:03:13 [warning  ] ohlcv_fetch_retry              error='okx does not have market symbol AIA/USDT' error_type=BadSymbol symbol=AIA/USDT timeframe=1m
+2025-11-08 14:03:13 [warning  ] ohlcv_fetch_retry              error='bybit does not have market symbol AIA/USDT' error_type=BadSymbol symbol=AIA/USDT timeframe=1m
+2025-11-08 14:03:23 [warning  ] ohlcv_fetch_retry              error='bybit does not have market symbol AIA/USDT' error_type=BadSymbol symbol=AIA/USDT timeframe=1m
+2025-11-08 14:03:23 [warning  ] ohlcv_fetch_retry              error='binance does not have market symbol AIA/USDT' error_type=BadSymbol symbol=AIA/USDT timeframe=1m
+2025-11-08 14:03:23 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol AIA/USDT' error_type=BadSymbol symbol=AIA/USDT timeframe=1m
+2025-11-08 14:03:23 [warning  ] ohlcv_fetch_retry              error='okx does not have market symbol AIA/USDT' error_type=BadSymbol symbol=AIA/USDT timeframe=1m
+2025-11-08 14:03:33 [warning  ] ohlcv_fetch_retry              error='binance does not have market symbol AIA/USDT' error_type=BadSymbol symbol=AIA/USDT timeframe=1m
+2025-11-08 14:03:33 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol AIA/USDT' error_type=BadSymbol symbol=AIA/USDT timeframe=1m
+2025-11-08 14:03:33 [warning  ] ohlcv_fetch_retry              error='bybit does not have market symbol AIA/USDT' error_type=BadSymbol symbol=AIA/USDT timeframe=1m
+2025-11-08 14:03:33 [warning  ] ohlcv_fetch_retry              error='okx does not have market symbol AIA/USDT' error_type=BadSymbol symbol=AIA/USDT timeframe=1m
+2025-11-08 14:03:43 [warning  ] ohlcv_fetch_retry              error='binance does not have market symbol AIA/USDT' error_type=BadSymbol symbol=AIA/USDT timeframe=1m
+2025-11-08 14:03:43 [warning  ] ohlcv_fetch_retry              error='bybit does not have market symbol AIA/USDT' error_type=BadSymbol symbol=AIA/USDT timeframe=1m
+2025-11-08 14:03:43 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol AIA/USDT' error_type=BadSymbol symbol=AIA/USDT timeframe=1m
+2025-11-08 14:03:43 [warning  ] ohlcv_fetch_retry              error='okx does not have market symbol AIA/USDT' error_type=BadSymbol symbol=AIA/USDT timeframe=1m
+2025-11-08 14:03:59 [warning  ] ohlcv_fetch_retry              error='binance does not have market symbol AIA/USDT' error_type=BadSymbol symbol=AIA/USDT timeframe=1m
+2025-11-08 14:03:59 [warning  ] ohlcv_fetch_retry              error='bybit does not have market symbol AIA/USDT' error_type=BadSymbol symbol=AIA/USDT timeframe=1m
+2025-11-08 14:03:59 [warning  ] ohlcv_fetch_retry              error='okx does not have market symbol AIA/USDT' error_type=BadSymbol symbol=AIA/USDT timeframe=1m
+2025-11-08 14:03:59 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol AIA/USDT' error_type=BadSymbol symbol=AIA/USDT timeframe=1m
+2025-11-08 14:04:31 [warning  ] ohlcv_fetch_retry              error='binance does not have market symbol AIA/USDT' error_type=BadSymbol symbol=AIA/USDT timeframe=1m
+2025-11-08 14:04:31 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol AIA/USDT' error_type=BadSymbol symbol=AIA/USDT timeframe=1m
+2025-11-08 14:04:31 [warning  ] ohlcv_fetch_retry              error='okx does not have market symbol AIA/USDT' error_type=BadSymbol symbol=AIA/USDT timeframe=1m
+2025-11-08 14:04:31 [warning  ] ohlcv_fetch_retry              error='bybit does not have market symbol AIA/USDT' error_type=BadSymbol symbol=AIA/USDT timeframe=1m
+2025-11-08 14:05:35 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol AIA/USDT' error_type=BadSymbol symbol=AIA/USDT timeframe=1m
+2025-11-08 14:05:35 [warning  ] ohlcv_fetch_retry              error='okx does not have market symbol AIA/USDT' error_type=BadSymbol symbol=AIA/USDT timeframe=1m
+2025-11-08 14:05:35 [warning  ] ohlcv_fetch_retry              error='binance does not have market symbol AIA/USDT' error_type=BadSymbol symbol=AIA/USDT timeframe=1m
+2025-11-08 14:05:35 [warning  ] ohlcv_fetch_retry              error='bybit does not have market symbol AIA/USDT' error_type=BadSymbol symbol=AIA/USDT timeframe=1m
+2025-11-08 14:07:35 [warning  ] ohlcv_fetch_retry              error='okx does not have market symbol AIA/USDT' error_type=BadSymbol symbol=AIA/USDT timeframe=1m
+2025-11-08 14:07:35 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol AIA/USDT' error_type=BadSymbol symbol=AIA/USDT timeframe=1m
+2025-11-08 14:07:35 [warning  ] ohlcv_fetch_retry              error='binance does not have market symbol AIA/USDT' error_type=BadSymbol symbol=AIA/USDT timeframe=1m
+2025-11-08 14:07:35 [warning  ] ohlcv_fetch_retry              error='bybit does not have market symbol AIA/USDT' error_type=BadSymbol symbol=AIA/USDT timeframe=1m
+2025-11-08 14:09:35 [warning  ] ohlcv_fetch_retry              error='okx does not have market symbol AIA/USDT' error_type=BadSymbol symbol=AIA/USDT timeframe=1m
+2025-11-08 14:09:35 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol AIA/USDT' error_type=BadSymbol symbol=AIA/USDT timeframe=1m
+2025-11-08 14:09:35 [warning  ] ohlcv_fetch_retry              error='binance does not have market symbol AIA/USDT' error_type=BadSymbol symbol=AIA/USDT timeframe=1m
+2025-11-08 14:09:35 [warning  ] ohlcv_fetch_retry              error='bybit does not have market symbol AIA/USDT' error_type=BadSymbol symbol=AIA/USDT timeframe=1m
+2025-11-08 14:11:35 [warning  ] ohlcv_fetch_retry              error='okx does not have market symbol AIA/USDT' error_type=BadSymbol symbol=AIA/USDT timeframe=1m
+2025-11-08 14:11:35 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol AIA/USDT' error_type=BadSymbol symbol=AIA/USDT timeframe=1m
+2025-11-08 14:11:35 [warning  ] parallel_download_failed       error='okx does not have market symbol AIA/USDT' exchange=okx symbol=AIA/USDT
+2025-11-08 14:11:35 [warning  ] parallel_download_failed       error='kraken does not have market symbol AIA/USDT' exchange=kraken symbol=AIA/USDT
+2025-11-08 14:11:35 [warning  ] ohlcv_fetch_retry              error='binance does not have market symbol AIA/USDT' error_type=BadSymbol symbol=AIA/USDT timeframe=1m
+2025-11-08 14:11:35 [warning  ] parallel_download_failed       error='binance does not have market symbol AIA/USDT' exchange=binance symbol=AIA/USDT
+2025-11-08 14:11:35 [warning  ] ohlcv_fetch_retry              error='bybit does not have market symbol AIA/USDT' error_type=BadSymbol symbol=AIA/USDT timeframe=1m
+2025-11-08 14:11:35 [warning  ] parallel_download_failed       error='bybit does not have market symbol AIA/USDT' exchange=bybit symbol=AIA/USDT
+2025-11-08 14:11:35 [error    ] all_exchanges_failed_parallel  exchanges=['binance', 'kraken', 'okx', 'bybit'] symbol=AIA/USDT
+2025-11-08 14:11:35 [warning  ] normalized_symbol_failed       error='Failed to download AIA/USDT from all exchanges' normalized=AIA/USDT original=AIA/USDT:USDT
+   ⚠️  Normalized symbol failed, trying original...
+2025-11-08 14:11:35 [warning  ] fallback_exchange_init_failed  error="Unsupported exchange 'coinbasepro'" exchange=coinbasepro
+2025-11-08 14:11:35 [info     ] parallel_download_start        exchanges=['binance', 'kraken', 'okx', 'bybit'] num_exchanges=4 symbol=AIA/USDT:USDT
+2025-11-08 14:11:35 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol AIA/USDT:USDT' error_type=BadSymbol symbol=AIA/USDT:USDT timeframe=1m
+2025-11-08 14:11:35 [warning  ] ohlcv_fetch_retry              error='okx does not have market symbol AIA/USDT:USDT' error_type=BadSymbol symbol=AIA/USDT:USDT timeframe=1m
+2025-11-08 14:11:45 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol AIA/USDT:USDT' error_type=BadSymbol symbol=AIA/USDT:USDT timeframe=1m
+2025-11-08 14:11:45 [warning  ] ohlcv_fetch_retry              error='okx does not have market symbol AIA/USDT:USDT' error_type=BadSymbol symbol=AIA/USDT:USDT timeframe=1m
+/Users/haq/ENGINE (HF1) Crsor/engine/src/cloud/training/datasets/data_loader.py:233: DataOrientationWarning: Row orientation inferred during DataFrame construction. Explicitly specify the orientation by passing `orient="row"` to silence this warning.
+  frame = pl.DataFrame(
+2025-11-08 14:11:52 [warning  ] parallel_download_failed       error='Coverage 0.3411 below threshold for AIA/USDT:USDT (73678 of 216001)' exchange=bybit symbol=AIA/USDT:USDT
+2025-11-08 14:11:55 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol AIA/USDT:USDT' error_type=BadSymbol symbol=AIA/USDT:USDT timeframe=1m
+2025-11-08 14:11:55 [warning  ] ohlcv_fetch_retry              error='okx does not have market symbol AIA/USDT:USDT' error_type=BadSymbol symbol=AIA/USDT:USDT timeframe=1m
+2025-11-08 14:11:56 [warning  ] parallel_download_failed       error='Coverage 0.3416 below threshold for AIA/USDT:USDT (73782 of 216001)' exchange=binance symbol=AIA/USDT:USDT
+2025-11-08 14:12:05 [warning  ] ohlcv_fetch_retry              error='okx does not have market symbol AIA/USDT:USDT' error_type=BadSymbol symbol=AIA/USDT:USDT timeframe=1m
+2025-11-08 14:12:05 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol AIA/USDT:USDT' error_type=BadSymbol symbol=AIA/USDT:USDT timeframe=1m
+2025-11-08 14:12:21 [warning  ] ohlcv_fetch_retry              error='okx does not have market symbol AIA/USDT:USDT' error_type=BadSymbol symbol=AIA/USDT:USDT timeframe=1m
+2025-11-08 14:12:21 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol AIA/USDT:USDT' error_type=BadSymbol symbol=AIA/USDT:USDT timeframe=1m
+2025-11-08 14:12:53 [warning  ] ohlcv_fetch_retry              error='okx does not have market symbol AIA/USDT:USDT' error_type=BadSymbol symbol=AIA/USDT:USDT timeframe=1m
+2025-11-08 14:12:53 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol AIA/USDT:USDT' error_type=BadSymbol symbol=AIA/USDT:USDT timeframe=1m
+2025-11-08 14:13:57 [warning  ] ohlcv_fetch_retry              error='okx does not have market symbol AIA/USDT:USDT' error_type=BadSymbol symbol=AIA/USDT:USDT timeframe=1m
+2025-11-08 14:13:57 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol AIA/USDT:USDT' error_type=BadSymbol symbol=AIA/USDT:USDT timeframe=1m
+2025-11-08 14:15:57 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol AIA/USDT:USDT' error_type=BadSymbol symbol=AIA/USDT:USDT timeframe=1m
+2025-11-08 14:15:57 [warning  ] ohlcv_fetch_retry              error='okx does not have market symbol AIA/USDT:USDT' error_type=BadSymbol symbol=AIA/USDT:USDT timeframe=1m
+2025-11-08 14:17:57 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol AIA/USDT:USDT' error_type=BadSymbol symbol=AIA/USDT:USDT timeframe=1m
+2025-11-08 14:17:57 [warning  ] ohlcv_fetch_retry              error='okx does not have market symbol AIA/USDT:USDT' error_type=BadSymbol symbol=AIA/USDT:USDT timeframe=1m
+2025-11-08 14:19:57 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol AIA/USDT:USDT' error_type=BadSymbol symbol=AIA/USDT:USDT timeframe=1m
+2025-11-08 14:19:57 [warning  ] parallel_download_failed       error='kraken does not have market symbol AIA/USDT:USDT' exchange=kraken symbol=AIA/USDT:USDT
+2025-11-08 14:19:57 [warning  ] ohlcv_fetch_retry              error='okx does not have market symbol AIA/USDT:USDT' error_type=BadSymbol symbol=AIA/USDT:USDT timeframe=1m
+2025-11-08 14:19:57 [warning  ] parallel_download_failed       error='okx does not have market symbol AIA/USDT:USDT' exchange=okx symbol=AIA/USDT:USDT
+2025-11-08 14:19:57 [error    ] all_exchanges_failed_parallel  exchanges=['binance', 'kraken', 'okx', 'bybit'] symbol=AIA/USDT:USDT
+   ❌ Error downloading AIA/USDT:USDT: Failed to download AIA/USDT:USDT from all exchanges
+2025-11-08 14:19:57 [error    ] download_failed                error='Failed to download AIA/USDT:USDT from all exchanges' symbol=AIA/USDT:USDT
+╭───────────────────── [1mTraceback [0m[1;2m(most recent call last)[0m ──────────────────────╮
+│ [2m/Users/haq/ENGINE (HF1) [0m                                                     │
+│ [2mCrsor/engine/scripts/[0m[1mdownload_and_upload_candles.py[0m:140 in                   │
+│ download_and_upload_candles                                                  │
+│                                                                              │
+│   [2m137 [0m[2m│   │   │   [0m                                                           │
+│   [2m138 [0m[2m│   │   │   [0m[2m# Download data with better error handling[0m                 │
+│   [2m139 [0m[2m│   │   │   [0mtry:                                                       │
+│ ❱ 140 [2m│   │   │   │   [0mframe = loader.load(query, use_cache=True)             │
+│   [2m141 [0m[2m│   │   │   [0mexcept Exception as download_error:                        │
+│   [2m142 [0m[2m│   │   │   │   [0m[2m# If normalized symbol fails, try original symbol[0m      │
+│   [2m143 [0m[2m│   │   │   │   [0mif normalized_symbol != symbol:                        │
+│                                                                              │
+│ ╭───────────────────────────────── locals ─────────────────────────────────╮ │
+│ │              [3mapp_folder[0m = 'Runpodhuracan'                                │ │
+│ │             [3mcredentials[0m = [1m{[0m[1m}[0m                                             │ │
+│ │                    [3mdays[0m = [1m150[0m                                            │ │
+│ │ [3mdelay_between_downloads[0m = [1m0.5[0m                                            │ │
+│ │        [3mdownloaded_count[0m = [1m0[0m                                              │ │
+│ │    [3mdropbox_access_token[0m = 'sl.u.AGEfLXv_9XC-CMSpJ-ICWQXMwTk22GdAmQRu73h… │ │
+│ │         [3mdropbox_enabled[0m = [3mTrue[0m                                           │ │
+│ │            [3mdropbox_sync[0m = [1m<[0m[1msrc.cloud.training.integrations.dropbox_sync…[0m │ │
+│ │                           object at [1m0x134f62a90[0m[1m>[0m                         │ │
+│ │           [3mdropbox_token[0m = [3mNone[0m                                           │ │
+│ │                       [3me[0m = [1mRuntimeError[0m[1m([0m'Failed to download AIA/USDT:USDT │ │
+│ │                           from all exchanges'[1m)[0m                           │ │
+│ │                  [3mend_at[0m = [1mdatetime.datetime[0m[1m([0m[1m2025[0m, [1m11[0m, [1m8[0m, [1m14[0m, [1m3[0m, [1m8[0m, [1m6177[0m, │ │
+│ │                           tzinfo=datetime.timezone.utc[1m)[0m                  │ │
+│ │               [3merror_msg[0m = 'failed to download aia/usdt:usdt from all     │ │
+│ │                           exchanges'                                     │ │
+│ │                [3mexchange[0m = [1m<[0m[1msrc.cloud.training.services.exchange.Exchang…[0m │ │
+│ │                           object at [1m0x13a50c310[0m[1m>[0m                         │ │
+│ │             [3mexchange_id[0m = 'binance'                                      │ │
+│ │            [3mfailed_count[0m = [1m0[0m                                              │ │
+│ │                     [3midx[0m = [1m0[0m                                              │ │
+│ │                  [3mloader[0m = [1m<[0m[1msrc.cloud.training.datasets.data_loader.Cand…[0m │ │
+│ │                           object at [1m0x13a4c5e90[0m[1m>[0m                         │ │
+│ │       [3mnormalized_symbol[0m = 'AIA/USDT'                                     │ │
+│ │           [3mquality_suite[0m = [1m<[0m[1msrc.cloud.training.datasets.quality_checks.D…[0m │ │
+│ │                           object at [1m0x13a39d9d0[0m[1m>[0m                         │ │
+│ │                   [3mquery[0m = [1mCandleQuery[0m[1m([0m                                   │ │
+│ │                           [2m│   [0msymbol='AIA/USDT:USDT',                    │ │
+│ │                           [2m│   [0mtimeframe='1m',                            │ │
+│ │                           [2m│   [0mstart_at=[1mdatetime[0m[1m.datetime[0m[1m([0m[1m2025[0m, [1m6[0m, [1m11[0m,    │ │
+│ │                           [1m14[0m, [1m3[0m, [1m8[0m, [1m6177[0m, tzinfo=datetime.timezone.utc[1m)[0m, │ │
+│ │                           [2m│   [0mend_at=[1mdatetime[0m[1m.datetime[0m[1m([0m[1m2025[0m, [1m11[0m, [1m8[0m, [1m14[0m,  │ │
+│ │                           [1m3[0m, [1m8[0m, [1m6177[0m, tzinfo=datetime.timezone.utc[1m)[0m      │ │
+│ │                           [1m)[0m                                              │ │
+│ │                [3msettings[0m = [1mEngineSettings[0m[1m([0m                                │ │
+│ │                           [2m│   [0menvironment='local',                       │ │
+│ │                           [2m│   [0mmode='shadow',                             │ │
+│ │                           [2m│   [0mscheduler=[1mSchedulerSettings[0m[1m([0m               │ │
+│ │                           [2m│   │   [0mdaily_run_time_utc=[1mdatetime[0m[1m.time[0m[1m([0m[1m2[0m,    │ │
+│ │                           [1m0[0m[1m)[0m,                                            │ │
+│ │                           [2m│   │   [0mtimezone='UTC'                         │ │
+│ │                           [2m│   [0m[1m)[0m,                                         │ │
+│ │                           [2m│   [0muniverse=[1mUniverseSettings[0m[1m([0m                 │ │
+│ │                           [2m│   │   [0mtarget_size=[1m20[0m,                        │ │
+│ │                           [2m│   │   [0mliquidity_threshold_adv_gbp=[1m10000000[0m,  │ │
+│ │                           [2m│   │   [0mmax_spread_bps=[1m8[0m,                      │ │
+│ │                           [2m│   │   [0mrebalance_frequency_days=[1m7[0m             │ │
+│ │                           [2m│   [0m[1m)[0m,                                         │ │
+│ │                           [2m│   [0mtraining=[1mTrainingSettings[0m[1m([0m                 │ │
+│ │                           [2m│   │   [0mwindow_days=[1m150[0m,                       │ │
+│ │                           [2m│   │   [0mwalk_forward=[1mWalkForwardSettings[0m[1m([0m      │ │
+│ │                           [2m│   │   │   [0mtrain_days=[1m20[0m,                     │ │
+│ │                           [2m│   │   │   [0mtest_days=[1m5[0m,                       │ │
+│ │                           [2m│   │   │   [0mmin_trades=[1m300[0m                     │ │
+│ │                           [2m│   │   [0m[1m)[0m,                                     │ │
+│ │                           [2m│   │   [0mrl_agent=[1mRLAgentSettings[0m[1m([0m              │ │
+│ │                           [2m│   │   │   [0menabled=[3mTrue[0m,                      │ │
+│ │                           [2m│   │   │   [0mlearning_rate=[1m0[0m[1m.0003[0m,              │ │
+│ │                           [2m│   │   │   [0mgamma=[1m0[0m[1m.99[0m,                        │ │
+│ │                           [2m│   │   │   [0mepsilon=[1m0[0m[1m.2[0m,                       │ │
+│ │                           [2m│   │   │   [0mclip_epsilon=[1m0[0m[1m.2[0m,                  │ │
+│ │                           [2m│   │   │   [0mentropy_coef=[1m0[0m[1m.01[0m,                 │ │
+│ │                           [2m│   │   │   [0mn_epochs=[1m10[0m,                       │ │
+│ │                           [2m│   │   │   [0mepochs_per_update=[1m10[0m,              │ │
+│ │                           [2m│   │   │   [0mbatch_size=[1m64[0m,                     │ │
+│ │                           [2m│   │   │   [0mhidden_dim=[1m256[0m,                    │ │
+│ │                           [2m│   │   │   [0mstate_dim=[1m80[0m,                      │ │
+│ │                           [2m│   │   │   [0mdevice='cpu'                       │ │
+│ │                           [2m│   │   [0m[1m)[0m,                                     │ │
+│ │                           [2m│   │   [0mshadow_trading=[1mShadowTradingSettings[0m[1m([0m  │ │
+│ │                           [2m│   │   │   [0menabled=[3mTrue[0m,                      │ │
+│ │                           [2m│   │   │   [0mposition_size_gbp=[1m1000[0m[1m.0[0m,          │ │
+│ │                           [2m│   │   │   [0mstop_loss_bps=[1m15[0m,                  │ │
+│ │                           [2m│   │   │   [0mtake_profit_bps=[1m20[0m,                │ │
+│ │                           [2m│   │   │   [0mmax_hold_hours=[1m24[0m,                 │ │
+│ │                           [2m│   │   │   [0mmax_hold_minutes=[1m120[0m,              │ │
+│ │                           [2m│   │   │   [0mmin_confidence_threshold=[1m0[0m[1m.52[0m      │ │
+│ │                           [2m│   │   [0m[1m)[0m,                                     │ │
+│ │                           [2m│   │   [0mmemory=[1mMemorySettings[0m[1m([0m                 │ │
+│ │                           [2m│   │   │   [0mvector_dim=[1m128[0m,                    │ │
+│ │                           [2m│   │   │   [0msimilarity_threshold=[1m0[0m[1m.7[0m,          │ │
+│ │                           [2m│   │   │   [0mmax_similar_patterns=[1m20[0m,           │ │
+│ │                           [2m│   │   │   [0mpattern_min_trades=[1m5[0m               │ │
+│ │                           [2m│   │   [0m[1m)[0m,                                     │ │
+│ │                           [2m│   │   [0mmonitoring=[1mMonitoringSettings[0m[1m([0m         │ │
+│ │                           [2m│   │   │   [0menabled=[3mTrue[0m,                      │ │
+│ │                           [2m│   │   │   [0mcheck_interval_seconds=[1m300[0m,        │ │
+│ │                           [2m│   │   │   [0mwin_rate_stddev_threshold=[1m2[0m[1m.0[0m,     │ │
+│ │                           [2m│   │   │   [0mprofit_stddev_threshold=[1m2[0m[1m.0[0m,       │ │
+│ │                           [2m│   │   │   [0mvolume_stddev_threshold=[1m2[0m[1m.5[0m,       │ │
+│ │                           [2m│   │   │   [0mauto_remediation_enabled=[3mTrue[0m,     │ │
+│ │                           [2m│   │   │   [0mpause_failing_patterns=[3mTrue[0m,       │ │
+│ │                           [2m│   │   │   [0mpattern_failure_threshold=[1m0[0m[1m.45[0m     │ │
+│ │                           [2m│   │   [0m[1m)[0m,                                     │ │
+│ │                           [2m│   │   [0mvalidation=[1mValidationSettings[0m[1m([0m         │ │
+│ │                           [2m│   │   │   [0menabled=[3mTrue[0m,                      │ │
+│ │                           [2m│   │   │   [0m                                   │ │
+│ │                           mandatory_oos=[1mMandatoryOOSSettings[0m[1m([0m            │ │
+│ │                           [2m│   │   │   │   [0menabled=[3mTrue[0m,                  │ │
+│ │                           [2m│   │   │   │   [0mmin_oos_sharpe=[1m1[0m[1m.0[0m,            │ │
+│ │                           [2m│   │   │   │   [0mmin_oos_win_rate=[1m0[0m[1m.55[0m,         │ │
+│ │                           [2m│   │   │   │   [0mmax_train_test_gap=[1m0[0m[1m.3[0m,        │ │
+│ │                           [2m│   │   │   │   [0mmax_sharpe_std=[1m0[0m[1m.2[0m,            │ │
+│ │                           [2m│   │   │   │   [0mmin_test_trades=[1m100[0m,           │ │
+│ │                           [2m│   │   │   │   [0mmin_windows=[1m5[0m                  │ │
+│ │                           [2m│   │   │   [0m[1m)[0m,                                 │ │
+│ │                           [2m│   │   │   [0m                                   │ │
+│ │                           overfitting_detection=[1mOverfittingDetectionSet…[0m │ │
+│ │                           [2m│   │   │   │   [0menabled=[3mTrue[0m,                  │ │
+│ │                           [2m│   │   │   │   [0mtrain_test_gap_threshold=[1m0[0m[1m.5[0m,  │ │
+│ │                           [2m│   │   │   │   [0mcv_stability_threshold=[1m0[0m[1m.3[0m,    │ │
+│ │                           [2m│   │   │   │   [0mdegradation_threshold=[1m-0.2[0m     │ │
+│ │                           [2m│   │   │   [0m[1m)[0m,                                 │ │
+│ │                           [2m│   │   │   [0m                                   │ │
+│ │                           data_validation=[1mDataValidationSettings[0m[1m([0m        │ │
+│ │                           [2m│   │   │   │   [0menabled=[3mTrue[0m,                  │ │
+│ │                           [2m│   │   │   │   [0moutlier_z_threshold=[1m3[0m[1m.0[0m,       │ │
+│ │                           [2m│   │   │   │   [0mmax_missing_pct=[1m0[0m[1m.05[0m,          │ │
+│ │                           [2m│   │   │   │   [0mmax_age_hours=[1m24[0m,              │ │
+│ │                           [2m│   │   │   │   [0mmin_coverage=[1m0[0m[1m.95[0m              │ │
+│ │                           [2m│   │   │   [0m[1m)[0m,                                 │ │
+│ │                           [2m│   │   │   [0m                                   │ │
+│ │                           paper_trading=[1mPaperTradingSettings[0m[1m([0m            │ │
+│ │                           [2m│   │   │   │   [0menabled=[3mFalse[0m,                 │ │
+│ │                           [2m│   │   │   │   [0mmin_duration_days=[1m14[0m,          │ │
+│ │                           [2m│   │   │   │   [0mmin_trades=[1m100[0m,                │ │
+│ │                           [2m│   │   │   │   [0mmin_win_rate=[1m0[0m[1m.55[0m,             │ │
+│ │                           [2m│   │   │   │   [0mmin_sharpe=[1m1[0m[1m.0[0m,                │ │
+│ │                           [2m│   │   │   │   [0mmax_backtest_deviation=[1m0[0m[1m.2[0m     │ │
+│ │                           [2m│   │   │   [0m[1m)[0m,                                 │ │
+│ │                           [2m│   │   │   [0m                                   │ │
+│ │                           stress_testing=[1mStressTestingSettings[0m[1m([0m          │ │
+│ │                           [2m│   │   │   │   [0menabled=[3mFalse[0m,                 │ │
+│ │                           [2m│   │   │   │   [0mmax_drawdown_threshold=[1m0[0m[1m.3[0m,    │ │
+│ │                           [2m│   │   │   │   [0mmin_survival_rate=[1m0[0m[1m.7[0m          │ │
+│ │                           [2m│   │   │   [0m[1m)[0m                                  │ │
+│ │                           [2m│   │   [0m[1m)[0m,                                     │ │
+│ │                           [2m│   │   [0moptimization=[1mOptimizationSettings[0m[1m([0m     │ │
+│ │                           [2m│   │   │   [0m                                   │ │
+│ │                           parallel_processing=[1mParallelProcessingSetting…[0m │ │
+│ │                           [2m│   │   │   │   [0menabled=[3mTrue[0m,                  │ │
+│ │                           [2m│   │   │   │   [0mnum_workers=[1m6[0m,                 │ │
+│ │                           [2m│   │   │   │   [0muse_ray=[3mTrue[0m                   │ │
+│ │                           [2m│   │   │   [0m[1m)[0m,                                 │ │
+│ │                           [2m│   │   │   [0mcaching=[1mCachingSettings[0m[1m([0m           │ │
+│ │                           [2m│   │   │   │   [0menabled=[3mTrue[0m,                  │ │
+│ │                           [2m│   │   │   │   [0mmax_size=[1m1000[0m,                 │ │
+│ │                           [2m│   │   │   │   [0mdefault_ttl=[1m3600[0m               │ │
+│ │                           [2m│   │   │   [0m[1m)[0m,                                 │ │
+│ │                           [2m│   │   │   [0m                                   │ │
+│ │                           query_optimization=[1mQueryOptimizationSettings[0m[1m([0m  │ │
+│ │                           [2m│   │   │   │   [0menabled=[3mTrue[0m,                  │ │
+│ │                           [2m│   │   │   │   [0menable_caching=[3mTrue[0m,           │ │
+│ │                           [2m│   │   │   │   [0mcache_ttl=[1m3600[0m                 │ │
+│ │                           [2m│   │   │   [0m[1m)[0m                                  │ │
+│ │                           [2m│   │   [0m[1m)[0m                                      │ │
+│ │                           [2m│   [0m[1m)[0m,                                         │ │
+│ │                           [2m│   [0mcosts=[1mCostSettings[0m[1m([0m                        │ │
+│ │                           [2m│   │   [0mtarget_net_bps=[1m15[0m,                     │ │
+│ │                           [2m│   │   [0mtaker_buffer_bps=[1m9[0m,                    │ │
+│ │                           [2m│   │   [0mdefault_fee_bps=[1m8[0m[1m.0[0m,                   │ │
+│ │                           [2m│   │   [0mdefault_spread_bps=[1m6[0m[1m.0[0m,                │ │
+│ │                           [2m│   │   [0mslippage_alpha=[1m1[0m[1m.1[0m,                    │ │
+│ │                           [2m│   │   [0mnotional_per_trade=[1m1000[0m[1m.0[0m,             │ │
+│ │                           [2m│   │   [0mslippage_floor_bps=[1m1[0m[1m.0[0m,                │ │
+│ │                           [2m│   │   [0mvolatility_slippage_multiplier=[1m0[0m[1m.25[0m,   │ │
+│ │                           [2m│   │   [0madv_liquidity_breakpoints=[1m[[0m            │ │
+│ │                           [2m│   │   │   [0m[1m0.0005[0m,                            │ │
+│ │                           [2m│   │   │   [0m[1m0.002[0m,                             │ │
+│ │                           [2m│   │   │   [0m[1m0.01[0m                               │ │
+│ │                           [2m│   │   [0m[1m][0m,                                     │ │
+│ │                           [2m│   │   [0madv_penalties_bps=[1m[[0m                    │ │
+│ │                           [2m│   │   │   [0m[1m12.0[0m,                              │ │
+│ │                           [2m│   │   │   [0m[1m6.0[0m,                               │ │
+│ │                           [2m│   │   │   [0m[1m3.0[0m,                               │ │
+│ │                           [2m│   │   │   [0m[1m1.0[0m                                │ │
+│ │                           [2m│   │   [0m[1m][0m                                      │ │
+│ │                           [2m│   [0m[1m)[0m,                                         │ │
+│ │                           [2m│   [0martifacts=[1mS3Settings[0m[1m([0m                      │ │
+│ │                           [2m│   │   [0mbucket='huracan-engine',               │ │
+│ │                           [2m│   │   [0mprefix='baselines',                    │ │
+│ │                           [2m│   │   [0mendpoint_url=[3mNone[0m,                     │ │
+│ │                           [2m│   │   [0maccess_key=[3mNone[0m,                       │ │
+│ │                           [2m│   │   [0msecret_key=[3mNone[0m                        │ │
+│ │                           [2m│   [0m[1m)[0m,                                         │ │
+│ │                           [2m│   [0ms3=[1mS3Settings[0m[1m([0m                             │ │
+│ │                           [2m│   │   [0mbucket='huracan-engine',               │ │
+│ │                           [2m│   │   [0mprefix='baselines',                    │ │
+│ │                           [2m│   │   [0mendpoint_url='http://localhost:9000',  │ │
+│ │                           [2m│   │   [0maccess_key='local-access-key',         │ │
+│ │                           [2m│   │   [0msecret_key='local-secret-key'          │ │
+│ │                           [2m│   [0m[1m)[0m,                                         │ │
+│ │                           [2m│   [0mpostgres=[1mPostgresSettings[0m[1m([0m                 │ │
+│ │                           [2m│   │   [0m                                       │ │
+│ │                           dsn='postgresql://haq@localhost:5432/huracan'  │ │
+│ │                           [2m│   [0m[1m)[0m,                                         │ │
+│ │                           [2m│   [0mray=[1mRaySettings[0m[1m([0m                           │ │
+│ │                           [2m│   │   [0maddress=[3mNone[0m,                          │ │
+│ │                           [2m│   │   [0mnamespace='huracan-engine',            │ │
+│ │                           [2m│   │   [0mruntime_env=[1m{[0m[1m}[0m                         │ │
+│ │                           [2m│   [0m[1m)[0m,                                         │ │
+│ │                           [2m│   [0mnotifications=[1mNotificationSettings[0m[1m([0m        │ │
+│ │                           [2m│   │   [0mtelegram_enabled=[3mTrue[0m,                 │ │
+│ │                           [2m│   │   [0m                                       │ │
+│ │                           telegram_webhook_url='https://api.telegram.or… │ │
+│ │                           [2m│   │   [0mtelegram_chat_id='7914196017'          │ │
+│ │                           [2m│   [0m[1m)[0m,                                         │ │
+│ │                           [2m│   [0mdropbox=[1mDropboxSettings[0m[1m([0m                   │ │
+│ │                           [2m│   │   [0menabled=[3mTrue[0m,                          │ │
+│ │                           [2m│   │   [0m                                       │ │
+│ │                           access_token='sl.u.AGEfLXv_9XC-CMSpJ-ICWQXMwT… │ │
+│ │                           [2m│   │   [0mapp_folder='Runpodhuracan',            │ │
+│ │                           [2m│   │   [0msync_logs=[3mTrue[0m,                        │ │
+│ │                           [2m│   │   [0msync_models=[3mTrue[0m,                      │ │
+│ │                           [2m│   │   [0msync_monitoring=[3mTrue[0m,                  │ │
+│ │                           [2m│   │   [0msync_learning=[3mTrue[0m,                    │ │
+│ │                           [2m│   │   [0msync_data_cache=[3mTrue[0m,                  │ │
+│ │                           [2m│   │   [0msync_interval_learning_seconds=[1m300[0m,    │ │
+│ │                           [2m│   │   [0msync_interval_logs_seconds=[1m300[0m,        │ │
+│ │                           [2m│   │   [0msync_interval_models_seconds=[1m1800[0m,     │ │
+│ │                           [2m│   │   [0msync_interval_data_cache_seconds=[1m7200[0m, │ │
+│ │                           [2m│   │   [0mrestore_data_cache_on_startup=[3mTrue[0m     │ │
+│ │                           [2m│   [0m[1m)[0m,                                         │ │
+│ │                           [2m│   [0mexchange=[1mExchangeSettings[0m[1m([0m                 │ │
+│ │                           [2m│   │   [0mprimary='binance',                     │ │
+│ │                           [2m│   │   [0mfallbacks=[1m[[0m                            │ │
+│ │                           [2m│   │   │   [0m'binanceusdm',                     │ │
+│ │                           [2m│   │   │   [0m'coinbase'                         │ │
+│ │                           [2m│   │   [0m[1m][0m,                                     │ │
+│ │                           [2m│   │   [0msandbox=[3mFalse[0m,                         │ │
+│ │                           [2m│   │   [0mcredentials=[1m{[0m[1m}[0m                         │ │
+│ │                           [2m│   [0m[1m)[0m,                                         │ │
+│ │                           [2m│   [0mconfig_dir=[1mPosixPath[0m[1m([0m'/Users/haq/ENGINE    │ │
+│ │                           (HF1) Crsor/engine/src/config'[1m)[0m                │ │
+│ │                           [1m)[0m                                              │ │
+│ │                [3mstart_at[0m = [1mdatetime.datetime[0m[1m([0m[1m2025[0m, [1m6[0m, [1m11[0m, [1m14[0m, [1m3[0m, [1m8[0m, [1m6177[0m, │ │
+│ │                           tzinfo=datetime.timezone.utc[1m)[0m                  │ │
+│ │                  [3msymbol[0m = 'AIA/USDT:USDT'                                │ │
+│ │                 [3msymbols[0m = [1m[[0m                                              │ │
+│ │                           [2m│   [0m'AIA/USDT:USDT',                           │ │
+│ │                           [2m│   [0m'BTC/USDC',                                │ │
+│ │                           [2m│   [0m'UAI/USDT:USDT',                           │ │
+│ │                           [2m│   [0m'ETH/USDC',                                │ │
+│ │                           [2m│   [0m'HYPE/USDT:USDT',                          │ │
+│ │                           [2m│   [0m'H/USDT:USDT',                             │ │
+│ │                           [2m│   [0m'SOON/USDT:USDT',                          │ │
+│ │                           [2m│   [0m'FOLKS/USDT:USDT',                         │ │
+│ │                           [2m│   [0m'HIPPO/USDT:USDT',                         │ │
+│ │                           [2m│   [0m'FARTCOIN/USDT:USDT',                      │ │
+│ │                           [2m│   [0m... +[1m10[0m                                    │ │
+│ │                           [1m][0m                                              │ │
+│ │               [3mtimeframe[0m = '1m'                                           │ │
+│ │          [3muploaded_count[0m = [1m0[0m                                              │ │
+│ ╰──────────────────────────────────────────────────────────────────────────╯ │
+│                                                                              │
+│ [2m/Users/haq/ENGINE (HF1) [0m                                                     │
+│ [2mCrsor/engine/src/cloud/training/datasets/[0m[1mdata_loader.py[0m:81 in load           │
+│                                                                              │
+│   [2m 78 [0m[2m│   │   │   │   [0m[2m# If cache read fails, fall back to download[0m           │
+│   [2m 79 [0m[2m│   │   │   │   [0mlogger.warning("cache_read_failed", path=str(cache_pat │
+│   [2m 80 [0m[2m│   │   [0m                                                               │
+│ ❱  81 [2m│   │   [0mframe = [1;4mself[0m[1;4m._download(query)[0m                                  │
+│   [2m 82 [0m[2m│   │   [0mif len(frame) > 0:  [2m# Only write if we got data[0m                │
+│   [2m 83 [0m[2m│   │   │   [0mtry:                                                       │
+│   [2m 84 [0m[2m│   │   │   │   [0mframe.write_parquet(cache_path)                        │
+│                                                                              │
+│ ╭───────────────────────────────── locals ─────────────────────────────────╮ │
+│ │ [3mcache_path[0m = [1mPosixPath[0m[1m([0m'data/candles/AIA/AIA-USDT_1m_20250611_20251108.… │ │
+│ │      [3mquery[0m = [1mCandleQuery[0m[1m([0m                                                │ │
+│ │              [2m│   [0msymbol='AIA/USDT',                                      │ │
+│ │              [2m│   [0mtimeframe='1m',                                         │ │
+│ │              [2m│   [0mstart_at=[1mdatetime[0m[1m.datetime[0m[1m([0m[1m2025[0m, [1m6[0m, [1m11[0m, [1m14[0m, [1m3[0m, [1m8[0m, [1m6177[0m, │ │
+│ │              tzinfo=datetime.timezone.utc[1m)[0m,                              │ │
+│ │              [2m│   [0mend_at=[1mdatetime[0m[1m.datetime[0m[1m([0m[1m2025[0m, [1m11[0m, [1m8[0m, [1m14[0m, [1m3[0m, [1m8[0m, [1m6177[0m,   │ │
+│ │              tzinfo=datetime.timezone.utc[1m)[0m                               │ │
+│ │              [1m)[0m                                                           │ │
+│ │       [3mself[0m = [1m<[0m[1msrc.cloud.training.datasets.data_loader.CandleDataLoader[0m   │ │
+│ │              object at [1m0x13a4c5e90[0m[1m>[0m                                      │ │
+│ │  [3muse_cache[0m = [3mTrue[0m                                                        │ │
+│ ╰──────────────────────────────────────────────────────────────────────────╯ │
+│                                                                              │
+│ [2m/Users/haq/ENGINE (HF1) [0m                                                     │
+│ [2mCrsor/engine/src/cloud/training/datasets/[0m[1mdata_loader.py[0m:197 in _download     │
+│                                                                              │
+│   [2m194 [0m[2m│   │   │   [0msymbol=query.symbol,                                       │
+│   [2m195 [0m[2m│   │   │   [0mexchanges=[ex_id for ex_id, _ in exchanges_to_try],        │
+│   [2m196 [0m[2m│   │   [0m)                                                              │
+│ ❱ 197 [2m│   │   [0m[1;4mraise[0m[1;4m [0m[1;4mRuntimeError[0m[1;4m([0m[1;4mf[0m[1;4m"[0m[1;4mFailed to download [0m[1;4m{[0m[1;4mquery.symbol[0m[1;4m}[0m[1;4m from al[0m │
+│   [2m198 [0m[2m│   [0m                                                                   │
+│   [2m199 [0m[2m│   [0mdef _download_from_exchange(                                       │
+│   [2m200 [0m[2m│   │   [0mself,                                                          │
+│                                                                              │
+│ ╭───────────────────────────────── locals ─────────────────────────────────╮ │
+│ │        [3merror_str[0m = 'bybit does not have market symbol aia/usdt'          │ │
+│ │  [3mexchange_client[0m = [1m<[0m[1msrc.cloud.training.services.exchange.ExchangeClient[0m  │ │
+│ │                    object at [1m0x13a1e0cd0[0m[1m>[0m                                │ │
+│ │      [3mexchange_id[0m = 'bybit'                                               │ │
+│ │ [3mexchanges_to_try[0m = [1m[[0m                                                     │ │
+│ │                    [2m│   [0m[1m([0m                                                 │ │
+│ │                    [2m│   │   [0m'binance',                                    │ │
+│ │                    [2m│   │   [0m                                              │ │
+│ │                    [1m<[0m[1msrc.cloud.training.services.exchange.ExchangeClient[0m  │ │
+│ │                    object at [1m0x13a50c310[0m>                                │ │
+│ │                    [2m│   [0m[1m)[0m,                                                │ │
+│ │                    [2m│   [0m[1m([0m                                                 │ │
+│ │                    [2m│   │   [0m'kraken',                                     │ │
+│ │                    [2m│   │   [0m                                              │ │
+│ │                    <src.cloud.training.services.exchange.ExchangeClient  │ │
+│ │                    object at [1m0x13a50c950[0m>                                │ │
+│ │                    [2m│   [0m[1m)[0m,                                                │ │
+│ │                    [2m│   [0m[1m([0m                                                 │ │
+│ │                    [2m│   │   [0m'okx',                                        │ │
+│ │                    [2m│   │   [0m                                              │ │
+│ │                    <src.cloud.training.services.exchange.ExchangeClient  │ │
+│ │                    object at [1m0x139e2e0d0[0m>                                │ │
+│ │                    [2m│   [0m[1m)[0m,                                                │ │
+│ │                    [2m│   [0m[1m([0m                                                 │ │
+│ │                    [2m│   │   [0m'bybit',                                      │ │
+│ │                    [2m│   │   [0m                                              │ │
+│ │                    <src.cloud.training.services.exchange.ExchangeClient  │ │
+│ │                    object at [1m0x13a1e0cd0[0m[1m>[0m                                │ │
+│ │                    [2m│   [0m[1m)[0m                                                 │ │
+│ │                    [1m][0m                                                     │ │
+│ │         [3mexecutor[0m = [1m<[0m[1mconcurrent.futures.thread.ThreadPoolExecutor[0m object  │ │
+│ │                    at [1m0x139688b10[0m[1m>[0m                                       │ │
+│ │  [3mfallback_client[0m = [1m<[0m[1msrc.cloud.training.services.exchange.ExchangeClient[0m  │ │
+│ │                    object at [1m0x13a1e0cd0[0m[1m>[0m                                │ │
+│ │      [3mfallback_id[0m = 'bybit'                                               │ │
+│ │           [3mfuture[0m = [1m<[0m[1mFuture[0m at [1m0x13e17c790[0m state=finished raised          │ │
+│ │                    BadSymbol[1m>[0m                                            │ │
+│ │          [3mfutures[0m = [1m{[0m                                                     │ │
+│ │                    [2m│   [0m[1m<[0m[1mFuture[0m at [1m0x13cbefe90[0m state=finished raised      │ │
+│ │                    BadSymbol>: [1m([0m                                         │ │
+│ │                    [2m│   │   [0m'binance',                                    │ │
+│ │                    [2m│   │   [0m                                              │ │
+│ │                    <src.cloud.training.services.exchange.ExchangeClient  │ │
+│ │                    object at [1m0x13a50c310[0m>                                │ │
+│ │                    [2m│   [0m[1m)[0m,                                                │ │
+│ │                    [2m│   [0m<Future at [1m0x13e16a390[0m state=finished raised      │ │
+│ │                    BadSymbol>: [1m([0m                                         │ │
+│ │                    [2m│   │   [0m'kraken',                                     │ │
+│ │                    [2m│   │   [0m                                              │ │
+│ │                    <src.cloud.training.services.exchange.ExchangeClient  │ │
+│ │                    object at [1m0x13a50c950[0m>                                │ │
+│ │                    [2m│   [0m[1m)[0m,                                                │ │
+│ │                    [2m│   [0m<Future at [1m0x13e17da90[0m state=finished raised      │ │
+│ │                    BadSymbol>: [1m([0m                                         │ │
+│ │                    [2m│   │   [0m'okx',                                        │ │
+│ │                    [2m│   │   [0m                                              │ │
+│ │                    <src.cloud.training.services.exchange.ExchangeClient  │ │
+│ │                    object at [1m0x139e2e0d0[0m>                                │ │
+│ │                    [2m│   [0m[1m)[0m,                                                │ │
+│ │                    [2m│   [0m<Future at [1m0x13e17c790[0m state=finished raised      │ │
+│ │                    BadSymbol>: [1m([0m                                         │ │
+│ │                    [2m│   │   [0m'bybit',                                      │ │
+│ │                    [2m│   │   [0m                                              │ │
+│ │                    <src.cloud.training.services.exchange.ExchangeClient  │ │
+│ │                    object at [1m0x13a1e0cd0[0m[1m>[0m                                │ │
+│ │                    [2m│   [0m[1m)[0m                                                 │ │
+│ │                    [1m}[0m                                                     │ │
+│ │            [3mquery[0m = [1mCandleQuery[0m[1m([0m                                          │ │
+│ │                    [2m│   [0msymbol='AIA/USDT',                                │ │
+│ │                    [2m│   [0mtimeframe='1m',                                   │ │
+│ │                    [2m│   [0mstart_at=[1mdatetime[0m[1m.datetime[0m[1m([0m[1m2025[0m, [1m6[0m, [1m11[0m, [1m14[0m, [1m3[0m, [1m8[0m, │ │
+│ │                    [1m6177[0m, tzinfo=datetime.timezone.utc[1m)[0m,                  │ │
+│ │                    [2m│   [0mend_at=[1mdatetime[0m[1m.datetime[0m[1m([0m[1m2025[0m, [1m11[0m, [1m8[0m, [1m14[0m, [1m3[0m, [1m8[0m,   │ │
+│ │                    [1m6177[0m, tzinfo=datetime.timezone.utc[1m)[0m                   │ │
+│ │                    [1m)[0m                                                     │ │
+│ │             [3mself[0m = [1m<[0m[1msrc.cloud.training.datasets.data_loader.CandleDataL…[0m │ │
+│ │                    object at [1m0x13a4c5e90[0m[1m>[0m                                │ │
+│ │  [3mskip_validation[0m = [3mFalse[0m                                                 │ │
+│ ╰──────────────────────────────────────────────────────────────────────────╯ │
+╰──────────────────────────────────────────────────────────────────────────────╯
+[1mRuntimeError: [0mFailed to download AIA/USDT from all exchanges
+
+[3mDuring handling of the above exception, another exception occurred:[0m
+
+╭───────────────────── [1mTraceback [0m[1;2m(most recent call last)[0m ──────────────────────╮
+│ [2m/Users/haq/ENGINE (HF1) [0m                                                     │
+│ [2mCrsor/engine/scripts/[0m[1mdownload_and_upload_candles.py[0m:152 in                   │
+│ download_and_upload_candles                                                  │
+│                                                                              │
+│   [2m149 [0m[2m│   │   │   │   │   │   [0mstart_at=start_at,                             │
+│   [2m150 [0m[2m│   │   │   │   │   │   [0mend_at=end_at,                                 │
+│   [2m151 [0m[2m│   │   │   │   │   [0m)                                                  │
+│ ❱ 152 [2m│   │   │   │   │   [0mframe = loader.load(query, use_cache=True)         │
+│   [2m153 [0m[2m│   │   │   │   [0melse:                                                  │
+│   [2m154 [0m[2m│   │   │   │   │   [0mraise                                              │
+│   [2m155 [0m                                                                       │
+│                                                                              │
+│ ╭───────────────────────────────── locals ─────────────────────────────────╮ │
+│ │              [3mapp_folder[0m = 'Runpodhuracan'                                │ │
+│ │             [3mcredentials[0m = [1m{[0m[1m}[0m                                             │ │
+│ │                    [3mdays[0m = [1m150[0m                                            │ │
+│ │ [3mdelay_between_downloads[0m = [1m0.5[0m                                            │ │
+│ │        [3mdownloaded_count[0m = [1m0[0m                                              │ │
+│ │    [3mdropbox_access_token[0m = 'sl.u.AGEfLXv_9XC-CMSpJ-ICWQXMwTk22GdAmQRu73h… │ │
+│ │         [3mdropbox_enabled[0m = [3mTrue[0m                                           │ │
+│ │            [3mdropbox_sync[0m = [1m<[0m[1msrc.cloud.training.integrations.dropbox_sync…[0m │ │
+│ │                           object at [1m0x134f62a90[0m[1m>[0m                         │ │
+│ │           [3mdropbox_token[0m = [3mNone[0m                                           │ │
+│ │                       [3me[0m = [1mRuntimeError[0m[1m([0m'Failed to download AIA/USDT:USDT │ │
+│ │                           from all exchanges'[1m)[0m                           │ │
+│ │                  [3mend_at[0m = [1mdatetime.datetime[0m[1m([0m[1m2025[0m, [1m11[0m, [1m8[0m, [1m14[0m, [1m3[0m, [1m8[0m, [1m6177[0m, │ │
+│ │                           tzinfo=datetime.timezone.utc[1m)[0m                  │ │
+│ │               [3merror_msg[0m = 'failed to download aia/usdt:usdt from all     │ │
+│ │                           exchanges'                                     │ │
+│ │                [3mexchange[0m = [1m<[0m[1msrc.cloud.training.services.exchange.Exchang…[0m │ │
+│ │                           object at [1m0x13a50c310[0m[1m>[0m                         │ │
+│ │             [3mexchange_id[0m = 'binance'                                      │ │
+│ │            [3mfailed_count[0m = [1m0[0m                                              │ │
+│ │                     [3midx[0m = [1m0[0m                                              │ │
+│ │                  [3mloader[0m = [1m<[0m[1msrc.cloud.training.datasets.data_loader.Cand…[0m │ │
+│ │                           object at [1m0x13a4c5e90[0m[1m>[0m                         │ │
+│ │       [3mnormalized_symbol[0m = 'AIA/USDT'                                     │ │
+│ │           [3mquality_suite[0m = [1m<[0m[1msrc.cloud.training.datasets.quality_checks.D…[0m │ │
+│ │                           object at [1m0x13a39d9d0[0m[1m>[0m                         │ │
+│ │                   [3mquery[0m = [1mCandleQuery[0m[1m([0m                                   │ │
+│ │                           [2m│   [0msymbol='AIA/USDT:USDT',                    │ │
+│ │                           [2m│   [0mtimeframe='1m',                            │ │
+│ │                           [2m│   [0mstart_at=[1mdatetime[0m[1m.datetime[0m[1m([0m[1m2025[0m, [1m6[0m, [1m11[0m,    │ │
+│ │                           [1m14[0m, [1m3[0m, [1m8[0m, [1m6177[0m, tzinfo=datetime.timezone.utc[1m)[0m, │ │
+│ │                           [2m│   [0mend_at=[1mdatetime[0m[1m.datetime[0m[1m([0m[1m2025[0m, [1m11[0m, [1m8[0m, [1m14[0m,  │ │
+│ │                           [1m3[0m, [1m8[0m, [1m6177[0m, tzinfo=datetime.timezone.utc[1m)[0m      │ │
+│ │                           [1m)[0m                                              │ │
+│ │                [3msettings[0m = [1mEngineSettings[0m[1m([0m                                │ │
+│ │                           [2m│   [0menvironment='local',                       │ │
+│ │                           [2m│   [0mmode='shadow',                             │ │
+│ │                           [2m│   [0mscheduler=[1mSchedulerSettings[0m[1m([0m               │ │
+│ │                           [2m│   │   [0mdaily_run_time_utc=[1mdatetime[0m[1m.time[0m[1m([0m[1m2[0m,    │ │
+│ │                           [1m0[0m[1m)[0m,                                            │ │
+│ │                           [2m│   │   [0mtimezone='UTC'                         │ │
+│ │                           [2m│   [0m[1m)[0m,                                         │ │
+│ │                           [2m│   [0muniverse=[1mUniverseSettings[0m[1m([0m                 │ │
+│ │                           [2m│   │   [0mtarget_size=[1m20[0m,                        │ │
+│ │                           [2m│   │   [0mliquidity_threshold_adv_gbp=[1m10000000[0m,  │ │
+│ │                           [2m│   │   [0mmax_spread_bps=[1m8[0m,                      │ │
+│ │                           [2m│   │   [0mrebalance_frequency_days=[1m7[0m             │ │
+│ │                           [2m│   [0m[1m)[0m,                                         │ │
+│ │                           [2m│   [0mtraining=[1mTrainingSettings[0m[1m([0m                 │ │
+│ │                           [2m│   │   [0mwindow_days=[1m150[0m,                       │ │
+│ │                           [2m│   │   [0mwalk_forward=[1mWalkForwardSettings[0m[1m([0m      │ │
+│ │                           [2m│   │   │   [0mtrain_days=[1m20[0m,                     │ │
+│ │                           [2m│   │   │   [0mtest_days=[1m5[0m,                       │ │
+│ │                           [2m│   │   │   [0mmin_trades=[1m300[0m                     │ │
+│ │                           [2m│   │   [0m[1m)[0m,                                     │ │
+│ │                           [2m│   │   [0mrl_agent=[1mRLAgentSettings[0m[1m([0m              │ │
+│ │                           [2m│   │   │   [0menabled=[3mTrue[0m,                      │ │
+│ │                           [2m│   │   │   [0mlearning_rate=[1m0[0m[1m.0003[0m,              │ │
+│ │                           [2m│   │   │   [0mgamma=[1m0[0m[1m.99[0m,                        │ │
+│ │                           [2m│   │   │   [0mepsilon=[1m0[0m[1m.2[0m,                       │ │
+│ │                           [2m│   │   │   [0mclip_epsilon=[1m0[0m[1m.2[0m,                  │ │
+│ │                           [2m│   │   │   [0mentropy_coef=[1m0[0m[1m.01[0m,                 │ │
+│ │                           [2m│   │   │   [0mn_epochs=[1m10[0m,                       │ │
+│ │                           [2m│   │   │   [0mepochs_per_update=[1m10[0m,              │ │
+│ │                           [2m│   │   │   [0mbatch_size=[1m64[0m,                     │ │
+│ │                           [2m│   │   │   [0mhidden_dim=[1m256[0m,                    │ │
+│ │                           [2m│   │   │   [0mstate_dim=[1m80[0m,                      │ │
+│ │                           [2m│   │   │   [0mdevice='cpu'                       │ │
+│ │                           [2m│   │   [0m[1m)[0m,                                     │ │
+│ │                           [2m│   │   [0mshadow_trading=[1mShadowTradingSettings[0m[1m([0m  │ │
+│ │                           [2m│   │   │   [0menabled=[3mTrue[0m,                      │ │
+│ │                           [2m│   │   │   [0mposition_size_gbp=[1m1000[0m[1m.0[0m,          │ │
+│ │                           [2m│   │   │   [0mstop_loss_bps=[1m15[0m,                  │ │
+│ │                           [2m│   │   │   [0mtake_profit_bps=[1m20[0m,                │ │
+│ │                           [2m│   │   │   [0mmax_hold_hours=[1m24[0m,                 │ │
+│ │                           [2m│   │   │   [0mmax_hold_minutes=[1m120[0m,              │ │
+│ │                           [2m│   │   │   [0mmin_confidence_threshold=[1m0[0m[1m.52[0m      │ │
+│ │                           [2m│   │   [0m[1m)[0m,                                     │ │
+│ │                           [2m│   │   [0mmemory=[1mMemorySettings[0m[1m([0m                 │ │
+│ │                           [2m│   │   │   [0mvector_dim=[1m128[0m,                    │ │
+│ │                           [2m│   │   │   [0msimilarity_threshold=[1m0[0m[1m.7[0m,          │ │
+│ │                           [2m│   │   │   [0mmax_similar_patterns=[1m20[0m,           │ │
+│ │                           [2m│   │   │   [0mpattern_min_trades=[1m5[0m               │ │
+│ │                           [2m│   │   [0m[1m)[0m,                                     │ │
+│ │                           [2m│   │   [0mmonitoring=[1mMonitoringSettings[0m[1m([0m         │ │
+│ │                           [2m│   │   │   [0menabled=[3mTrue[0m,                      │ │
+│ │                           [2m│   │   │   [0mcheck_interval_seconds=[1m300[0m,        │ │
+│ │                           [2m│   │   │   [0mwin_rate_stddev_threshold=[1m2[0m[1m.0[0m,     │ │
+│ │                           [2m│   │   │   [0mprofit_stddev_threshold=[1m2[0m[1m.0[0m,       │ │
+│ │                           [2m│   │   │   [0mvolume_stddev_threshold=[1m2[0m[1m.5[0m,       │ │
+│ │                           [2m│   │   │   [0mauto_remediation_enabled=[3mTrue[0m,     │ │
+│ │                           [2m│   │   │   [0mpause_failing_patterns=[3mTrue[0m,       │ │
+│ │                           [2m│   │   │   [0mpattern_failure_threshold=[1m0[0m[1m.45[0m     │ │
+│ │                           [2m│   │   [0m[1m)[0m,                                     │ │
+│ │                           [2m│   │   [0mvalidation=[1mValidationSettings[0m[1m([0m         │ │
+│ │                           [2m│   │   │   [0menabled=[3mTrue[0m,                      │ │
+│ │                           [2m│   │   │   [0m                                   │ │
+│ │                           mandatory_oos=[1mMandatoryOOSSettings[0m[1m([0m            │ │
+│ │                           [2m│   │   │   │   [0menabled=[3mTrue[0m,                  │ │
+│ │                           [2m│   │   │   │   [0mmin_oos_sharpe=[1m1[0m[1m.0[0m,            │ │
+│ │                           [2m│   │   │   │   [0mmin_oos_win_rate=[1m0[0m[1m.55[0m,         │ │
+│ │                           [2m│   │   │   │   [0mmax_train_test_gap=[1m0[0m[1m.3[0m,        │ │
+│ │                           [2m│   │   │   │   [0mmax_sharpe_std=[1m0[0m[1m.2[0m,            │ │
+│ │                           [2m│   │   │   │   [0mmin_test_trades=[1m100[0m,           │ │
+│ │                           [2m│   │   │   │   [0mmin_windows=[1m5[0m                  │ │
+│ │                           [2m│   │   │   [0m[1m)[0m,                                 │ │
+│ │                           [2m│   │   │   [0m                                   │ │
+│ │                           overfitting_detection=[1mOverfittingDetectionSet…[0m │ │
+│ │                           [2m│   │   │   │   [0menabled=[3mTrue[0m,                  │ │
+│ │                           [2m│   │   │   │   [0mtrain_test_gap_threshold=[1m0[0m[1m.5[0m,  │ │
+│ │                           [2m│   │   │   │   [0mcv_stability_threshold=[1m0[0m[1m.3[0m,    │ │
+│ │                           [2m│   │   │   │   [0mdegradation_threshold=[1m-0.2[0m     │ │
+│ │                           [2m│   │   │   [0m[1m)[0m,                                 │ │
+│ │                           [2m│   │   │   [0m                                   │ │
+│ │                           data_validation=[1mDataValidationSettings[0m[1m([0m        │ │
+│ │                           [2m│   │   │   │   [0menabled=[3mTrue[0m,                  │ │
+│ │                           [2m│   │   │   │   [0moutlier_z_threshold=[1m3[0m[1m.0[0m,       │ │
+│ │                           [2m│   │   │   │   [0mmax_missing_pct=[1m0[0m[1m.05[0m,          │ │
+│ │                           [2m│   │   │   │   [0mmax_age_hours=[1m24[0m,              │ │
+│ │                           [2m│   │   │   │   [0mmin_coverage=[1m0[0m[1m.95[0m              │ │
+│ │                           [2m│   │   │   [0m[1m)[0m,                                 │ │
+│ │                           [2m│   │   │   [0m                                   │ │
+│ │                           paper_trading=[1mPaperTradingSettings[0m[1m([0m            │ │
+│ │                           [2m│   │   │   │   [0menabled=[3mFalse[0m,                 │ │
+│ │                           [2m│   │   │   │   [0mmin_duration_days=[1m14[0m,          │ │
+│ │                           [2m│   │   │   │   [0mmin_trades=[1m100[0m,                │ │
+│ │                           [2m│   │   │   │   [0mmin_win_rate=[1m0[0m[1m.55[0m,             │ │
+│ │                           [2m│   │   │   │   [0mmin_sharpe=[1m1[0m[1m.0[0m,                │ │
+│ │                           [2m│   │   │   │   [0mmax_backtest_deviation=[1m0[0m[1m.2[0m     │ │
+│ │                           [2m│   │   │   [0m[1m)[0m,                                 │ │
+│ │                           [2m│   │   │   [0m                                   │ │
+│ │                           stress_testing=[1mStressTestingSettings[0m[1m([0m          │ │
+│ │                           [2m│   │   │   │   [0menabled=[3mFalse[0m,                 │ │
+│ │                           [2m│   │   │   │   [0mmax_drawdown_threshold=[1m0[0m[1m.3[0m,    │ │
+│ │                           [2m│   │   │   │   [0mmin_survival_rate=[1m0[0m[1m.7[0m          │ │
+│ │                           [2m│   │   │   [0m[1m)[0m                                  │ │
+│ │                           [2m│   │   [0m[1m)[0m,                                     │ │
+│ │                           [2m│   │   [0moptimization=[1mOptimizationSettings[0m[1m([0m     │ │
+│ │                           [2m│   │   │   [0m                                   │ │
+│ │                           parallel_processing=[1mParallelProcessingSetting…[0m │ │
+│ │                           [2m│   │   │   │   [0menabled=[3mTrue[0m,                  │ │
+│ │                           [2m│   │   │   │   [0mnum_workers=[1m6[0m,                 │ │
+│ │                           [2m│   │   │   │   [0muse_ray=[3mTrue[0m                   │ │
+│ │                           [2m│   │   │   [0m[1m)[0m,                                 │ │
+│ │                           [2m│   │   │   [0mcaching=[1mCachingSettings[0m[1m([0m           │ │
+│ │                           [2m│   │   │   │   [0menabled=[3mTrue[0m,                  │ │
+│ │                           [2m│   │   │   │   [0mmax_size=[1m1000[0m,                 │ │
+│ │                           [2m│   │   │   │   [0mdefault_ttl=[1m3600[0m               │ │
+│ │                           [2m│   │   │   [0m[1m)[0m,                                 │ │
+│ │                           [2m│   │   │   [0m                                   │ │
+│ │                           query_optimization=[1mQueryOptimizationSettings[0m[1m([0m  │ │
+│ │                           [2m│   │   │   │   [0menabled=[3mTrue[0m,                  │ │
+│ │                           [2m│   │   │   │   [0menable_caching=[3mTrue[0m,           │ │
+│ │                           [2m│   │   │   │   [0mcache_ttl=[1m3600[0m                 │ │
+│ │                           [2m│   │   │   [0m[1m)[0m                                  │ │
+│ │                           [2m│   │   [0m[1m)[0m                                      │ │
+│ │                           [2m│   [0m[1m)[0m,                                         │ │
+│ │                           [2m│   [0mcosts=[1mCostSettings[0m[1m([0m                        │ │
+│ │                           [2m│   │   [0mtarget_net_bps=[1m15[0m,                     │ │
+│ │                           [2m│   │   [0mtaker_buffer_bps=[1m9[0m,                    │ │
+│ │                           [2m│   │   [0mdefault_fee_bps=[1m8[0m[1m.0[0m,                   │ │
+│ │                           [2m│   │   [0mdefault_spread_bps=[1m6[0m[1m.0[0m,                │ │
+│ │                           [2m│   │   [0mslippage_alpha=[1m1[0m[1m.1[0m,                    │ │
+│ │                           [2m│   │   [0mnotional_per_trade=[1m1000[0m[1m.0[0m,             │ │
+│ │                           [2m│   │   [0mslippage_floor_bps=[1m1[0m[1m.0[0m,                │ │
+│ │                           [2m│   │   [0mvolatility_slippage_multiplier=[1m0[0m[1m.25[0m,   │ │
+│ │                           [2m│   │   [0madv_liquidity_breakpoints=[1m[[0m            │ │
+│ │                           [2m│   │   │   [0m[1m0.0005[0m,                            │ │
+│ │                           [2m│   │   │   [0m[1m0.002[0m,                             │ │
+│ │                           [2m│   │   │   [0m[1m0.01[0m                               │ │
+│ │                           [2m│   │   [0m[1m][0m,                                     │ │
+│ │                           [2m│   │   [0madv_penalties_bps=[1m[[0m                    │ │
+│ │                           [2m│   │   │   [0m[1m12.0[0m,                              │ │
+│ │                           [2m│   │   │   [0m[1m6.0[0m,                               │ │
+│ │                           [2m│   │   │   [0m[1m3.0[0m,                               │ │
+│ │                           [2m│   │   │   [0m[1m1.0[0m                                │ │
+│ │                           [2m│   │   [0m[1m][0m                                      │ │
+│ │                           [2m│   [0m[1m)[0m,                                         │ │
+│ │                           [2m│   [0martifacts=[1mS3Settings[0m[1m([0m                      │ │
+│ │                           [2m│   │   [0mbucket='huracan-engine',               │ │
+│ │                           [2m│   │   [0mprefix='baselines',                    │ │
+│ │                           [2m│   │   [0mendpoint_url=[3mNone[0m,                     │ │
+│ │                           [2m│   │   [0maccess_key=[3mNone[0m,                       │ │
+│ │                           [2m│   │   [0msecret_key=[3mNone[0m                        │ │
+│ │                           [2m│   [0m[1m)[0m,                                         │ │
+│ │                           [2m│   [0ms3=[1mS3Settings[0m[1m([0m                             │ │
+│ │                           [2m│   │   [0mbucket='huracan-engine',               │ │
+│ │                           [2m│   │   [0mprefix='baselines',                    │ │
+│ │                           [2m│   │   [0mendpoint_url='http://localhost:9000',  │ │
+│ │                           [2m│   │   [0maccess_key='local-access-key',         │ │
+│ │                           [2m│   │   [0msecret_key='local-secret-key'          │ │
+│ │                           [2m│   [0m[1m)[0m,                                         │ │
+│ │                           [2m│   [0mpostgres=[1mPostgresSettings[0m[1m([0m                 │ │
+│ │                           [2m│   │   [0m                                       │ │
+│ │                           dsn='postgresql://haq@localhost:5432/huracan'  │ │
+│ │                           [2m│   [0m[1m)[0m,                                         │ │
+│ │                           [2m│   [0mray=[1mRaySettings[0m[1m([0m                           │ │
+│ │                           [2m│   │   [0maddress=[3mNone[0m,                          │ │
+│ │                           [2m│   │   [0mnamespace='huracan-engine',            │ │
+│ │                           [2m│   │   [0mruntime_env=[1m{[0m[1m}[0m                         │ │
+│ │                           [2m│   [0m[1m)[0m,                                         │ │
+│ │                           [2m│   [0mnotifications=[1mNotificationSettings[0m[1m([0m        │ │
+│ │                           [2m│   │   [0mtelegram_enabled=[3mTrue[0m,                 │ │
+│ │                           [2m│   │   [0m                                       │ │
+│ │                           telegram_webhook_url='https://api.telegram.or… │ │
+│ │                           [2m│   │   [0mtelegram_chat_id='7914196017'          │ │
+│ │                           [2m│   [0m[1m)[0m,                                         │ │
+│ │                           [2m│   [0mdropbox=[1mDropboxSettings[0m[1m([0m                   │ │
+│ │                           [2m│   │   [0menabled=[3mTrue[0m,                          │ │
+│ │                           [2m│   │   [0m                                       │ │
+│ │                           access_token='sl.u.AGEfLXv_9XC-CMSpJ-ICWQXMwT… │ │
+│ │                           [2m│   │   [0mapp_folder='Runpodhuracan',            │ │
+│ │                           [2m│   │   [0msync_logs=[3mTrue[0m,                        │ │
+│ │                           [2m│   │   [0msync_models=[3mTrue[0m,                      │ │
+│ │                           [2m│   │   [0msync_monitoring=[3mTrue[0m,                  │ │
+│ │                           [2m│   │   [0msync_learning=[3mTrue[0m,                    │ │
+│ │                           [2m│   │   [0msync_data_cache=[3mTrue[0m,                  │ │
+│ │                           [2m│   │   [0msync_interval_learning_seconds=[1m300[0m,    │ │
+│ │                           [2m│   │   [0msync_interval_logs_seconds=[1m300[0m,        │ │
+│ │                           [2m│   │   [0msync_interval_models_seconds=[1m1800[0m,     │ │
+│ │                           [2m│   │   [0msync_interval_data_cache_seconds=[1m7200[0m, │ │
+│ │                           [2m│   │   [0mrestore_data_cache_on_startup=[3mTrue[0m     │ │
+│ │                           [2m│   [0m[1m)[0m,                                         │ │
+│ │                           [2m│   [0mexchange=[1mExchangeSettings[0m[1m([0m                 │ │
+│ │                           [2m│   │   [0mprimary='binance',                     │ │
+│ │                           [2m│   │   [0mfallbacks=[1m[[0m                            │ │
+│ │                           [2m│   │   │   [0m'binanceusdm',                     │ │
+│ │                           [2m│   │   │   [0m'coinbase'                         │ │
+│ │                           [2m│   │   [0m[1m][0m,                                     │ │
+│ │                           [2m│   │   [0msandbox=[3mFalse[0m,                         │ │
+│ │                           [2m│   │   [0mcredentials=[1m{[0m[1m}[0m                         │ │
+│ │                           [2m│   [0m[1m)[0m,                                         │ │
+│ │                           [2m│   [0mconfig_dir=[1mPosixPath[0m[1m([0m'/Users/haq/ENGINE    │ │
+│ │                           (HF1) Crsor/engine/src/config'[1m)[0m                │ │
+│ │                           [1m)[0m                                              │ │
+│ │                [3mstart_at[0m = [1mdatetime.datetime[0m[1m([0m[1m2025[0m, [1m6[0m, [1m11[0m, [1m14[0m, [1m3[0m, [1m8[0m, [1m6177[0m, │ │
+│ │                           tzinfo=datetime.timezone.utc[1m)[0m                  │ │
+│ │                  [3msymbol[0m = 'AIA/USDT:USDT'                                │ │
+│ │                 [3msymbols[0m = [1m[[0m                                              │ │
+│ │                           [2m│   [0m'AIA/USDT:USDT',                           │ │
+│ │                           [2m│   [0m'BTC/USDC',                                │ │
+│ │                           [2m│   [0m'UAI/USDT:USDT',                           │ │
+│ │                           [2m│   [0m'ETH/USDC',                                │ │
+│ │                           [2m│   [0m'HYPE/USDT:USDT',                          │ │
+│ │                           [2m│   [0m'H/USDT:USDT',                             │ │
+│ │                           [2m│   [0m'SOON/USDT:USDT',                          │ │
+│ │                           [2m│   [0m'FOLKS/USDT:USDT',                         │ │
+│ │                           [2m│   [0m'HIPPO/USDT:USDT',                         │ │
+│ │                           [2m│   [0m'FARTCOIN/USDT:USDT',                      │ │
+│ │                           [2m│   [0m... +[1m10[0m                                    │ │
+│ │                           [1m][0m                                              │ │
+│ │               [3mtimeframe[0m = '1m'                                           │ │
+│ │          [3muploaded_count[0m = [1m0[0m                                              │ │
+│ ╰──────────────────────────────────────────────────────────────────────────╯ │
+│                                                                              │
+│ [2m/Users/haq/ENGINE (HF1) [0m                                                     │
+│ [2mCrsor/engine/src/cloud/training/datasets/[0m[1mdata_loader.py[0m:81 in load           │
+│                                                                              │
+│   [2m 78 [0m[2m│   │   │   │   [0m[2m# If cache read fails, fall back to download[0m           │
+│   [2m 79 [0m[2m│   │   │   │   [0mlogger.warning("cache_read_failed", path=str(cache_pat │
+│   [2m 80 [0m[2m│   │   [0m                                                               │
+│ ❱  81 [2m│   │   [0mframe = [1;4mself[0m[1;4m._download(query)[0m                                  │
+│   [2m 82 [0m[2m│   │   [0mif len(frame) > 0:  [2m# Only write if we got data[0m                │
+│   [2m 83 [0m[2m│   │   │   [0mtry:                                                       │
+│   [2m 84 [0m[2m│   │   │   │   [0mframe.write_parquet(cache_path)                        │
+│                                                                              │
+│ ╭───────────────────────────────── locals ─────────────────────────────────╮ │
+│ │ [3mcache_path[0m = [1mPosixPath[0m[1m([0m'data/candles/AIA/AIA-USDT_1m_20250611_20251108.… │ │
+│ │      [3mquery[0m = [1mCandleQuery[0m[1m([0m                                                │ │
+│ │              [2m│   [0msymbol='AIA/USDT:USDT',                                 │ │
+│ │              [2m│   [0mtimeframe='1m',                                         │ │
+│ │              [2m│   [0mstart_at=[1mdatetime[0m[1m.datetime[0m[1m([0m[1m2025[0m, [1m6[0m, [1m11[0m, [1m14[0m, [1m3[0m, [1m8[0m, [1m6177[0m, │ │
+│ │              tzinfo=datetime.timezone.utc[1m)[0m,                              │ │
+│ │              [2m│   [0mend_at=[1mdatetime[0m[1m.datetime[0m[1m([0m[1m2025[0m, [1m11[0m, [1m8[0m, [1m14[0m, [1m3[0m, [1m8[0m, [1m6177[0m,   │ │
+│ │              tzinfo=datetime.timezone.utc[1m)[0m                               │ │
+│ │              [1m)[0m                                                           │ │
+│ │       [3mself[0m = [1m<[0m[1msrc.cloud.training.datasets.data_loader.CandleDataLoader[0m   │ │
+│ │              object at [1m0x13a4c5e90[0m[1m>[0m                                      │ │
+│ │  [3muse_cache[0m = [3mTrue[0m                                                        │ │
+│ ╰──────────────────────────────────────────────────────────────────────────╯ │
+│                                                                              │
+│ [2m/Users/haq/ENGINE (HF1) [0m                                                     │
+│ [2mCrsor/engine/src/cloud/training/datasets/[0m[1mdata_loader.py[0m:197 in _download     │
+│                                                                              │
+│   [2m194 [0m[2m│   │   │   [0msymbol=query.symbol,                                       │
+│   [2m195 [0m[2m│   │   │   [0mexchanges=[ex_id for ex_id, _ in exchanges_to_try],        │
+│   [2m196 [0m[2m│   │   [0m)                                                              │
+│ ❱ 197 [2m│   │   [0m[1;4mraise[0m[1;4m [0m[1;4mRuntimeError[0m[1;4m([0m[1;4mf[0m[1;4m"[0m[1;4mFailed to download [0m[1;4m{[0m[1;4mquery.symbol[0m[1;4m}[0m[1;4m from al[0m │
+│   [2m198 [0m[2m│   [0m                                                                   │
+│   [2m199 [0m[2m│   [0mdef _download_from_exchange(                                       │
+│   [2m200 [0m[2m│   │   [0mself,                                                          │
+│                                                                              │
+│ ╭───────────────────────────────── locals ─────────────────────────────────╮ │
+│ │        [3merror_str[0m = 'okx does not have market symbol aia/usdt:usdt'       │ │
+│ │  [3mexchange_client[0m = [1m<[0m[1msrc.cloud.training.services.exchange.ExchangeClient[0m  │ │
+│ │                    object at [1m0x139e2e0d0[0m[1m>[0m                                │ │
+│ │      [3mexchange_id[0m = 'okx'                                                 │ │
+│ │ [3mexchanges_to_try[0m = [1m[[0m                                                     │ │
+│ │                    [2m│   [0m[1m([0m                                                 │ │
+│ │                    [2m│   │   [0m'binance',                                    │ │
+│ │                    [2m│   │   [0m                                              │ │
+│ │                    [1m<[0m[1msrc.cloud.training.services.exchange.ExchangeClient[0m  │ │
+│ │                    object at [1m0x13a50c310[0m>                                │ │
+│ │                    [2m│   [0m[1m)[0m,                                                │ │
+│ │                    [2m│   [0m[1m([0m                                                 │ │
+│ │                    [2m│   │   [0m'kraken',                                     │ │
+│ │                    [2m│   │   [0m                                              │ │
+│ │                    <src.cloud.training.services.exchange.ExchangeClient  │ │
+│ │                    object at [1m0x13a50c950[0m>                                │ │
+│ │                    [2m│   [0m[1m)[0m,                                                │ │
+│ │                    [2m│   [0m[1m([0m                                                 │ │
+│ │                    [2m│   │   [0m'okx',                                        │ │
+│ │                    [2m│   │   [0m                                              │ │
+│ │                    <src.cloud.training.services.exchange.ExchangeClient  │ │
+│ │                    object at [1m0x139e2e0d0[0m>                                │ │
+│ │                    [2m│   [0m[1m)[0m,                                                │ │
+│ │                    [2m│   [0m[1m([0m                                                 │ │
+│ │                    [2m│   │   [0m'bybit',                                      │ │
+│ │                    [2m│   │   [0m                                              │ │
+│ │                    <src.cloud.training.services.exchange.ExchangeClient  │ │
+│ │                    object at [1m0x13a1e0cd0[0m[1m>[0m                                │ │
+│ │                    [2m│   [0m[1m)[0m                                                 │ │
+│ │                    [1m][0m                                                     │ │
+│ │         [3mexecutor[0m = [1m<[0m[1mconcurrent.futures.thread.ThreadPoolExecutor[0m object  │ │
+│ │                    at [1m0x139df0cd0[0m[1m>[0m                                       │ │
+│ │  [3mfallback_client[0m = [1m<[0m[1msrc.cloud.training.services.exchange.ExchangeClient[0m  │ │
+│ │                    object at [1m0x13a1e0cd0[0m[1m>[0m                                │ │
+│ │      [3mfallback_id[0m = 'bybit'                                               │ │
+│ │           [3mfuture[0m = [1m<[0m[1mFuture[0m at [1m0x13e28c9d0[0m state=finished raised          │ │
+│ │                    BadSymbol[1m>[0m                                            │ │
+│ │          [3mfutures[0m = [1m{[0m                                                     │ │
+│ │                    [2m│   [0m[1m<[0m[1mFuture[0m at [1m0x13d4ece50[0m state=finished raised      │ │
+│ │                    ValueError>: [1m([0m                                        │ │
+│ │                    [2m│   │   [0m'binance',                                    │ │
+│ │                    [2m│   │   [0m                                              │ │
+│ │                    <src.cloud.training.services.exchange.ExchangeClient  │ │
+│ │                    object at [1m0x13a50c310[0m>                                │ │
+│ │                    [2m│   [0m[1m)[0m,                                                │ │
+│ │                    [2m│   [0m<Future at [1m0x13e17df10[0m state=finished raised      │ │
+│ │                    BadSymbol>: [1m([0m                                         │ │
+│ │                    [2m│   │   [0m'kraken',                                     │ │
+│ │                    [2m│   │   [0m                                              │ │
+│ │                    <src.cloud.training.services.exchange.ExchangeClient  │ │
+│ │                    object at [1m0x13a50c950[0m>                                │ │
+│ │                    [2m│   [0m[1m)[0m,                                                │ │
+│ │                    [2m│   [0m<Future at [1m0x13e28c9d0[0m state=finished raised      │ │
+│ │                    BadSymbol>: [1m([0m                                         │ │
+│ │                    [2m│   │   [0m'okx',                                        │ │
+│ │                    [2m│   │   [0m                                              │ │
+│ │                    <src.cloud.training.services.exchange.ExchangeClient  │ │
+│ │                    object at [1m0x139e2e0d0[0m>                                │ │
+│ │                    [2m│   [0m[1m)[0m,                                                │ │
+│ │                    [2m│   [0m<Future at [1m0x13815fc50[0m state=finished raised      │ │
+│ │                    ValueError>: [1m([0m                                        │ │
+│ │                    [2m│   │   [0m'bybit',                                      │ │
+│ │                    [2m│   │   [0m                                              │ │
+│ │                    <src.cloud.training.services.exchange.ExchangeClient  │ │
+│ │                    object at [1m0x13a1e0cd0[0m[1m>[0m                                │ │
+│ │                    [2m│   [0m[1m)[0m                                                 │ │
+│ │                    [1m}[0m                                                     │ │
+│ │            [3mquery[0m = [1mCandleQuery[0m[1m([0m                                          │ │
+│ │                    [2m│   [0msymbol='AIA/USDT:USDT',                           │ │
+│ │                    [2m│   [0mtimeframe='1m',                                   │ │
+│ │                    [2m│   [0mstart_at=[1mdatetime[0m[1m.datetime[0m[1m([0m[1m2025[0m, [1m6[0m, [1m11[0m, [1m14[0m, [1m3[0m, [1m8[0m, │ │
+│ │                    [1m6177[0m, tzinfo=datetime.timezone.utc[1m)[0m,                  │ │
+│ │                    [2m│   [0mend_at=[1mdatetime[0m[1m.datetime[0m[1m([0m[1m2025[0m, [1m11[0m, [1m8[0m, [1m14[0m, [1m3[0m, [1m8[0m,   │ │
+│ │                    [1m6177[0m, tzinfo=datetime.timezone.utc[1m)[0m                   │ │
+│ │                    [1m)[0m                                                     │ │
+│ │             [3mself[0m = [1m<[0m[1msrc.cloud.training.datasets.data_loader.CandleDataL…[0m │ │
+│ │                    object at [1m0x13a4c5e90[0m[1m>[0m                                │ │
+│ │  [3mskip_validation[0m = [3mFalse[0m                                                 │ │
+│ ╰──────────────────────────────────────────────────────────────────────────╯ │
+╰──────────────────────────────────────────────────────────────────────────────╯
+[1mRuntimeError: [0mFailed to download AIA/USDT:USDT from all exchanges
+
+📥 Downloading BTC/USDC...
+2025-11-08 14:19:58 [debug    ] data_quality_pass              coverage_ratio=1.0001203698131027 duplicates=0 symbol=BTC/USDC
+   ❌ Cache file not found: data/candles/BTC-USDC_1m_20250611_20251108.parquet
+   ⚠️  Data was downloaded but cache file was not created
+📥 Downloading UAI/USDT:USDT (normalized to UAI/USDT)...
+2025-11-08 14:19:59 [warning  ] fallback_exchange_init_failed  error="Unsupported exchange 'coinbasepro'" exchange=coinbasepro
+2025-11-08 14:19:59 [info     ] parallel_download_start        exchanges=['binance', 'kraken', 'okx', 'bybit'] num_exchanges=4 symbol=UAI/USDT
+2025-11-08 14:19:59 [warning  ] ohlcv_fetch_retry              error='binance does not have market symbol UAI/USDT' error_type=BadSymbol symbol=UAI/USDT timeframe=1m
+2025-11-08 14:19:59 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol UAI/USDT' error_type=BadSymbol symbol=UAI/USDT timeframe=1m
+2025-11-08 14:19:59 [warning  ] ohlcv_fetch_retry              error='okx does not have market symbol UAI/USDT' error_type=BadSymbol symbol=UAI/USDT timeframe=1m
+2025-11-08 14:19:59 [warning  ] ohlcv_fetch_retry              error='bybit does not have market symbol UAI/USDT' error_type=BadSymbol symbol=UAI/USDT timeframe=1m
+2025-11-08 14:20:09 [warning  ] ohlcv_fetch_retry              error='binance does not have market symbol UAI/USDT' error_type=BadSymbol symbol=UAI/USDT timeframe=1m
+2025-11-08 14:20:09 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol UAI/USDT' error_type=BadSymbol symbol=UAI/USDT timeframe=1m
+2025-11-08 14:20:09 [warning  ] ohlcv_fetch_retry              error='okx does not have market symbol UAI/USDT' error_type=BadSymbol symbol=UAI/USDT timeframe=1m
+2025-11-08 14:20:09 [warning  ] ohlcv_fetch_retry              error='bybit does not have market symbol UAI/USDT' error_type=BadSymbol symbol=UAI/USDT timeframe=1m

@@ -34,3 +34,4 @@ python scripts/download_and_upload_candles.py \
 echo ""
 echo "✅ Done! All candles downloaded and uploaded to Dropbox"
 
+

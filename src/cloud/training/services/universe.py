@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import List
 
-import polars as pl
+import polars as pl  # type: ignore[reportMissingImports]
 
 from ..config.settings import UniverseSettings
 from ..datasets.data_loader import MarketMetadataLoader
@@ -37,16 +37,46 @@ class UniverseSelector:
         return ranked.with_columns(pl.Series("rank", range(1, len(ranked) + 1)))
 
     def _candidate_symbols(self) -> List[str]:
+        """Get candidate symbols, preferring USD-pegged stablecoins (USDC, USDT, USD).
+        
+        Priority order:
+        1. USDC (USD Coin - most transparent USD peg)
+        2. USDT (Tether - most liquid)
+        3. USD (direct USD pairs if available)
+        4. BUSD, GBP, EUR (other stable/quoted currencies)
+        """
         markets = self._exchange.fetch_markets()
-        preferred_quotes = {"USDT", "USDC", "BUSD", "GBP", "EUR"}
+        # Prefer USD-pegged stablecoins, with USDC first (most transparent)
+        preferred_quotes = {"USDC", "USDT", "USD", "BUSD", "GBP", "EUR"}
         symbols: List[str] = []
+        
+        # Track symbols by base coin to prefer better quote currencies
+        symbols_by_base: dict[str, str] = {}
+        
         for market in markets.values():
             if not market.active:
                 continue
             if not market.quote or market.quote not in preferred_quotes:
                 continue
             base = (market.base or "").upper()
-            if base in {"USDT", "USDC", "BUSD", "DAI"}:
+            if base in {"USDT", "USDC", "BUSD", "DAI", "USD"}:
                 continue
-            symbols.append(market.symbol)
-        return symbols
+            
+            symbol = market.symbol
+            quote = market.quote
+            
+            # Prefer USDC > USDT > USD > others for same base coin
+            if base not in symbols_by_base:
+                symbols_by_base[base] = symbol
+            else:
+                existing_symbol = symbols_by_base[base]
+                existing_quote = existing_symbol.split("/")[-1] if "/" in existing_symbol else ""
+                
+                # Priority: USDC > USDT > USD > others
+                quote_priority = {"USDC": 1, "USDT": 2, "USD": 3}.get(quote, 4)
+                existing_priority = {"USDC": 1, "USDT": 2, "USD": 3}.get(existing_quote, 4)
+                
+                if quote_priority < existing_priority:
+                    symbols_by_base[base] = symbol
+        
+        return list(symbols_by_base.values())

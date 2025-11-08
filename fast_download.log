@@ -1,0 +1,359 @@
+
+🚀 Fast Parallel Download
+   Symbols: 20
+   Parallel workers: 4
+   Days: 150
+   Timeframe: 1m
+
+2025-11-08 14:20:29 [info     ] dropbox_token_received         message='Token received and cleaned' token_length=1309 token_prefix=sl.u.AGEfLXv_9XC-CMSpJ-ICWQXMw
+2025-11-08 14:20:29 [info     ] dropbox_token_received         message='Token received and cleaned' token_length=1309 token_prefix=sl.u.AGEfLXv_9XC-CMSpJ-ICWQXMw
+2025-11-08 14:20:29 [info     ] dropbox_token_received         message='Token received and cleaned' token_length=1309 token_prefix=sl.u.AGEfLXv_9XC-CMSpJ-ICWQXMw
+2025-11-08 14:20:29 [info     ] dropbox_token_received         message='Token received and cleaned' token_length=1309 token_prefix=sl.u.AGEfLXv_9XC-CMSpJ-ICWQXMw
+2025-11-08 14:20:29 [info     ] dropbox_sync_initialized       account_email=haqhaleem06@gmail.com app_folder=Runpodhuracan
+✅ Dropbox connection initialized
+
+2025-11-08 14:20:29 [info     ] dropbox_sync_initialized       account_email=haqhaleem06@gmail.com app_folder=Runpodhuracan
+✅ Dropbox connection initialized
+
+2025-11-08 14:20:29 [info     ] dropbox_sync_initialized       account_email=haqhaleem06@gmail.com app_folder=Runpodhuracan
+✅ Dropbox connection initialized
+
+2025-11-08 14:20:29 [info     ] dropbox_sync_initialized       account_email=haqhaleem06@gmail.com app_folder=Runpodhuracan
+✅ Dropbox connection initialized
+
+
+📊 Downloading historical candle data
+   Symbols: ETH/USDT
+   Exchange: binance
+   Timeframe: 1m
+   Days: 150
+   Start: 2025-06-11
+   End: 2025-11-08
+
+📥 Downloading ETH/USDT...
+2025-11-08 14:20:32 [debug    ] data_quality_pass              coverage_ratio=0.9999953703918038 duplicates=0 symbol=ETH/USDT
+   ❌ Cache file not found: data/candles/ETH-USDT_1m_20250611_20251108.parquet
+   ⚠️  Data was downloaded but cache file was not created
+
+============================================================
+📊 Summary
+============================================================
+   ✅ Downloaded: 0/1
+   📤 Uploaded: 0/1
+   ❌ Failed: 1/1
+============================================================
+
+⚠️  No files were uploaded to Dropbox
+   Data is saved locally in data/candles/
+   Run: python scripts/upload_local_candles_to_dropbox.py to upload later
+
+⚠️  1 coin(s) failed to download
+2025-11-08 14:20:32 [info     ] dropbox_token_received         message='Token received and cleaned' token_length=1309 token_prefix=sl.u.AGEfLXv_9XC-CMSpJ-ICWQXMw
+
+📊 Downloading historical candle data
+   Symbols: SOL/USDT
+   Exchange: binance
+   Timeframe: 1m
+   Days: 150
+   Start: 2025-06-11
+   End: 2025-11-08
+
+📥 Downloading SOL/USDT...
+
+📊 Downloading historical candle data
+   Symbols: BNB/USDT
+   Exchange: binance
+   Timeframe: 1m
+   Days: 150
+   Start: 2025-06-11
+   End: 2025-11-08
+
+📥 Downloading BNB/USDT...
+
+📊 Downloading historical candle data
+   Symbols: BTC/USDT
+   Exchange: binance
+   Timeframe: 1m
+   Days: 150
+   Start: 2025-06-11
+   End: 2025-11-08
+
+📥 Downloading BTC/USDT...
+2025-11-08 14:20:33 [debug    ] data_quality_pass              coverage_ratio=1.0002361100180093 duplicates=0 symbol=BNB/USDT
+   ❌ Cache file not found: data/candles/BNB-USDT_1m_20250611_20251108.parquet
+   ⚠️  Data was downloaded but cache file was not created
+
+============================================================
+📊 Summary
+============================================================
+   ✅ Downloaded: 0/1
+   📤 Uploaded: 0/1
+   ❌ Failed: 1/1
+============================================================
+
+⚠️  No files were uploaded to Dropbox
+   Data is saved locally in data/candles/
+   Run: python scripts/upload_local_candles_to_dropbox.py to upload later
+
+⚠️  1 coin(s) failed to download
+2025-11-08 14:20:33 [debug    ] data_quality_pass              coverage_ratio=1.0000462960819625 duplicates=0 symbol=SOL/USDT
+2025-11-08 14:20:33 [debug    ] data_quality_pass              coverage_ratio=1.0000092592163925 duplicates=0 symbol=BTC/USDT
+   ❌ Cache file not found: data/candles/SOL-USDT_1m_20250611_20251108.parquet
+   ⚠️  Data was downloaded but cache file was not created
+
+============================================================
+📊 Summary
+============================================================
+   ✅ Downloaded: 0/1
+   📤 Uploaded: 0/1
+   ❌ Failed: 1/1
+============================================================
+
+⚠️  No files were uploaded to Dropbox
+   Data is saved locally in data/candles/
+   Run: python scripts/upload_local_candles_to_dropbox.py to upload later
+
+⚠️  1 coin(s) failed to download
+   ❌ Cache file not found: data/candles/BTC-USDT_1m_20250611_20251108.parquet
+   ⚠️  Data was downloaded but cache file was not created
+
+============================================================
+📊 Summary
+============================================================
+   ✅ Downloaded: 0/1
+   📤 Uploaded: 0/1
+   ❌ Failed: 1/1
+============================================================
+
+⚠️  No files were uploaded to Dropbox
+   Data is saved locally in data/candles/
+   Run: python scripts/upload_local_candles_to_dropbox.py to upload later
+
+⚠️  1 coin(s) failed to download
+2025-11-08 14:20:33 [info     ] dropbox_token_received         message='Token received and cleaned' token_length=1309 token_prefix=sl.u.AGEfLXv_9XC-CMSpJ-ICWQXMw
+2025-11-08 14:20:33 [info     ] dropbox_token_received         message='Token received and cleaned' token_length=1309 token_prefix=sl.u.AGEfLXv_9XC-CMSpJ-ICWQXMw
+2025-11-08 14:20:33 [info     ] dropbox_token_received         message='Token received and cleaned' token_length=1309 token_prefix=sl.u.AGEfLXv_9XC-CMSpJ-ICWQXMw
+2025-11-08 14:20:33 [info     ] dropbox_sync_initialized       account_email=haqhaleem06@gmail.com app_folder=Runpodhuracan
+✅ Dropbox connection initialized
+
+2025-11-08 14:20:33 [info     ] dropbox_sync_initialized       account_email=haqhaleem06@gmail.com app_folder=Runpodhuracan
+✅ Dropbox connection initialized
+
+2025-11-08 14:20:33 [info     ] dropbox_sync_initialized       account_email=haqhaleem06@gmail.com app_folder=Runpodhuracan
+✅ Dropbox connection initialized
+
+2025-11-08 14:20:33 [info     ] dropbox_sync_initialized       account_email=haqhaleem06@gmail.com app_folder=Runpodhuracan
+✅ Dropbox connection initialized
+
+
+📊 Downloading historical candle data
+   Symbols: AVAX/USDT
+   Exchange: binance
+   Timeframe: 1m
+   Days: 150
+   Start: 2025-06-11
+   End: 2025-11-08
+
+📥 Downloading AVAX/USDT...
+
+📊 Downloading historical candle data
+   Symbols: ADA/USDT
+   Exchange: binance
+   Timeframe: 1m
+   Days: 150
+   Start: 2025-06-11
+   End: 2025-11-08
+
+📥 Downloading ADA/USDT...
+
+📊 Downloading historical candle data
+   Symbols: XRP/USDT
+   Exchange: binance
+   Timeframe: 1m
+   Days: 150
+   Start: 2025-06-11
+   End: 2025-11-08
+
+📥 Downloading XRP/USDT...
+
+📊 Downloading historical candle data
+   Symbols: DOGE/USDT
+   Exchange: binance
+   Timeframe: 1m
+   Days: 150
+   Start: 2025-06-11
+   End: 2025-11-08
+
+📥 Downloading DOGE/USDT...
+2025-11-08 14:20:37 [debug    ] data_quality_pass              coverage_ratio=0.9999953703918038 duplicates=0 symbol=DOGE/USDT
+   ❌ Cache file not found: data/candles/DOGE-USDT_1m_20250611_20251108.parquet
+   ⚠️  Data was downloaded but cache file was not created
+
+============================================================
+📊 Summary
+============================================================
+   ✅ Downloaded: 0/1
+   📤 Uploaded: 0/1
+   ❌ Failed: 1/1
+============================================================
+
+⚠️  No files were uploaded to Dropbox
+   Data is saved locally in data/candles/
+   Run: python scripts/upload_local_candles_to_dropbox.py to upload later
+
+⚠️  1 coin(s) failed to download
+2025-11-08 14:20:37 [debug    ] data_quality_pass              coverage_ratio=0.9999953703918038 duplicates=0 symbol=ADA/USDT
+   ❌ Cache file not found: data/candles/ADA-USDT_1m_20250611_20251108.parquet
+   ⚠️  Data was downloaded but cache file was not created
+
+============================================================
+📊 Summary
+============================================================
+   ✅ Downloaded: 0/1
+   📤 Uploaded: 0/1
+   ❌ Failed: 1/1
+============================================================
+
+⚠️  No files were uploaded to Dropbox
+   Data is saved locally in data/candles/
+   Run: python scripts/upload_local_candles_to_dropbox.py to upload later
+
+⚠️  1 coin(s) failed to download
+2025-11-08 14:20:37 [debug    ] data_quality_pass              coverage_ratio=0.9999953703918038 duplicates=0 symbol=AVAX/USDT
+2025-11-08 14:20:37 [debug    ] data_quality_pass              coverage_ratio=1.0002037027606354 duplicates=0 symbol=XRP/USDT
+2025-11-08 14:20:37 [info     ] dropbox_token_received         message='Token received and cleaned' token_length=1309 token_prefix=sl.u.AGEfLXv_9XC-CMSpJ-ICWQXMw
+2025-11-08 14:20:37 [info     ] dropbox_token_received         message='Token received and cleaned' token_length=1309 token_prefix=sl.u.AGEfLXv_9XC-CMSpJ-ICWQXMw
+   ❌ Cache file not found: data/candles/AVAX-USDT_1m_20250611_20251108.parquet
+   ⚠️  Data was downloaded but cache file was not created
+
+============================================================
+📊 Summary
+============================================================
+   ✅ Downloaded: 0/1
+   📤 Uploaded: 0/1
+   ❌ Failed: 1/1
+============================================================
+
+⚠️  No files were uploaded to Dropbox
+   Data is saved locally in data/candles/
+   Run: python scripts/upload_local_candles_to_dropbox.py to upload later
+
+⚠️  1 coin(s) failed to download
+   ❌ Cache file not found: data/candles/XRP-USDT_1m_20250611_20251108.parquet
+   ⚠️  Data was downloaded but cache file was not created
+
+============================================================
+📊 Summary
+============================================================
+   ✅ Downloaded: 0/1
+   📤 Uploaded: 0/1
+   ❌ Failed: 1/1
+============================================================
+
+⚠️  No files were uploaded to Dropbox
+   Data is saved locally in data/candles/
+   Run: python scripts/upload_local_candles_to_dropbox.py to upload later
+
+⚠️  1 coin(s) failed to download
+2025-11-08 14:20:37 [info     ] dropbox_token_received         message='Token received and cleaned' token_length=1309 token_prefix=sl.u.AGEfLXv_9XC-CMSpJ-ICWQXMw
+2025-11-08 14:20:37 [info     ] dropbox_token_received         message='Token received and cleaned' token_length=1309 token_prefix=sl.u.AGEfLXv_9XC-CMSpJ-ICWQXMw
+2025-11-08 14:20:37 [info     ] dropbox_sync_initialized       account_email=haqhaleem06@gmail.com app_folder=Runpodhuracan
+✅ Dropbox connection initialized
+
+2025-11-08 14:20:37 [info     ] dropbox_sync_initialized       account_email=haqhaleem06@gmail.com app_folder=Runpodhuracan
+✅ Dropbox connection initialized
+
+2025-11-08 14:20:37 [info     ] dropbox_sync_initialized       account_email=haqhaleem06@gmail.com app_folder=Runpodhuracan
+✅ Dropbox connection initialized
+
+2025-11-08 14:20:37 [info     ] dropbox_sync_initialized       account_email=haqhaleem06@gmail.com app_folder=Runpodhuracan
+✅ Dropbox connection initialized
+
+
+📊 Downloading historical candle data
+   Symbols: TRX/USDT
+   Exchange: binance
+   Timeframe: 1m
+   Days: 150
+   Start: 2025-06-11
+   End: 2025-11-08
+
+📥 Downloading TRX/USDT...
+
+📊 Downloading historical candle data
+   Symbols: TON/USDT
+   Exchange: binance
+   Timeframe: 1m
+   Days: 150
+   Start: 2025-06-11
+   End: 2025-11-08
+
+📥 Downloading TON/USDT...
+
+📊 Downloading historical candle data
+   Symbols: SHIB/USDT
+   Exchange: binance
+   Timeframe: 1m
+   Days: 150
+   Start: 2025-06-11
+   End: 2025-11-08
+
+📥 Downloading SHIB/USDT...
+
+📊 Downloading historical candle data
+   Symbols: DOT/USDT
+   Exchange: binance
+   Timeframe: 1m
+   Days: 150
+   Start: 2025-06-11
+   End: 2025-11-08
+
+📥 Downloading DOT/USDT...
+2025-11-08 14:20:47 [info     ] parallel_download_start        exchanges=['binance', 'kraken', 'okx', 'bybit'] num_exchanges=4 symbol=TRX/USDT
+2025-11-08 14:20:47 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol TRX/USDT' error_type=BadSymbol symbol=TRX/USDT timeframe=1m
+2025-11-08 14:20:49 [info     ] parallel_download_start        exchanges=['binance', 'kraken', 'okx', 'bybit'] num_exchanges=4 symbol=SHIB/USDT
+/Users/haq/ENGINE (HF1) Crsor/engine/src/cloud/training/datasets/data_loader.py:245: DataOrientationWarning: Row orientation inferred during DataFrame construction. Explicitly specify the orientation by passing `orient="row"` to silence this warning.
+  frame = pl.DataFrame(
+2025-11-08 14:20:49 [warning  ] parallel_download_failed       error='Coverage 0.0033 below threshold for SHIB/USDT (721 of 216001)' exchange=kraken symbol=SHIB/USDT
+2025-11-08 14:20:49 [info     ] parallel_download_start        exchanges=['binance', 'kraken', 'okx', 'bybit'] num_exchanges=4 symbol=TON/USDT
+2025-11-08 14:20:49 [warning  ] parallel_download_failed       error='Coverage 0.0033 below threshold for TON/USDT (721 of 216001)' exchange=kraken symbol=TON/USDT
+2025-11-08 14:20:50 [info     ] parallel_download_start        exchanges=['binance', 'kraken', 'okx', 'bybit'] num_exchanges=4 symbol=DOT/USDT
+2025-11-08 14:20:50 [warning  ] parallel_download_failed       error='Coverage 0.0033 below threshold for DOT/USDT (721 of 216001)' exchange=kraken symbol=DOT/USDT
+2025-11-08 14:20:51 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:20:51 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:20:51 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:20:51 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:20:57 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol TRX/USDT' error_type=BadSymbol symbol=TRX/USDT timeframe=1m
+2025-11-08 14:21:02 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:21:02 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:21:02 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:21:02 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:21:07 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol TRX/USDT' error_type=BadSymbol symbol=TRX/USDT timeframe=1m
+2025-11-08 14:21:14 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:21:14 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:21:14 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:21:14 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:21:17 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol TRX/USDT' error_type=BadSymbol symbol=TRX/USDT timeframe=1m
+2025-11-08 14:21:25 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:21:25 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:21:26 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:21:26 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:21:33 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol TRX/USDT' error_type=BadSymbol symbol=TRX/USDT timeframe=1m
+2025-11-08 14:21:38 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:21:40 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:21:40 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:21:40 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:21:48 [debug    ] data_quality_pass              coverage_ratio=1.0 duplicates=0 symbol=TON/USDT
+2025-11-08 14:21:48 [info     ] parallel_download_success      exchange=bybit message='Using data from this exchange' rows=216001 symbol=TON/USDT
+2025-11-08 14:21:49 [debug    ] data_quality_pass              coverage_ratio=1.0 duplicates=0 symbol=TRX/USDT
+2025-11-08 14:21:49 [info     ] parallel_download_success      exchange=bybit message='Using data from this exchange' rows=216001 symbol=TRX/USDT
+2025-11-08 14:21:51 [debug    ] data_quality_pass              coverage_ratio=0.9999953703918038 duplicates=0 symbol=TRX/USDT
+2025-11-08 14:21:51 [debug    ] data_quality_pass              coverage_ratio=1.0 duplicates=0 symbol=DOT/USDT
+2025-11-08 14:21:51 [info     ] parallel_download_success      exchange=bybit message='Using data from this exchange' rows=216001 symbol=DOT/USDT
+2025-11-08 14:21:52 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:21:52 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:21:52 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:21:52 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:21:53 [debug    ] data_quality_pass              coverage_ratio=1.0 duplicates=0 symbol=SHIB/USDT
+2025-11-08 14:21:53 [info     ] parallel_download_success      exchange=bybit message='Using data from this exchange' rows=216001 symbol=SHIB/USDT
+2025-11-08 14:21:55 [debug    ] data_quality_pass              coverage_ratio=0.9999953703918038 duplicates=0 symbol=TON/USDT

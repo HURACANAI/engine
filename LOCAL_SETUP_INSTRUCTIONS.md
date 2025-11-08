@@ -56,3 +56,4 @@ pip install -r scripts/install_minimal_requirements.txt
 python scripts/download_and_upload_candles.py --symbols BTC/USDT ETH/USDT --days 150
 ```
 
+

@@ -19,13 +19,24 @@ def generate_token_instructions():
     print()
     print("OPTION 1: Generate token from Dropbox App Console (EASIEST)")
     print("-" * 70)
-    print("1. Go to: https://www.dropbox.com/developers/apps")
-    print("2. Find your app (or create a new one)")
-    print("3. Go to the 'Settings' tab")
-    print("4. Scroll down to 'OAuth 2' section")
-    print("5. Click 'Generate' button under 'Generated access token'")
-    print("6. Copy the token (it should start with 'sl.')")
-    print("7. The token will be long (1000+ characters)")
+    print("⚠️  IMPORTANT: Enable required scopes FIRST!")
+    print()
+    print("STEP 1: Enable Required Scopes")
+    print("  1. Go to: https://www.dropbox.com/developers/apps")
+    print("  2. Find your app (ID: 7988481) or create a new one")
+    print("  3. Click on your app → Go to 'Permissions' tab")
+    print("  4. Under 'Scopes', enable:")
+    print("     ✅ files.content.write (REQUIRED for uploads)")
+    print("     ✅ files.metadata.read (REQUIRED for listing)")
+    print("     ✅ files.content.read (recommended)")
+    print()
+    print("STEP 2: Generate Access Token")
+    print("  1. Go to the 'Settings' tab")
+    print("  2. Scroll down to 'OAuth 2' section")
+    print("  3. Click 'Generate' button under 'Generated access token'")
+    print("  4. Copy the ENTIRE token (it should start with 'sl.')")
+    print("  5. The token will be long (1000+ characters)")
+    print("  6. Update it in src/cloud/training/config/settings.py")
     print()
     print("OPTION 2: Use OAuth2 Flow (More complex)")
     print("-" * 70)
@@ -62,6 +73,7 @@ def generate_token_instructions():
 
 if __name__ == "__main__":
     generate_token_instructions()
+
 
 
 

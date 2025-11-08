@@ -8,8 +8,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterable, Optional, Callable
 
-import polars as pl
-import structlog
+import polars as pl  # type: ignore[reportMissingImports]
+import structlog  # type: ignore[reportMissingImports]
 
 from ..services.exchange import ExchangeClient
 from .quality_checks import DataQualitySuite
@@ -60,8 +60,9 @@ class CandleDataLoader:
         self._quality = quality_suite or DataQualitySuite()
         
         # Multi-exchange fallback support
-        # Default fallback exchanges (major exchanges with good API limits)
-        self._fallback_exchanges = fallback_exchanges or ["coinbasepro", "kraken", "okx", "bybit"]
+        # DISABLED by default - Binance is fast and reliable, parallel exchanges cause errors
+        # Set fallback_exchanges=[] to disable, or pass specific exchanges if needed
+        self._fallback_exchanges = fallback_exchanges if fallback_exchanges is not None else []
         self._exchange_credentials = exchange_credentials or {}
         self._fallback_clients: dict[str, ExchangeClient] = {}
         
@@ -118,83 +119,43 @@ class CandleDataLoader:
         return frame
 
     def _download(self, query: CandleQuery, skip_validation: bool = False) -> pl.DataFrame:
-        """Download data with parallel multi-exchange support.
+        """Download data from primary exchange only (fastest and most reliable).
         
-        Downloads from multiple exchanges simultaneously to speed up the process.
-        Since different exchanges are different APIs, we can download in parallel
-        without hitting rate limits. Uses the first successful result.
+        Simplified approach: Use only the primary exchange (usually Binance).
+        This avoids parallel exchange errors and is still very fast.
         """
-        # Prepare all exchanges to try (primary + fallbacks)
-        exchanges_to_try = [
-            (self._exchange.exchange_id, self._exchange),
-        ]
-        
-        # Add fallback exchanges
-        for fallback_id in self._fallback_exchanges:
-            try:
-                fallback_client = self._get_fallback_client(fallback_id)
-                exchanges_to_try.append((fallback_id, fallback_client))
-            except Exception as e:
-                logger.warning(
-                    "fallback_exchange_init_failed",
-                    exchange=fallback_id,
-                    error=str(e),
-                )
-                continue
-        
-        # Download from all exchanges in parallel
-        # Different exchanges = different APIs = no rate limit conflicts
+        # Use only primary exchange - fastest and most reliable
+        # Binance has excellent API limits and data quality
         logger.info(
-            "parallel_download_start",
+            "download_start",
             symbol=query.symbol,
-            num_exchanges=len(exchanges_to_try),
-            exchanges=[ex_id for ex_id, _ in exchanges_to_try],
+            exchange=self._exchange.exchange_id,
         )
         
-        with ThreadPoolExecutor(max_workers=len(exchanges_to_try)) as executor:
-            # Submit all download tasks
-            futures: dict[Future[pl.DataFrame], tuple[str, ExchangeClient]] = {}
-            for exchange_id, exchange_client in exchanges_to_try:
-                future = executor.submit(
-                    self._download_from_exchange,
-                    exchange_client,
-                    query,
-                    skip_validation,
+        try:
+            result = self._download_from_exchange(
+                self._exchange,
+                query,
+                skip_validation,
+            )
+            if result is not None and len(result) > 0:
+                logger.info(
+                    "download_success",
+                    symbol=query.symbol,
+                    exchange=self._exchange.exchange_id,
+                    rows=len(result),
                 )
-                futures[future] = (exchange_id, exchange_client)
-            
-            # Use first successful result
-            for future in as_completed(futures):
-                exchange_id, exchange_client = futures[future]
-                try:
-                    result = future.result()
-                    if result is not None and len(result) > 0:
-                        logger.info(
-                            "parallel_download_success",
-                            symbol=query.symbol,
-                            exchange=exchange_id,
-                            rows=len(result),
-                            message="Using data from this exchange",
-                        )
-                        # Cancel remaining tasks (optional - they'll finish but we won't use them)
-                        return result
-                except Exception as e:
-                    error_str = str(e).lower()
-                    logger.warning(
-                        "parallel_download_failed",
-                        symbol=query.symbol,
-                        exchange=exchange_id,
-                        error=str(e),
-                    )
-                    continue
+                return result
+        except Exception as e:
+            logger.warning(
+                "download_failed",
+                symbol=query.symbol,
+                exchange=self._exchange.exchange_id,
+                error=str(e),
+            )
+            raise
         
-        # If all exchanges failed, raise error
-        logger.error(
-            "all_exchanges_failed_parallel",
-            symbol=query.symbol,
-            exchanges=[ex_id for ex_id, _ in exchanges_to_try],
-        )
-        raise RuntimeError(f"Failed to download {query.symbol} from all exchanges")
+        raise RuntimeError(f"Failed to download {query.symbol} from {self._exchange.exchange_id}")
     
     def _download_from_exchange(
         self,
@@ -206,6 +167,10 @@ class CandleDataLoader:
         rows = []
         since_ms = int(query.start_at.timestamp() * 1_000)
         end_ms = int(query.end_at.timestamp() * 1_000)
+        # Use maximum batch size for faster downloads
+        # Binance supports up to 1000 candles per request, which is already max
+        # Add small delay between batches to respect rate limits
+        import time
         while since_ms < end_ms:
             batch = exchange_client.fetch_ohlcv(query.symbol, query.timeframe, since=since_ms, limit=1_000)
             if not batch or len(batch) == 0:
@@ -216,6 +181,9 @@ class CandleDataLoader:
             if last_ts is None or last_ts == since_ms:
                 break
             since_ms = last_ts + 60_000
+            # Small delay between batches to avoid rate limits (50ms)
+            # Binance allows 40 requests/second, so 50ms = ~20 requests/second is safe
+            time.sleep(0.05)
         if not rows:
             # Return empty DataFrame with correct schema
             return pl.DataFrame(
@@ -230,6 +198,7 @@ class CandleDataLoader:
                 }
             )
         
+        # Fix polars warning by explicitly specifying row orientation
         frame = pl.DataFrame(
             rows,
             schema=[
@@ -240,6 +209,7 @@ class CandleDataLoader:
                 ("close", pl.Float64),
                 ("volume", pl.Float64),
             ],
+            orient="row",  # Explicitly specify row orientation to avoid warning
         ).with_columns(
             (pl.col("timestamp") / 1000).cast(pl.Datetime(time_unit="ms", time_zone="UTC")).alias("ts")
         )
@@ -263,9 +233,25 @@ class CandleDataLoader:
         return self._fallback_clients[exchange_id]
 
     def _cache_path(self, query: CandleQuery) -> Path:
-        symbol_safe = query.symbol.replace("/", "-")
+        """Generate cache path with coin-specific folder structure.
+        
+        Structure: data/candles/{COIN}/{SYMBOL}_{TIMEFRAME}_{START}_{END}.parquet
+        Example: data/candles/BTC/BTC-USDT_1m_20250611_20251108.parquet
+        """
+        # Normalize symbol (remove futures suffix if present)
+        normalized_symbol = query.symbol.split(":")[0] if ":" in query.symbol else query.symbol
+        symbol_safe = normalized_symbol.replace("/", "-")
+        
+        # Extract base coin (e.g., "BTC" from "BTC/USDT")
+        base_coin = normalized_symbol.split("/")[0]
+        
+        # Create coin-specific folder
+        coin_dir = self._cache_dir / base_coin
+        coin_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Generate filename
         filename = f"{symbol_safe}_{query.timeframe}_{query.start_at:%Y%m%d}_{query.end_at:%Y%m%d}.parquet"
-        return self._cache_dir / filename
+        return coin_dir / filename
 
 
 class MarketMetadataLoader:

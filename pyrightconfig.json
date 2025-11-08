@@ -1,0 +1,17 @@
+{
+  "include": [
+    "src",
+    "scripts"
+  ],
+  "exclude": [
+    "**/__pycache__",
+    "**/node_modules",
+    ".venv",
+    "venv"
+  ],
+  "reportMissingImports": "warning",
+  "reportMissingTypeStubs": false,
+  "pythonVersion": "3.11",
+  "typeCheckingMode": "basic"
+}
+

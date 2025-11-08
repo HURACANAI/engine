@@ -1,0 +1,140 @@
+2025-11-08 14:46:13 [info     ] dropbox_token_received         message='Token received and cleaned' token_length=1309 token_prefix=sl.u.AGEfLXv_9XC-CMSpJ-ICWQXMw
+2025-11-08 14:46:13 [info     ] dropbox_sync_initialized       account_email=haqhaleem06@gmail.com app_folder=Runpodhuracan
+✅ Dropbox ready
+
+📊 Downloading 20 coins
+   Exchange: binance
+   Timeframe: 1m
+   Days: 150
+   Start: 2025-06-11
+   End: 2025-11-08
+
+[1/20] 📥 BTC/USDT...
+2025-11-08 14:46:15 [debug    ] data_quality_pass              coverage_ratio=1.0000092592163925 duplicates=0 symbol=BTC/USDT
+   ✅ 216,003 rows (4.62 MB)
+2025-11-08 14:46:15 [debug    ] upload_file_using_pre_normalized_path dated_folder= remote_path=/Runpodhuracan/data/candles/BTC/BTC-USDT_1m_20250611_20251108.parquet
+2025-11-08 14:46:16 [info     ] file_uploaded                  local_path=data/candles/BTC/BTC-USDT_1m_20250611_20251108.parquet remote_path=/Runpodhuracan/data/candles/BTC/BTC-USDT_1m_20250611_20251108.parquet size_bytes=4849185
+   📤 Uploaded to Dropbox
+[2/20] 📥 ETH/USDT...
+2025-11-08 14:46:17 [debug    ] data_quality_pass              coverage_ratio=0.9999953703918038 duplicates=0 symbol=ETH/USDT
+   ✅ 216,000 rows (4.34 MB)
+2025-11-08 14:46:17 [debug    ] upload_file_using_pre_normalized_path dated_folder= remote_path=/Runpodhuracan/data/candles/ETH/ETH-USDT_1m_20250611_20251108.parquet
+2025-11-08 14:46:17 [info     ] file_uploaded                  local_path=data/candles/ETH/ETH-USDT_1m_20250611_20251108.parquet remote_path=/Runpodhuracan/data/candles/ETH/ETH-USDT_1m_20250611_20251108.parquet size_bytes=4546587
+   📤 Uploaded to Dropbox
+[3/20] 📥 SOL/USDT...
+2025-11-08 14:46:18 [debug    ] data_quality_pass              coverage_ratio=1.0000462960819625 duplicates=0 symbol=SOL/USDT
+   ✅ 216,011 rows (3.35 MB)
+2025-11-08 14:46:18 [debug    ] upload_file_using_pre_normalized_path dated_folder= remote_path=/Runpodhuracan/data/candles/SOL/SOL-USDT_1m_20250611_20251108.parquet
+2025-11-08 14:46:19 [info     ] file_uploaded                  local_path=data/candles/SOL/SOL-USDT_1m_20250611_20251108.parquet remote_path=/Runpodhuracan/data/candles/SOL/SOL-USDT_1m_20250611_20251108.parquet size_bytes=3516390
+   📤 Uploaded to Dropbox
+[4/20] 📥 BNB/USDT...
+2025-11-08 14:46:19 [debug    ] data_quality_pass              coverage_ratio=1.0002361100180093 duplicates=0 symbol=BNB/USDT
+   ✅ 216,052 rows (3.06 MB)
+2025-11-08 14:46:19 [debug    ] upload_file_using_pre_normalized_path dated_folder= remote_path=/Runpodhuracan/data/candles/BNB/BNB-USDT_1m_20250611_20251108.parquet
+2025-11-08 14:46:20 [info     ] file_uploaded                  local_path=data/candles/BNB/BNB-USDT_1m_20250611_20251108.parquet remote_path=/Runpodhuracan/data/candles/BNB/BNB-USDT_1m_20250611_20251108.parquet size_bytes=3206401
+   📤 Uploaded to Dropbox
+[5/20] 📥 XRP/USDT...
+2025-11-08 14:46:21 [debug    ] data_quality_pass              coverage_ratio=1.0002037027606354 duplicates=0 symbol=XRP/USDT
+   ✅ 216,045 rows (3.54 MB)
+2025-11-08 14:46:21 [debug    ] upload_file_using_pre_normalized_path dated_folder= remote_path=/Runpodhuracan/data/candles/XRP/XRP-USDT_1m_20250611_20251108.parquet
+2025-11-08 14:46:21 [info     ] file_uploaded                  local_path=data/candles/XRP/XRP-USDT_1m_20250611_20251108.parquet remote_path=/Runpodhuracan/data/candles/XRP/XRP-USDT_1m_20250611_20251108.parquet size_bytes=3706746
+   📤 Uploaded to Dropbox
+[6/20] 📥 DOGE/USDT...
+2025-11-08 14:46:22 [debug    ] data_quality_pass              coverage_ratio=0.9999953703918038 duplicates=0 symbol=DOGE/USDT
+   ✅ 216,000 rows (3.48 MB)
+2025-11-08 14:46:22 [debug    ] upload_file_using_pre_normalized_path dated_folder= remote_path=/Runpodhuracan/data/candles/DOGE/DOGE-USDT_1m_20250611_20251108.parquet
+2025-11-08 14:46:23 [info     ] file_uploaded                  local_path=data/candles/DOGE/DOGE-USDT_1m_20250611_20251108.parquet remote_path=/Runpodhuracan/data/candles/DOGE/DOGE-USDT_1m_20250611_20251108.parquet size_bytes=3646131
+   📤 Uploaded to Dropbox
+[7/20] 📥 ADA/USDT...
+2025-11-08 14:46:24 [debug    ] data_quality_pass              coverage_ratio=0.9999953703918038 duplicates=0 symbol=ADA/USDT
+   ✅ 216,000 rows (2.97 MB)
+2025-11-08 14:46:24 [debug    ] upload_file_using_pre_normalized_path dated_folder= remote_path=/Runpodhuracan/data/candles/ADA/ADA-USDT_1m_20250611_20251108.parquet
+2025-11-08 14:46:25 [info     ] file_uploaded                  local_path=data/candles/ADA/ADA-USDT_1m_20250611_20251108.parquet remote_path=/Runpodhuracan/data/candles/ADA/ADA-USDT_1m_20250611_20251108.parquet size_bytes=3109049
+   📤 Uploaded to Dropbox
+[8/20] 📥 AVAX/USDT...
+2025-11-08 14:46:25 [debug    ] data_quality_pass              coverage_ratio=0.9999953703918038 duplicates=0 symbol=AVAX/USDT
+   ✅ 216,000 rows (2.57 MB)
+2025-11-08 14:46:25 [debug    ] upload_file_using_pre_normalized_path dated_folder= remote_path=/Runpodhuracan/data/candles/AVAX/AVAX-USDT_1m_20250611_20251108.parquet
+2025-11-08 14:46:26 [info     ] file_uploaded                  local_path=data/candles/AVAX/AVAX-USDT_1m_20250611_20251108.parquet remote_path=/Runpodhuracan/data/candles/AVAX/AVAX-USDT_1m_20250611_20251108.parquet size_bytes=2693890
+   📤 Uploaded to Dropbox
+[9/20] 📥 SHIB/USDT...
+2025-11-08 14:46:26 [debug    ] data_quality_pass              coverage_ratio=1.0000046296081964 duplicates=0 symbol=SHIB/USDT
+   ✅ 216,002 rows (3.02 MB)
+2025-11-08 14:46:26 [debug    ] upload_file_using_pre_normalized_path dated_folder= remote_path=/Runpodhuracan/data/candles/SHIB/SHIB-USDT_1m_20250611_20251108.parquet
+2025-11-08 14:46:28 [info     ] file_uploaded                  local_path=data/candles/SHIB/SHIB-USDT_1m_20250611_20251108.parquet remote_path=/Runpodhuracan/data/candles/SHIB/SHIB-USDT_1m_20250611_20251108.parquet size_bytes=3165047
+   📤 Uploaded to Dropbox
+[10/20] 📥 TON/USDT...
+2025-11-08 14:46:28 [debug    ] data_quality_pass              coverage_ratio=1.0 duplicates=0 symbol=TON/USDT
+   ✅ 216,001 rows (2.52 MB)
+2025-11-08 14:46:28 [debug    ] upload_file_using_pre_normalized_path dated_folder= remote_path=/Runpodhuracan/data/candles/TON/TON-USDT_1m_20250611_20251108.parquet
+2025-11-08 14:46:29 [info     ] file_uploaded                  local_path=data/candles/TON/TON-USDT_1m_20250611_20251108.parquet remote_path=/Runpodhuracan/data/candles/TON/TON-USDT_1m_20250611_20251108.parquet size_bytes=2637221
+   📤 Uploaded to Dropbox
+[11/20] 📥 TRX/USDT...
+2025-11-08 14:46:29 [info     ] download_start                 exchange=binance symbol=TRX/USDT
+2025-11-08 14:47:45 [debug    ] data_quality_pass              coverage_ratio=0.9999953703918038 duplicates=0 symbol=TRX/USDT
+2025-11-08 14:47:45 [info     ] download_success               exchange=binance rows=216000 symbol=TRX/USDT
+2025-11-08 14:47:45 [info     ] coin_data_cached               cache_path=data/candles/TRX/TRX-USDT_1m_20250611_20251108.parquet message='Coin data saved - will be synced to Dropbox within 5 minutes' rows=216000 symbol=TRX/USDT
+   ✅ 216,000 rows (2.36 MB)
+2025-11-08 14:47:45 [debug    ] upload_file_using_pre_normalized_path dated_folder= remote_path=/Runpodhuracan/data/candles/TRX/TRX-USDT_1m_20250611_20251108.parquet
+2025-11-08 14:47:46 [info     ] file_uploaded                  local_path=data/candles/TRX/TRX-USDT_1m_20250611_20251108.parquet remote_path=/Runpodhuracan/data/candles/TRX/TRX-USDT_1m_20250611_20251108.parquet size_bytes=2477498
+   📤 Uploaded to Dropbox
+[12/20] 📥 DOT/USDT...
+2025-11-08 14:47:46 [info     ] download_start                 exchange=binance symbol=DOT/USDT
+2025-11-08 14:48:57 [debug    ] data_quality_pass              coverage_ratio=0.9999953703918038 duplicates=0 symbol=DOT/USDT
+2025-11-08 14:48:57 [info     ] download_success               exchange=binance rows=216000 symbol=DOT/USDT
+2025-11-08 14:48:57 [info     ] coin_data_cached               cache_path=data/candles/DOT/DOT-USDT_1m_20250611_20251108.parquet message='Coin data saved - will be synced to Dropbox within 5 minutes' rows=216000 symbol=DOT/USDT
+   ✅ 216,000 rows (2.74 MB)
+2025-11-08 14:48:57 [debug    ] upload_file_using_pre_normalized_path dated_folder= remote_path=/Runpodhuracan/data/candles/DOT/DOT-USDT_1m_20250611_20251108.parquet
+2025-11-08 14:48:58 [info     ] file_uploaded                  local_path=data/candles/DOT/DOT-USDT_1m_20250611_20251108.parquet remote_path=/Runpodhuracan/data/candles/DOT/DOT-USDT_1m_20250611_20251108.parquet size_bytes=2876734
+   📤 Uploaded to Dropbox
+[13/20] 📥 LINK/USDT...
+2025-11-08 14:48:59 [info     ] download_start                 exchange=binance symbol=LINK/USDT
+2025-11-08 14:50:11 [debug    ] data_quality_pass              coverage_ratio=0.9999953703918038 duplicates=0 symbol=LINK/USDT
+2025-11-08 14:50:11 [info     ] download_success               exchange=binance rows=216000 symbol=LINK/USDT
+2025-11-08 14:50:11 [info     ] coin_data_cached               cache_path=data/candles/LINK/LINK-USDT_1m_20250611_20251108.parquet message='Coin data saved - will be synced to Dropbox within 5 minutes' rows=216000 symbol=LINK/USDT
+   ✅ 216,000 rows (2.53 MB)
+2025-11-08 14:50:11 [debug    ] upload_file_using_pre_normalized_path dated_folder= remote_path=/Runpodhuracan/data/candles/LINK/LINK-USDT_1m_20250611_20251108.parquet
+2025-11-08 14:50:12 [info     ] file_uploaded                  local_path=data/candles/LINK/LINK-USDT_1m_20250611_20251108.parquet remote_path=/Runpodhuracan/data/candles/LINK/LINK-USDT_1m_20250611_20251108.parquet size_bytes=2652275
+   📤 Uploaded to Dropbox
+[14/20] 📥 MATIC/USDT...
+2025-11-08 14:50:12 [info     ] download_start                 exchange=binance symbol=MATIC/USDT
+2025-11-08 14:50:13 [warning  ] empty_ohlcv_result             symbol=MATIC/USDT timeframe=1m
+   ❌ Error: Failed to download MATIC/USDT from binance
+[15/20] 📥 NEAR/USDT...
+2025-11-08 14:50:13 [debug    ] data_quality_pass              coverage_ratio=0.9999953703918038 duplicates=0 symbol=NEAR/USDT
+   ✅ 216,000 rows (2.56 MB)
+2025-11-08 14:50:13 [debug    ] upload_file_using_pre_normalized_path dated_folder= remote_path=/Runpodhuracan/data/candles/NEAR/NEAR-USDT_1m_20250611_20251108.parquet
+2025-11-08 14:50:14 [info     ] file_uploaded                  local_path=data/candles/NEAR/NEAR-USDT_1m_20250611_20251108.parquet remote_path=/Runpodhuracan/data/candles/NEAR/NEAR-USDT_1m_20250611_20251108.parquet size_bytes=2688434
+   📤 Uploaded to Dropbox
+[16/20] 📥 UNI/USDT...
+2025-11-08 14:50:14 [info     ] download_start                 exchange=binance symbol=UNI/USDT
+2025-11-08 14:51:28 [debug    ] data_quality_pass              coverage_ratio=0.9999953703918038 duplicates=0 symbol=UNI/USDT
+2025-11-08 14:51:28 [info     ] download_success               exchange=binance rows=216000 symbol=UNI/USDT
+2025-11-08 14:51:28 [info     ] coin_data_cached               cache_path=data/candles/UNI/UNI-USDT_1m_20250611_20251108.parquet message='Coin data saved - will be synced to Dropbox within 5 minutes' rows=216000 symbol=UNI/USDT
+   ✅ 216,000 rows (3.07 MB)
+2025-11-08 14:51:28 [debug    ] upload_file_using_pre_normalized_path dated_folder= remote_path=/Runpodhuracan/data/candles/UNI/UNI-USDT_1m_20250611_20251108.parquet
+2025-11-08 14:51:30 [info     ] file_uploaded                  local_path=data/candles/UNI/UNI-USDT_1m_20250611_20251108.parquet remote_path=/Runpodhuracan/data/candles/UNI/UNI-USDT_1m_20250611_20251108.parquet size_bytes=3217359
+   📤 Uploaded to Dropbox
+[17/20] 📥 ICP/USDT...
+2025-11-08 14:51:30 [debug    ] data_quality_pass              coverage_ratio=1.0002870357081681 duplicates=0 symbol=ICP/USDT
+   ✅ 216,063 rows (2.69 MB)
+2025-11-08 14:51:30 [debug    ] upload_file_using_pre_normalized_path dated_folder= remote_path=/Runpodhuracan/data/candles/ICP/ICP-USDT_1m_20250611_20251108.parquet
+2025-11-08 14:51:31 [info     ] file_uploaded                  local_path=data/candles/ICP/ICP-USDT_1m_20250611_20251108.parquet remote_path=/Runpodhuracan/data/candles/ICP/ICP-USDT_1m_20250611_20251108.parquet size_bytes=2825111
+   📤 Uploaded to Dropbox
+[18/20] 📥 LTC/USDT...
+2025-11-08 14:51:32 [info     ] download_start                 exchange=binance symbol=LTC/USDT
+2025-11-08 14:52:48 [debug    ] data_quality_pass              coverage_ratio=0.9999953703918038 duplicates=0 symbol=LTC/USDT
+2025-11-08 14:52:48 [info     ] download_success               exchange=binance rows=216000 symbol=LTC/USDT
+2025-11-08 14:52:48 [info     ] coin_data_cached               cache_path=data/candles/LTC/LTC-USDT_1m_20250611_20251108.parquet message='Coin data saved - will be synced to Dropbox within 5 minutes' rows=216000 symbol=LTC/USDT
+   ✅ 216,000 rows (3.02 MB)
+2025-11-08 14:52:48 [debug    ] upload_file_using_pre_normalized_path dated_folder= remote_path=/Runpodhuracan/data/candles/LTC/LTC-USDT_1m_20250611_20251108.parquet
+2025-11-08 14:52:49 [info     ] file_uploaded                  local_path=data/candles/LTC/LTC-USDT_1m_20250611_20251108.parquet remote_path=/Runpodhuracan/data/candles/LTC/LTC-USDT_1m_20250611_20251108.parquet size_bytes=3166737
+   📤 Uploaded to Dropbox
+[19/20] 📥 FIL/USDT...
+2025-11-08 14:52:50 [debug    ] data_quality_pass              coverage_ratio=0.9999953703918038 duplicates=0 symbol=FIL/USDT
+   ✅ 216,000 rows (2.59 MB)
+2025-11-08 14:52:50 [debug    ] upload_file_using_pre_normalized_path dated_folder= remote_path=/Runpodhuracan/data/candles/FIL/FIL-USDT_1m_20250611_20251108.parquet
+2025-11-08 14:52:51 [info     ] file_uploaded                  local_path=data/candles/FIL/FIL-USDT_1m_20250611_20251108.parquet remote_path=/Runpodhuracan/data/candles/FIL/FIL-USDT_1m_20250611_20251108.parquet size_bytes=2718543
+   📤 Uploaded to Dropbox
+[20/20] 📥 ATOM/USDT...
+2025-11-08 14:52:51 [info     ] download_start                 exchange=binance symbol=ATOM/USDT

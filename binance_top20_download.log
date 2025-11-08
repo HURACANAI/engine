@@ -1,0 +1,36 @@
+📊 Fetching top 20 coins from Binance by 24h volume...
+✅ Found 20 coins:
+    1. USDC/USDT
+    2. BTC/USDT
+    3. ETH/USDT
+    4. ZEC/USDT
+    5. FIL/USDT
+    6. SOL/USDT
+    7. BNB/USDT
+    8. XRP/USDT
+    9. NEAR/USDT
+   10. DOGE/USDT
+   11. ICP/USDT
+   12. FDUSD/USDT
+   13. FET/USDT
+   14. ASTER/USDT
+   15. LTC/USDT
+   16. DASH/USDT
+   17. GIGGLE/USDT
+   18. XPL/USDT
+   19. SUI/USDT
+   20. ZEN/USDT
+
+2025-11-08 14:53:04 [info     ] dropbox_token_received         message='Token received and cleaned' token_length=1309 token_prefix=sl.u.AGEfLXv_9XC-CMSpJ-ICWQXMw
+2025-11-08 14:53:04 [info     ] dropbox_sync_initialized       account_email=haqhaleem06@gmail.com app_folder=Runpodhuracan
+✅ Dropbox ready
+
+📊 Downloading 20 coins
+   Exchange: binance
+   Timeframe: 1m
+   Days: 150
+   Start: 2025-06-11
+   End: 2025-11-08
+
+[1/20] 📥 USDC/USDT...
+2025-11-08 14:53:06 [info     ] download_start                 exchange=binance symbol=USDC/USDT

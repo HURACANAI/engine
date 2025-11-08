@@ -1,0 +1,57 @@
+============================================================
+📥 Downloading Failed Coins (30 days)
+============================================================
+
+These coins failed with 150 days because they're new.
+Trying with 30 days of data instead...
+
+2025-11-08 15:14:11 [info     ] dropbox_token_received         message='Token received and cleaned' token_length=1309 token_prefix=sl.u.AGEfLXv_9XC-CMSpJ-ICWQXMw
+2025-11-08 15:14:12 [info     ] dropbox_sync_initialized       account_email=haqhaleem06@gmail.com app_folder=Runpodhuracan
+✅ Dropbox ready
+
+📊 Downloading 4 coins
+   Exchange: binance
+   Timeframe: 1m
+   Days: 30
+   Start: 2025-10-09
+   End: 2025-11-08
+
+[1/4] 📥 GIGGLE/USDT...
+2025-11-08 15:14:14 [info     ] download_start                 exchange=binance symbol=GIGGLE/USDT
+2025-11-08 15:14:20 [warning  ] download_failed                error='Coverage 0.4795 below threshold for GIGGLE/USDT (20715 of 43201)' exchange=binance symbol=GIGGLE/USDT
+   ❌ Error: Coverage 0.4795 below threshold for GIGGLE/USDT (20715 of 43201)
+[2/4] 📥 XPL/USDT...
+2025-11-08 15:14:21 [info     ] download_start                 exchange=binance symbol=XPL/USDT
+2025-11-08 15:14:38 [debug    ] data_quality_pass              coverage_ratio=0.9999768523876762 duplicates=0 symbol=XPL/USDT
+2025-11-08 15:14:38 [info     ] download_success               exchange=binance rows=43200 symbol=XPL/USDT
+2025-11-08 15:14:38 [info     ] coin_data_cached               cache_path=data/candles/XPL/XPL-USDT_1m_20251009_20251108.parquet message='Coin data saved - will be synced to Dropbox within 5 minutes' rows=43200 symbol=XPL/USDT
+   ✅ 43,200 rows (0.62 MB)
+2025-11-08 15:14:38 [debug    ] upload_file_using_pre_normalized_path dated_folder= remote_path=/Runpodhuracan/data/candles/XPL/XPL-USDT_1m_20251009_20251108.parquet
+2025-11-08 15:14:40 [info     ] file_uploaded                  local_path=data/candles/XPL/XPL-USDT_1m_20251009_20251108.parquet remote_path=/Runpodhuracan/data/candles/XPL/XPL-USDT_1m_20251009_20251108.parquet size_bytes=649735
+   📤 Uploaded to Dropbox: XPL/XPL-USDT_1m_20251009_20251108.parquet
+[3/4] 📥 MMT/USDT...
+2025-11-08 15:14:40 [info     ] download_start                 exchange=binance symbol=MMT/USDT
+2025-11-08 15:14:42 [warning  ] download_failed                error='Coverage 0.1378 below threshold for MMT/USDT (5955 of 43201)' exchange=binance symbol=MMT/USDT
+   ❌ Error: Coverage 0.1378 below threshold for MMT/USDT (5955 of 43201)
+[4/4] 📥 ASTER/USDT...
+2025-11-08 15:14:43 [info     ] download_start                 exchange=binance symbol=ASTER/USDT
+2025-11-08 15:14:57 [debug    ] data_quality_pass              coverage_ratio=0.9999768523876762 duplicates=0 symbol=ASTER/USDT
+2025-11-08 15:14:57 [info     ] download_success               exchange=binance rows=43200 symbol=ASTER/USDT
+2025-11-08 15:14:57 [info     ] coin_data_cached               cache_path=data/candles/ASTER/ASTER-USDT_1m_20251009_20251108.parquet message='Coin data saved - will be synced to Dropbox within 5 minutes' rows=43200 symbol=ASTER/USDT
+   ✅ 43,200 rows (0.55 MB)
+2025-11-08 15:14:58 [debug    ] upload_file_using_pre_normalized_path dated_folder= remote_path=/Runpodhuracan/data/candles/ASTER/ASTER-USDT_1m_20251009_20251108.parquet
+2025-11-08 15:14:59 [info     ] file_uploaded                  local_path=data/candles/ASTER/ASTER-USDT_1m_20251009_20251108.parquet remote_path=/Runpodhuracan/data/candles/ASTER/ASTER-USDT_1m_20251009_20251108.parquet size_bytes=580306
+   📤 Uploaded to Dropbox: ASTER/ASTER-USDT_1m_20251009_20251108.parquet
+
+============================================================
+📊 Summary
+============================================================
+   ✅ Downloaded: 2/4
+   📤 Uploaded: 2/2
+   ❌ Failed: 2/4
+============================================================
+
+✅ Successfully downloaded 2 coin(s)
+✅ Successfully uploaded 2 file(s) to Dropbox
+   Location: /Runpodhuracan/data/candles/
+

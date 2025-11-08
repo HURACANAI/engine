@@ -1,0 +1,68 @@
+2025-11-08 14:11:01 [info     ] dropbox_token_received         message='Token received and cleaned' token_length=1309 token_prefix=sl.u.AGEfLXv_9XC-CMSpJ-ICWQXMw
+2025-11-08 14:11:02 [info     ] dropbox_sync_initialized       account_email=haqhaleem06@gmail.com app_folder=Runpodhuracan
+✅ Dropbox connection initialized
+
+
+📊 Downloading historical candle data
+   Symbols: BTC/USDT, ETH/USDT, SOL/USDT, BNB/USDT, XRP/USDT, DOGE/USDT, ADA/USDT, AVAX/USDT, SHIB/USDT, TON/USDT, TRX/USDT, DOT/USDT, LINK/USDT, MATIC/USDT, NEAR/USDT, UNI/USDT, ICP/USDT, LTC/USDT, FIL/USDT, ATOM/USDT
+   Exchange: binance
+   Timeframe: 1m
+   Days: 150
+   Start: 2025-06-11
+   End: 2025-11-08
+
+📥 Downloading BTC/USDT...
+2025-11-08 14:11:05 [debug    ] data_quality_pass              coverage_ratio=1.0000092592163925 duplicates=0 symbol=BTC/USDT
+   ❌ Cache file not found: data/candles/BTC-USDT_1m_20250611_20251108.parquet
+   ⚠️  Data was downloaded but cache file was not created
+📥 Downloading ETH/USDT...
+2025-11-08 14:11:06 [debug    ] data_quality_pass              coverage_ratio=0.9999953703918038 duplicates=0 symbol=ETH/USDT
+   ❌ Cache file not found: data/candles/ETH-USDT_1m_20250611_20251108.parquet
+   ⚠️  Data was downloaded but cache file was not created
+📥 Downloading SOL/USDT...
+2025-11-08 14:11:06 [debug    ] data_quality_pass              coverage_ratio=1.0000462960819625 duplicates=0 symbol=SOL/USDT
+   ❌ Cache file not found: data/candles/SOL-USDT_1m_20250611_20251108.parquet
+   ⚠️  Data was downloaded but cache file was not created
+📥 Downloading BNB/USDT...
+2025-11-08 14:11:07 [debug    ] data_quality_pass              coverage_ratio=1.0002361100180093 duplicates=0 symbol=BNB/USDT
+   ❌ Cache file not found: data/candles/BNB-USDT_1m_20250611_20251108.parquet
+   ⚠️  Data was downloaded but cache file was not created
+📥 Downloading XRP/USDT...
+2025-11-08 14:11:07 [debug    ] data_quality_pass              coverage_ratio=1.0002037027606354 duplicates=0 symbol=XRP/USDT
+   ❌ Cache file not found: data/candles/XRP-USDT_1m_20250611_20251108.parquet
+   ⚠️  Data was downloaded but cache file was not created
+📥 Downloading DOGE/USDT...
+2025-11-08 14:11:08 [debug    ] data_quality_pass              coverage_ratio=0.9999953703918038 duplicates=0 symbol=DOGE/USDT
+   ❌ Cache file not found: data/candles/DOGE-USDT_1m_20250611_20251108.parquet
+   ⚠️  Data was downloaded but cache file was not created
+📥 Downloading ADA/USDT...
+2025-11-08 14:11:08 [warning  ] fallback_exchange_init_failed  error="Unsupported exchange 'coinbasepro'" exchange=coinbasepro
+2025-11-08 14:11:15 [info     ] parallel_download_start        exchanges=['binance', 'kraken', 'okx', 'bybit'] num_exchanges=4 symbol=ADA/USDT
+/Users/haq/ENGINE (HF1) Crsor/engine/src/cloud/training/datasets/data_loader.py:233: DataOrientationWarning: Row orientation inferred during DataFrame construction. Explicitly specify the orientation by passing `orient="row"` to silence this warning.
+  frame = pl.DataFrame(
+2025-11-08 14:11:15 [warning  ] parallel_download_failed       error='Coverage 0.0033 below threshold for ADA/USDT (721 of 216001)' exchange=kraken symbol=ADA/USDT
+2025-11-08 14:12:19 [debug    ] data_quality_pass              coverage_ratio=0.9999953703918038 duplicates=0 symbol=ADA/USDT
+2025-11-08 14:12:19 [info     ] parallel_download_success      exchange=binance message='Using data from this exchange' rows=216000 symbol=ADA/USDT
+2025-11-08 14:12:22 [debug    ] data_quality_pass              coverage_ratio=1.0 duplicates=0 symbol=ADA/USDT
+2025-11-08 14:14:31 [debug    ] data_quality_pass              coverage_ratio=0.9999953703918038 duplicates=0 symbol=ADA/USDT
+2025-11-08 14:14:31 [info     ] coin_data_cached               cache_path=data/candles/ADA/ADA-USDT_1m_20250611_20251108.parquet message='Coin data saved - will be synced to Dropbox within 5 minutes' rows=216000 symbol=ADA/USDT
+   ❌ Cache file not found: data/candles/ADA-USDT_1m_20250611_20251108.parquet
+   ⚠️  Data was downloaded but cache file was not created
+📥 Downloading AVAX/USDT...
+2025-11-08 14:14:32 [warning  ] fallback_exchange_init_failed  error="Unsupported exchange 'coinbasepro'" exchange=coinbasepro
+2025-11-08 14:14:32 [info     ] parallel_download_start        exchanges=['binance', 'kraken', 'okx', 'bybit'] num_exchanges=4 symbol=AVAX/USDT
+2025-11-08 14:14:32 [warning  ] parallel_download_failed       error='Coverage 0.0033 below threshold for AVAX/USDT (721 of 216001)' exchange=kraken symbol=AVAX/USDT
+2025-11-08 14:15:35 [debug    ] data_quality_pass              coverage_ratio=0.9999953703918038 duplicates=0 symbol=AVAX/USDT
+2025-11-08 14:15:36 [info     ] parallel_download_success      exchange=binance message='Using data from this exchange' rows=216000 symbol=AVAX/USDT
+2025-11-08 14:15:40 [debug    ] data_quality_pass              coverage_ratio=1.0000138888245889 duplicates=0 symbol=AVAX/USDT
+2025-11-08 14:17:58 [debug    ] data_quality_pass              coverage_ratio=0.9999953703918038 duplicates=0 symbol=AVAX/USDT
+2025-11-08 14:17:58 [info     ] coin_data_cached               cache_path=data/candles/AVAX/AVAX-USDT_1m_20250611_20251108.parquet message='Coin data saved - will be synced to Dropbox within 5 minutes' rows=216000 symbol=AVAX/USDT
+   ❌ Cache file not found: data/candles/AVAX-USDT_1m_20250611_20251108.parquet
+   ⚠️  Data was downloaded but cache file was not created
+📥 Downloading SHIB/USDT...
+2025-11-08 14:17:58 [warning  ] fallback_exchange_init_failed  error="Unsupported exchange 'coinbasepro'" exchange=coinbasepro
+2025-11-08 14:17:58 [info     ] parallel_download_start        exchanges=['binance', 'kraken', 'okx', 'bybit'] num_exchanges=4 symbol=SHIB/USDT
+2025-11-08 14:17:58 [warning  ] parallel_download_failed       error='Coverage 0.0033 below threshold for SHIB/USDT (721 of 216001)' exchange=kraken symbol=SHIB/USDT
+2025-11-08 14:18:55 [debug    ] data_quality_pass              coverage_ratio=1.0000277776491775 duplicates=0 symbol=SHIB/USDT
+2025-11-08 14:18:55 [info     ] parallel_download_success      exchange=bybit message='Using data from this exchange' rows=216007 symbol=SHIB/USDT
+2025-11-08 14:18:59 [debug    ] data_quality_pass              coverage_ratio=0.9999953703918038 duplicates=0 symbol=SHIB/USDT

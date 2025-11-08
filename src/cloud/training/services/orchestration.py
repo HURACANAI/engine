@@ -23,10 +23,10 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import polars as pl
-import ray
-import structlog
-from lightgbm import LGBMRegressor
+import polars as pl  # type: ignore[reportMissingImports]
+import ray  # type: ignore[reportMissingImports]
+import structlog  # type: ignore[reportMissingImports]
+from lightgbm import LGBMRegressor  # type: ignore[reportMissingImports]
 
 from ..config.settings import EngineSettings
 from ..datasets.data_loader import CandleDataLoader, CandleQuery
@@ -40,6 +40,9 @@ from .notifications import NotificationClient
 from .universe import UniverseSelector
 from ..memory.store import MemoryStore
 from ..pipelines.rl_training_pipeline import RLTrainingPipeline
+from .brain_integrated_training import BrainIntegratedTraining
+from .model_selector import ModelSelector
+from .data_collector import DataCollector
 # FUTURE/MECHANIC - Not used in Engine (will be used when building Mechanic component)
 from src.shared.contracts.mechanic import MechanicContract  # NOQA: F401
 from src.shared.contracts.metrics import MetricsPayload
@@ -112,8 +115,8 @@ def _simulate_trades(
 ) -> pd.DataFrame:
     executed = predictions >= threshold
     if executed.sum() == 0:
-        return pd.DataFrame(columns=["timestamp", "pnl_bps", "prediction_bps", "confidence", "equity_curve"])
-    trades = pd.DataFrame(
+        return pd.DataFrame(columns=["timestamp", "pnl_bps", "prediction_bps", "confidence", "equity_curve"])  # type: ignore[call-overload]
+    trades = pd.DataFrame(  # type: ignore[call-overload]
         {
             "timestamp": timestamps[executed],
             "pnl_bps": actual[executed],
@@ -548,7 +551,7 @@ def _create_dropbox_upload_callback(
         return None
     
     try:
-        import dropbox
+        import dropbox  # type: ignore[reportMissingImports]
         
         # Create Dropbox client
         dbx = dropbox.Dropbox(access_token)
@@ -628,7 +631,9 @@ def _train_symbol(
     # Multi-exchange fallback support
     # Get credentials for all exchanges for fallback
     all_exchange_credentials = settings.exchange.credentials or {}
-    fallback_exchanges = ["coinbasepro", "kraken", "okx", "bybit"]  # Major exchanges with good API limits
+    # Only use exchanges that are actually supported by ccxt
+    # Removed "coinbasepro" - use "coinbase" instead if needed
+    fallback_exchanges = ["kraken", "okx", "bybit"]  # Major exchanges with good API limits
     
     # Create immediate Dropbox upload callback if Dropbox is enabled
     dropbox_callback = None
@@ -759,6 +764,19 @@ def _train_symbol(
     splits = _walk_forward_masks(ts_series, settings.training.walk_forward.train_days, settings.training.walk_forward.test_days)
     cost_threshold = cost_model.recommended_edge_threshold(costs)
     oos_trades: List[pd.DataFrame] = []
+    
+    # Initialize Brain Library integration (if database is available)
+    brain_training = None
+    try:
+        if dsn:
+            from ..brain.brain_library import BrainLibrary
+            brain_library = BrainLibrary(dsn=dsn, use_pool=True)
+            brain_training = BrainIntegratedTraining(brain_library, settings)
+            logger.info("brain_library_integration_enabled", symbol=symbol)
+    except Exception as e:
+        logger.warning("brain_library_initialization_failed", symbol=symbol, error=str(e))
+        # Continue without Brain Library if initialization fails
+    
     for train_mask, test_mask in splits:
         X_train = dataset.loc[train_mask, feature_cols]
         y_train = dataset.loc[train_mask, "net_edge_bps"]
@@ -773,19 +791,48 @@ def _train_symbol(
         if X_test.empty:
             continue
         predictions = model.predict(X_test)
+        
         trades = _simulate_trades(predictions, y_test, confidence, timestamps, cost_threshold)
         if not trades.empty:
             oos_trades.append(trades)
 
-    combined_trades = pd.concat(oos_trades, ignore_index=True) if oos_trades else pd.DataFrame(columns=["timestamp", "pnl_bps", "prediction_bps", "confidence", "equity_curve"])
+    combined_trades = pd.concat(oos_trades, ignore_index=True) if oos_trades else pd.DataFrame(columns=["timestamp", "pnl_bps", "prediction_bps", "confidence", "equity_curve"])  # type: ignore[call-overload]
     metrics = _compute_metrics(combined_trades, costs.total_costs_bps, len(dataset))
+    
+    # Brain Library integration: Store final model metrics after all splits
+    if brain_training:
+        try:
+            # Train final model on all data
+            final_model = LGBMRegressor(**hyperparams)
+            final_model.fit(dataset[feature_cols], dataset["net_edge_bps"])
+            
+            # Use last test split for evaluation
+            if splits:
+                last_train_mask, last_test_mask = splits[-1]
+                final_X_test = dataset.loc[last_test_mask, feature_cols]
+                final_y_test = dataset.loc[last_test_mask, "net_edge_bps"]
+                
+                if not final_X_test.empty:
+                    brain_result = brain_training.train_with_brain_integration(
+                        symbol=symbol,
+                        X_train=dataset[feature_cols],
+                        y_train=dataset["net_edge_bps"],
+                        X_test=final_X_test,
+                        y_test=final_y_test,
+                        feature_names=feature_cols,
+                        base_model=final_model,
+                        model_type="lightgbm",
+                    )
+                    logger.info("brain_integration_final_complete", symbol=symbol, status=brain_result.get("status"))
+        except Exception as e:
+            logger.warning("brain_integration_final_failed", symbol=symbol, error=str(e))
 
     # Run validation pipeline if enabled
     validation_passed = True
     if settings.training.validation.enabled:
         try:
             from ..validation.validation_pipeline import ValidationPipeline
-            from ..engine.walk_forward import WalkForwardResults
+            from ..engine.walk_forward import WalkForwardResults  # type: ignore[reportMissingImports]
 
             # Create walk-forward results from metrics
             wf_results = WalkForwardResults(

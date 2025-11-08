@@ -66,3 +66,4 @@ If files still don't appear in dated folders:
   - `sync_directory`: Added `use_dated_folder` parameter and fixed double-normalization issue
   - Added debug logging for path normalization
 
+

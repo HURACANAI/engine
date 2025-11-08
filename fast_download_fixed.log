@@ -1,0 +1,305 @@
+
+🚀 Fast Parallel Download
+   Symbols: 20
+   Parallel workers: 4
+   Days: 150
+   Timeframe: 1m
+
+2025-11-08 14:22:14 [debug    ] data_quality_pass              coverage_ratio=0.9999953703918038 duplicates=0 symbol=ETH/USDT
+2025-11-08 14:22:14 [info     ] dropbox_token_received         message='Token received and cleaned' token_length=1309 token_prefix=sl.u.AGEfLXv_9XC-CMSpJ-ICWQXMw
+2025-11-08 14:22:14 [debug    ] data_quality_pass              coverage_ratio=1.0002361100180093 duplicates=0 symbol=BNB/USDT
+2025-11-08 14:22:14 [info     ] dropbox_token_received         message='Token received and cleaned' token_length=1309 token_prefix=sl.u.AGEfLXv_9XC-CMSpJ-ICWQXMw
+2025-11-08 14:22:14 [debug    ] data_quality_pass              coverage_ratio=1.0000462960819625 duplicates=0 symbol=SOL/USDT
+2025-11-08 14:22:14 [info     ] dropbox_token_received         message='Token received and cleaned' token_length=1309 token_prefix=sl.u.AGEfLXv_9XC-CMSpJ-ICWQXMw
+2025-11-08 14:22:14 [debug    ] data_quality_pass              coverage_ratio=1.0000092592163925 duplicates=0 symbol=BTC/USDT
+2025-11-08 14:22:14 [info     ] dropbox_token_received         message='Token received and cleaned' token_length=1309 token_prefix=sl.u.AGEfLXv_9XC-CMSpJ-ICWQXMw
+2025-11-08 14:22:14 [info     ] dropbox_sync_initialized       account_email=haqhaleem06@gmail.com app_folder=Runpodhuracan
+2025-11-08 14:22:14 [info     ] dropbox_sync_initialized       account_email=haqhaleem06@gmail.com app_folder=Runpodhuracan
+2025-11-08 14:22:14 [debug    ] upload_file_using_pre_normalized_path dated_folder= remote_path=/Runpodhuracan/data/candles/BTC/BTC-USDT_1m_20250611_20251108.parquet
+2025-11-08 14:22:14 [debug    ] upload_file_using_pre_normalized_path dated_folder= remote_path=/Runpodhuracan/data/candles/SOL/SOL-USDT_1m_20250611_20251108.parquet
+2025-11-08 14:22:14 [info     ] dropbox_sync_initialized       account_email=haqhaleem06@gmail.com app_folder=Runpodhuracan
+2025-11-08 14:22:14 [debug    ] upload_file_using_pre_normalized_path dated_folder= remote_path=/Runpodhuracan/data/candles/ETH/ETH-USDT_1m_20250611_20251108.parquet
+2025-11-08 14:22:14 [info     ] dropbox_sync_initialized       account_email=haqhaleem06@gmail.com app_folder=Runpodhuracan
+2025-11-08 14:22:14 [debug    ] upload_file_using_pre_normalized_path dated_folder= remote_path=/Runpodhuracan/data/candles/BNB/BNB-USDT_1m_20250611_20251108.parquet
+2025-11-08 14:22:15 [info     ] file_uploaded                  local_path=data/candles/SOL/SOL-USDT_1m_20250611_20251108.parquet remote_path=/Runpodhuracan/data/candles/SOL/SOL-USDT_1m_20250611_20251108.parquet size_bytes=3516390
+✅ SOL/USDT - Downloaded 216,011 rows (3.35 MB)
+2025-11-08 14:22:15 [info     ] file_uploaded                  local_path=data/candles/BTC/BTC-USDT_1m_20250611_20251108.parquet remote_path=/Runpodhuracan/data/candles/BTC/BTC-USDT_1m_20250611_20251108.parquet size_bytes=4849185
+✅ BTC/USDT - Downloaded 216,003 rows (4.62 MB)
+2025-11-08 14:22:15 [info     ] file_uploaded                  local_path=data/candles/BNB/BNB-USDT_1m_20250611_20251108.parquet remote_path=/Runpodhuracan/data/candles/BNB/BNB-USDT_1m_20250611_20251108.parquet size_bytes=3206401
+✅ BNB/USDT - Downloaded 216,052 rows (3.06 MB)
+2025-11-08 14:22:16 [info     ] file_uploaded                  local_path=data/candles/ETH/ETH-USDT_1m_20250611_20251108.parquet remote_path=/Runpodhuracan/data/candles/ETH/ETH-USDT_1m_20250611_20251108.parquet size_bytes=4546587
+✅ ETH/USDT - Downloaded 216,000 rows (4.34 MB)
+2025-11-08 14:22:17 [debug    ] data_quality_pass              coverage_ratio=1.0002037027606354 duplicates=0 symbol=XRP/USDT
+2025-11-08 14:22:17 [info     ] dropbox_token_received         message='Token received and cleaned' token_length=1309 token_prefix=sl.u.AGEfLXv_9XC-CMSpJ-ICWQXMw
+2025-11-08 14:22:18 [info     ] dropbox_sync_initialized       account_email=haqhaleem06@gmail.com app_folder=Runpodhuracan
+2025-11-08 14:22:18 [debug    ] upload_file_using_pre_normalized_path dated_folder= remote_path=/Runpodhuracan/data/candles/XRP/XRP-USDT_1m_20250611_20251108.parquet
+2025-11-08 14:22:18 [debug    ] data_quality_pass              coverage_ratio=0.9999953703918038 duplicates=0 symbol=DOGE/USDT
+2025-11-08 14:22:18 [info     ] dropbox_token_received         message='Token received and cleaned' token_length=1309 token_prefix=sl.u.AGEfLXv_9XC-CMSpJ-ICWQXMw
+2025-11-08 14:22:18 [debug    ] data_quality_pass              coverage_ratio=0.9999953703918038 duplicates=0 symbol=ADA/USDT
+2025-11-08 14:22:18 [info     ] dropbox_token_received         message='Token received and cleaned' token_length=1309 token_prefix=sl.u.AGEfLXv_9XC-CMSpJ-ICWQXMw
+2025-11-08 14:22:18 [debug    ] data_quality_pass              coverage_ratio=0.9999953703918038 duplicates=0 symbol=AVAX/USDT
+2025-11-08 14:22:18 [info     ] dropbox_token_received         message='Token received and cleaned' token_length=1309 token_prefix=sl.u.AGEfLXv_9XC-CMSpJ-ICWQXMw
+2025-11-08 14:22:19 [info     ] dropbox_sync_initialized       account_email=haqhaleem06@gmail.com app_folder=Runpodhuracan
+2025-11-08 14:22:19 [debug    ] upload_file_using_pre_normalized_path dated_folder= remote_path=/Runpodhuracan/data/candles/DOGE/DOGE-USDT_1m_20250611_20251108.parquet
+2025-11-08 14:22:19 [info     ] dropbox_sync_initialized       account_email=haqhaleem06@gmail.com app_folder=Runpodhuracan
+2025-11-08 14:22:19 [debug    ] upload_file_using_pre_normalized_path dated_folder= remote_path=/Runpodhuracan/data/candles/AVAX/AVAX-USDT_1m_20250611_20251108.parquet
+2025-11-08 14:22:19 [info     ] dropbox_sync_initialized       account_email=haqhaleem06@gmail.com app_folder=Runpodhuracan
+2025-11-08 14:22:19 [debug    ] upload_file_using_pre_normalized_path dated_folder= remote_path=/Runpodhuracan/data/candles/ADA/ADA-USDT_1m_20250611_20251108.parquet
+2025-11-08 14:22:19 [info     ] file_uploaded                  local_path=data/candles/XRP/XRP-USDT_1m_20250611_20251108.parquet remote_path=/Runpodhuracan/data/candles/XRP/XRP-USDT_1m_20250611_20251108.parquet size_bytes=3706746
+✅ XRP/USDT - Downloaded 216,045 rows (3.54 MB)
+2025-11-08 14:22:19 [info     ] file_uploaded                  local_path=data/candles/AVAX/AVAX-USDT_1m_20250611_20251108.parquet remote_path=/Runpodhuracan/data/candles/AVAX/AVAX-USDT_1m_20250611_20251108.parquet size_bytes=2693890
+✅ AVAX/USDT - Downloaded 216,000 rows (2.57 MB)
+2025-11-08 14:22:19 [info     ] file_uploaded                  local_path=data/candles/DOGE/DOGE-USDT_1m_20250611_20251108.parquet remote_path=/Runpodhuracan/data/candles/DOGE/DOGE-USDT_1m_20250611_20251108.parquet size_bytes=3646131
+✅ DOGE/USDT - Downloaded 216,000 rows (3.48 MB)
+2025-11-08 14:22:20 [info     ] file_uploaded                  local_path=data/candles/ADA/ADA-USDT_1m_20250611_20251108.parquet remote_path=/Runpodhuracan/data/candles/ADA/ADA-USDT_1m_20250611_20251108.parquet size_bytes=3109049
+✅ ADA/USDT - Downloaded 216,000 rows (2.97 MB)
+2025-11-08 14:22:30 [info     ] parallel_download_start        exchanges=['binance', 'kraken', 'okx', 'bybit'] num_exchanges=4 symbol=TON/USDT
+/Users/haq/ENGINE (HF1) Crsor/engine/src/cloud/training/datasets/data_loader.py:245: DataOrientationWarning: Row orientation inferred during DataFrame construction. Explicitly specify the orientation by passing `orient="row"` to silence this warning.
+  frame = pl.DataFrame(
+2025-11-08 14:22:30 [warning  ] parallel_download_failed       error='Coverage 0.0033 below threshold for TON/USDT (721 of 216001)' exchange=kraken symbol=TON/USDT
+2025-11-08 14:22:30 [info     ] parallel_download_start        exchanges=['binance', 'kraken', 'okx', 'bybit'] num_exchanges=4 symbol=DOT/USDT
+2025-11-08 14:22:31 [info     ] parallel_download_start        exchanges=['binance', 'kraken', 'okx', 'bybit'] num_exchanges=4 symbol=TRX/USDT
+2025-11-08 14:22:31 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol TRX/USDT' error_type=BadSymbol symbol=TRX/USDT timeframe=1m
+2025-11-08 14:22:31 [warning  ] parallel_download_failed       error='Coverage 0.0033 below threshold for DOT/USDT (721 of 216001)' exchange=kraken symbol=DOT/USDT
+2025-11-08 14:22:31 [info     ] parallel_download_start        exchanges=['binance', 'kraken', 'okx', 'bybit'] num_exchanges=4 symbol=SHIB/USDT
+2025-11-08 14:22:31 [warning  ] parallel_download_failed       error='Coverage 0.0033 below threshold for SHIB/USDT (721 of 216001)' exchange=kraken symbol=SHIB/USDT
+2025-11-08 14:22:32 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:22:32 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:22:41 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol TRX/USDT' error_type=BadSymbol symbol=TRX/USDT timeframe=1m
+2025-11-08 14:22:43 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:22:43 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:22:51 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol TRX/USDT' error_type=BadSymbol symbol=TRX/USDT timeframe=1m
+2025-11-08 14:22:55 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:22:55 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:22:55 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:22:55 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:23:01 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol TRX/USDT' error_type=BadSymbol symbol=TRX/USDT timeframe=1m
+2025-11-08 14:23:07 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:23:07 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:23:07 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:23:07 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:23:17 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol TRX/USDT' error_type=BadSymbol symbol=TRX/USDT timeframe=1m
+2025-11-08 14:23:18 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:23:18 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:23:18 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:23:19 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:23:24 [debug    ] data_quality_pass              coverage_ratio=1.0 duplicates=0 symbol=TON/USDT
+2025-11-08 14:23:24 [info     ] parallel_download_success      exchange=bybit message='Using data from this exchange' rows=216001 symbol=TON/USDT
+2025-11-08 14:23:24 [debug    ] data_quality_pass              coverage_ratio=1.0 duplicates=0 symbol=SHIB/USDT
+2025-11-08 14:23:24 [info     ] parallel_download_success      exchange=bybit message='Using data from this exchange' rows=216001 symbol=SHIB/USDT
+2025-11-08 14:23:28 [debug    ] data_quality_pass              coverage_ratio=1.0 duplicates=0 symbol=DOT/USDT
+2025-11-08 14:23:28 [info     ] parallel_download_success      exchange=bybit message='Using data from this exchange' rows=216001 symbol=DOT/USDT
+2025-11-08 14:23:30 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:23:30 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:23:30 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:23:30 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:23:31 [debug    ] data_quality_pass              coverage_ratio=1.0 duplicates=0 symbol=TRX/USDT
+2025-11-08 14:23:31 [info     ] parallel_download_success      exchange=bybit message='Using data from this exchange' rows=216001 symbol=TRX/USDT
+2025-11-08 14:23:35 [debug    ] data_quality_pass              coverage_ratio=0.9999953703918038 duplicates=0 symbol=TRX/USDT
+2025-11-08 14:23:35 [debug    ] data_quality_pass              coverage_ratio=0.9999953703918038 duplicates=0 symbol=TON/USDT
+2025-11-08 14:23:37 [debug    ] data_quality_pass              coverage_ratio=0.9999953703918038 duplicates=0 symbol=DOT/USDT
+2025-11-08 14:23:37 [debug    ] data_quality_pass              coverage_ratio=0.9999953703918038 duplicates=0 symbol=SHIB/USDT
+2025-11-08 14:23:42 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:23:42 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:23:42 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:23:42 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:23:49 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol TRX/USDT' error_type=BadSymbol symbol=TRX/USDT timeframe=1m
+2025-11-08 14:23:53 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:23:53 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:23:54 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:23:54 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:24:05 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:24:05 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:24:05 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:24:05 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:24:17 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:24:17 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:24:17 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:24:17 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:24:29 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:24:29 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:24:29 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:24:29 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:24:40 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:24:40 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:24:40 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:24:40 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:24:52 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:24:52 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:24:52 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:24:53 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol TRX/USDT' error_type=BadSymbol symbol=TRX/USDT timeframe=1m
+2025-11-08 14:25:05 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:25:05 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:25:05 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:25:05 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:25:16 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:25:16 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:25:16 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:25:16 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:25:28 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:25:28 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:25:28 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:25:28 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:25:39 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:25:40 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:25:40 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:25:40 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:25:51 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:25:51 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:25:51 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:25:51 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:26:03 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:26:03 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:26:03 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:26:03 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:26:14 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:26:14 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:26:14 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:26:14 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:26:26 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:26:26 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:26:26 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:26:26 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:26:37 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:26:38 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:26:38 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:26:38 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:26:49 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:26:49 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:26:49 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:26:49 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:26:53 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol TRX/USDT' error_type=BadSymbol symbol=TRX/USDT timeframe=1m
+2025-11-08 14:27:01 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:27:01 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:27:01 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:27:01 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:27:12 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:27:12 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:27:12 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:27:13 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:27:24 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:27:24 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:27:24 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:27:24 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:27:36 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:27:36 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:27:36 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:27:36 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:27:47 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:27:47 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:27:47 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:27:47 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:27:59 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:27:59 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:27:59 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:27:59 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:28:11 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:28:11 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:28:11 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:28:11 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:28:25 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:28:25 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:28:25 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:28:25 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:28:35 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:28:35 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:28:35 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:28:35 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:28:47 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:28:47 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:28:47 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:28:47 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:28:53 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol TRX/USDT' error_type=BadSymbol symbol=TRX/USDT timeframe=1m
+2025-11-08 14:28:58 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:28:58 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:28:58 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:28:58 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:29:09 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:29:09 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:29:09 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:29:09 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:29:20 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:29:20 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:29:20 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:29:20 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:29:31 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:29:31 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:29:31 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:29:31 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:29:42 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:29:42 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:29:42 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:29:42 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:29:53 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:29:53 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:29:53 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:29:53 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:30:04 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:30:04 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:30:04 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:30:04 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:30:15 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:30:15 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:30:15 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:30:15 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:30:26 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:30:26 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:30:26 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:30:26 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:30:37 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:30:37 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:30:37 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:30:37 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:30:48 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:30:48 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:30:48 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:30:48 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:30:53 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol TRX/USDT' error_type=BadSymbol symbol=TRX/USDT timeframe=1m
+2025-11-08 14:30:59 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:30:59 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:30:59 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:30:59 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:31:10 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:31:10 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:31:10 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:31:10 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:31:21 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:31:21 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:31:21 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:31:21 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:31:32 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:31:32 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:31:32 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:31:32 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:31:43 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:31:43 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:31:43 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:31:43 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:31:54 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:31:54 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:31:54 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:31:54 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:32:05 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:32:05 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:32:05 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:32:05 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:32:16 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:32:16 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:32:16 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:32:16 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:32:27 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:32:28 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:32:28 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:32:28 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:32:39 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:32:39 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:32:39 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:32:39 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:32:50 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m
+2025-11-08 14:32:50 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:32:50 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:32:50 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:33:01 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TON/USDT timeframe=1m
+2025-11-08 14:33:01 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=SHIB/USDT timeframe=1m
+2025-11-08 14:33:01 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=DOT/USDT timeframe=1m
+2025-11-08 14:33:01 [warning  ] ohlcv_fetch_retry              error='okx {"msg":"Too Many Requests","code":"50011"}' error_type=RateLimitExceeded symbol=TRX/USDT timeframe=1m

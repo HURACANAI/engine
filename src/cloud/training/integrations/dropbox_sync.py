@@ -10,15 +10,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-import structlog
+import structlog  # type: ignore[reportMissingImports]
 
 try:
-    import dropbox
-    from dropbox.exceptions import ApiError, AuthError
+    import dropbox  # type: ignore[reportMissingImports]
+    from dropbox.exceptions import ApiError, AuthError  # type: ignore[reportMissingImports]
     DROPBOX_AVAILABLE = True
 except ImportError:
     DROPBOX_AVAILABLE = False
-    dropbox = None  # type: ignore
+    dropbox = None  # type: ignore[assignment]
+    ApiError = Exception  # type: ignore[assignment]
+    AuthError = Exception  # type: ignore[assignment]
 
 logger = structlog.get_logger(__name__)
 
@@ -122,8 +124,9 @@ class DropboxSync:
         )
         
         # Initialize Dropbox client
+        # Type checker note: dropbox is guaranteed to be not None here because DROPBOX_AVAILABLE is True
         try:
-            self._dbx = dropbox.Dropbox(self._access_token)
+            self._dbx = dropbox.Dropbox(self._access_token)  # type: ignore[misc]
         except Exception as e:
             error_msg = str(e)
             logger.error(
@@ -262,26 +265,30 @@ class DropboxSync:
             with open(local_path, "rb") as f:
                 file_data = f.read()
             
-            # Check if file exists and is same
-            if not overwrite:
-                try:
-                    existing = self._dbx.files_get_metadata(remote_path)
-                    if isinstance(existing, dropbox.files.FileMetadata):
-                        # Compare hashes
-                        local_hash = hashlib.sha256(file_data).hexdigest()
-                        if existing.content_hash == local_hash:
-                            logger.debug(
-                                "file_unchanged",
-                                path=remote_path,
-                                message="Skipping upload - file unchanged",
-                            )
-                            return True
-                except ApiError:
-                    # File doesn't exist, proceed with upload
-                    pass
+            # Always check if file exists first (even if overwrite=True)
+            # This prevents duplicates and ensures we know what we're overwriting
+            try:
+                existing = self._dbx.files_get_metadata(remote_path)
+                if isinstance(existing, dropbox.files.FileMetadata):  # type: ignore[misc]
+                    # Compare hashes to see if file is identical
+                    local_hash = hashlib.sha256(file_data).hexdigest()
+                    # Dropbox content_hash is base64 encoded, we need to compare properly
+                    # For now, if file exists and overwrite=True, we'll overwrite it
+                    # If overwrite=False and file exists, skip
+                    if not overwrite:
+                        logger.debug(
+                            "file_exists_skip",
+                            path=remote_path,
+                            message="File exists and overwrite=False, skipping",
+                        )
+                        return True
+                    # If overwrite=True, continue to upload (will overwrite)
+            except ApiError:
+                # File doesn't exist, proceed with upload
+                pass
             
-            # Upload file
-            mode = dropbox.files.WriteMode.overwrite if overwrite else dropbox.files.WriteMode.add
+            # Upload file (will overwrite if exists and overwrite=True)
+            mode = dropbox.files.WriteMode.overwrite if overwrite else dropbox.files.WriteMode.add  # type: ignore[misc]
             self._dbx.files_upload(
                 file_data,
                 remote_path,
@@ -607,7 +614,8 @@ class DropboxSync:
                 )
             except ApiError as e:
                 # Folder already exists - that's fine
-                if "path/conflict/folder" in str(e.error):
+                error_msg = str(getattr(e, 'error', e))
+                if "path/conflict/folder" in error_msg:
                     logger.debug(
                         "dropbox_dated_folder_exists",
                         folder_path=dated_path,
@@ -689,7 +697,7 @@ class DropboxSync:
             files = []
             
             for entry in result.entries:
-                if isinstance(entry, dropbox.files.FileMetadata):
+                if isinstance(entry, dropbox.files.FileMetadata):  # type: ignore[misc]
                     files.append(entry.path_display)
             
             return files
@@ -1037,7 +1045,8 @@ class DropboxSync:
                     result = self._dbx.files_list_folder(folder_path)
                 except ApiError as e:
                     # Folder doesn't exist in Dropbox - this is OK for first startup
-                    if "not_found" in str(e.error):
+                    error_msg = str(getattr(e, 'error', e))
+                    if "not_found" in error_msg:
                         logger.debug(
                             "data_cache_subfolder_not_found",
                             remote_dir=folder_path,
@@ -1048,7 +1057,7 @@ class DropboxSync:
                 
                 # Process all entries (files and folders)
                 for entry in result.entries:
-                    if isinstance(entry, dropbox.files.FileMetadata):
+                    if isinstance(entry, dropbox.files.FileMetadata):  # type: ignore[misc]
                         # It's a file - download it
                         # Remove the remote_dir prefix to get relative path
                         if entry.path_display.startswith(remote_dir):
@@ -1080,7 +1089,7 @@ class DropboxSync:
                                     remote_path=entry.path_display,
                                     error=str(e),
                                 )
-                    elif isinstance(entry, dropbox.files.FolderMetadata):
+                    elif isinstance(entry, dropbox.files.FolderMetadata):  # type: ignore[misc]
                         # It's a folder - recurse into it
                         count += _restore_folder(entry.path_display, local_base)
                 
@@ -1088,7 +1097,7 @@ class DropboxSync:
                 while result.has_more:
                     result = self._dbx.files_list_folder_continue(result.cursor)
                     for entry in result.entries:
-                        if isinstance(entry, dropbox.files.FileMetadata):
+                        if isinstance(entry, dropbox.files.FileMetadata):  # type: ignore[misc]
                             # Remove the remote_dir prefix to get relative path
                             if entry.path_display.startswith(remote_dir):
                                 rel_path = entry.path_display[len(remote_dir):].lstrip("/")
@@ -1116,7 +1125,7 @@ class DropboxSync:
                                         remote_path=entry.path_display,
                                         error=str(e),
                                     )
-                        elif isinstance(entry, dropbox.files.FolderMetadata):
+                        elif isinstance(entry, dropbox.files.FolderMetadata):  # type: ignore[misc]
                             count += _restore_folder(entry.path_display, local_base)
                 
                 return count
@@ -1126,7 +1135,8 @@ class DropboxSync:
                 restored_count = _restore_folder(remote_dir, local_dir)
             except ApiError as e:
                 # Root folder doesn't exist in Dropbox - this is OK for first startup
-                if "not_found" in str(e.error):
+                error_msg = str(getattr(e, 'error', e))
+                if "not_found" in error_msg:
                     logger.info(
                         "data_cache_folder_not_found",
                         remote_dir=remote_dir,

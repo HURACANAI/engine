@@ -1,0 +1,13 @@
+
+🚀 Fast Parallel Download
+   Symbols: 8
+   Parallel workers: 2
+   Days: 150
+   Timeframe: 1m
+
+2025-11-08 14:33:18 [info     ] parallel_download_start        exchanges=['binance', 'kraken', 'okx', 'bybit'] num_exchanges=4 symbol=SHIB/USDT
+2025-11-08 14:33:18 [info     ] parallel_download_start        exchanges=['binance', 'kraken', 'okx', 'bybit'] num_exchanges=4 symbol=TON/USDT
+/Users/haq/ENGINE (HF1) Crsor/engine/src/cloud/training/datasets/data_loader.py:250: DataOrientationWarning: Row orientation inferred during DataFrame construction. Explicitly specify the orientation by passing `orient="row"` to silence this warning.
+  frame = pl.DataFrame(
+2025-11-08 14:33:18 [warning  ] parallel_download_failed       error='Coverage 0.0033 below threshold for SHIB/USDT (721 of 216001)' exchange=kraken symbol=SHIB/USDT
+2025-11-08 14:33:18 [warning  ] parallel_download_failed       error='Coverage 0.0033 below threshold for TON/USDT (721 of 216001)' exchange=kraken symbol=TON/USDT

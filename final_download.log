@@ -1,0 +1,51 @@
+============================================================
+📊 Download All Top 20 Coins & Upload to Dropbox
+============================================================
+
+Already downloaded: 14/20 coins
+Missing: 8 coins
+  SHIB/USDT, TON/USDT, TRX/USDT, DOT/USDT, LINK/USDT, MATIC/USDT, UNI/USDT, ATOM/USDT
+
+📥 Downloading 8 missing coins...
+   (Sequential download with delays to avoid rate limits)
+
+[1/8] SHIB/USDT...
+2025-11-08 14:33:54 [info     ] parallel_download_start        exchanges=['binance', 'kraken', 'okx', 'bybit'] num_exchanges=4 symbol=SHIB/USDT
+/Users/haq/ENGINE (HF1) Crsor/engine/src/cloud/training/datasets/data_loader.py:250: DataOrientationWarning: Row orientation inferred during DataFrame construction. Explicitly specify the orientation by passing `orient="row"` to silence this warning.
+  frame = pl.DataFrame(
+2025-11-08 14:33:54 [warning  ] parallel_download_failed       error='Coverage 0.0033 below threshold for SHIB/USDT (721 of 216001)' exchange=kraken symbol=SHIB/USDT
+2025-11-08 14:35:10 [debug    ] data_quality_pass              coverage_ratio=1.0000046296081964 duplicates=0 symbol=SHIB/USDT
+2025-11-08 14:35:10 [info     ] parallel_download_success      exchange=bybit message='Using data from this exchange' rows=216002 symbol=SHIB/USDT
+2025-11-08 14:35:26 [debug    ] data_quality_pass              coverage_ratio=0.9999953703918038 duplicates=0 symbol=SHIB/USDT
+2025-11-08 14:38:20 [debug    ] data_quality_pass              coverage_ratio=0.9999953703918038 duplicates=0 symbol=SHIB/USDT
+2025-11-08 14:38:20 [info     ] coin_data_cached               cache_path=data/candles/SHIB/SHIB-USDT_1m_20250611_20251108.parquet message='Coin data saved - will be synced to Dropbox within 5 minutes' rows=216002 symbol=SHIB/USDT
+2025-11-08 14:38:20 [info     ] dropbox_token_received         message='Token received and cleaned' token_length=1309 token_prefix=sl.u.AGEfLXv_9XC-CMSpJ-ICWQXMw
+2025-11-08 14:38:21 [info     ] dropbox_sync_initialized       account_email=haqhaleem06@gmail.com app_folder=Runpodhuracan
+2025-11-08 14:38:21 [debug    ] upload_file_using_pre_normalized_path dated_folder= remote_path=/Runpodhuracan/data/candles/SHIB/SHIB-USDT_1m_20250611_20251108.parquet
+2025-11-08 14:38:22 [info     ] file_uploaded                  local_path=data/candles/SHIB/SHIB-USDT_1m_20250611_20251108.parquet remote_path=/Runpodhuracan/data/candles/SHIB/SHIB-USDT_1m_20250611_20251108.parquet size_bytes=3164904
+   ✅ Downloaded 216,002 rows (3.02 MB)
+[2/8] TON/USDT...
+2025-11-08 14:38:35 [info     ] parallel_download_start        exchanges=['binance', 'kraken', 'okx', 'bybit'] num_exchanges=4 symbol=TON/USDT
+2025-11-08 14:38:35 [warning  ] parallel_download_failed       error='Coverage 0.0033 below threshold for TON/USDT (721 of 216001)' exchange=kraken symbol=TON/USDT
+2025-11-08 14:39:52 [debug    ] data_quality_pass              coverage_ratio=1.0 duplicates=0 symbol=TON/USDT
+2025-11-08 14:39:52 [info     ] parallel_download_success      exchange=bybit message='Using data from this exchange' rows=216001 symbol=TON/USDT
+2025-11-08 14:39:59 [debug    ] data_quality_pass              coverage_ratio=0.9999953703918038 duplicates=0 symbol=TON/USDT
+2025-11-08 14:43:15 [debug    ] data_quality_pass              coverage_ratio=0.9999953703918038 duplicates=0 symbol=TON/USDT
+2025-11-08 14:43:15 [info     ] coin_data_cached               cache_path=data/candles/TON/TON-USDT_1m_20250611_20251108.parquet message='Coin data saved - will be synced to Dropbox within 5 minutes' rows=216001 symbol=TON/USDT
+2025-11-08 14:43:15 [info     ] dropbox_token_received         message='Token received and cleaned' token_length=1309 token_prefix=sl.u.AGEfLXv_9XC-CMSpJ-ICWQXMw
+2025-11-08 14:43:16 [info     ] dropbox_sync_initialized       account_email=haqhaleem06@gmail.com app_folder=Runpodhuracan
+2025-11-08 14:43:16 [debug    ] upload_file_using_pre_normalized_path dated_folder= remote_path=/Runpodhuracan/data/candles/TON/TON-USDT_1m_20250611_20251108.parquet
+2025-11-08 14:43:17 [info     ] file_uploaded                  local_path=data/candles/TON/TON-USDT_1m_20250611_20251108.parquet remote_path=/Runpodhuracan/data/candles/TON/TON-USDT_1m_20250611_20251108.parquet size_bytes=2637221
+   ✅ Downloaded 216,001 rows (2.52 MB)
+[3/8] TRX/USDT...
+2025-11-08 14:43:28 [info     ] parallel_download_start        exchanges=['binance', 'kraken', 'okx', 'bybit'] num_exchanges=4 symbol=TRX/USDT
+2025-11-08 14:43:28 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol TRX/USDT' error_type=BadSymbol symbol=TRX/USDT timeframe=1m
+2025-11-08 14:43:38 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol TRX/USDT' error_type=BadSymbol symbol=TRX/USDT timeframe=1m
+2025-11-08 14:43:48 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol TRX/USDT' error_type=BadSymbol symbol=TRX/USDT timeframe=1m
+2025-11-08 14:43:58 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol TRX/USDT' error_type=BadSymbol symbol=TRX/USDT timeframe=1m
+2025-11-08 14:44:14 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol TRX/USDT' error_type=BadSymbol symbol=TRX/USDT timeframe=1m
+2025-11-08 14:44:44 [debug    ] data_quality_pass              coverage_ratio=1.0 duplicates=0 symbol=TRX/USDT
+2025-11-08 14:44:44 [info     ] parallel_download_success      exchange=bybit message='Using data from this exchange' rows=216001 symbol=TRX/USDT
+2025-11-08 14:44:46 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol TRX/USDT' error_type=BadSymbol symbol=TRX/USDT timeframe=1m
+2025-11-08 14:44:54 [debug    ] data_quality_pass              coverage_ratio=0.9999953703918038 duplicates=0 symbol=TRX/USDT
+2025-11-08 14:45:50 [warning  ] ohlcv_fetch_retry              error='kraken does not have market symbol TRX/USDT' error_type=BadSymbol symbol=TRX/USDT timeframe=1m

@@ -1,0 +1,62 @@
+2025-11-08 15:21:13 [info     ] dropbox_token_received         message='Token received and cleaned' token_length=1309 token_prefix=sl.u.AGEfLXv_9XC-CMSpJ-ICWQXMw
+2025-11-08 15:21:13 [info     ] dropbox_sync_initialized       account_email=haqhaleem06@gmail.com app_folder=Runpodhuracan
+✅ Dropbox ready
+
+📊 Found 1604 active spot markets
+
+📋 After normalization: 3 valid symbols
+
+📊 Downloading 3 coins
+   Exchange: binance
+   Timeframe: 1m
+   Adaptive days: [150, 60, 30]
+   End: 2025-11-08
+
+[1/3] 📥 ASTR/USDT...
+2025-11-08 15:21:15 [info     ] download_start                 exchange=binance symbol=ASTR/USDT
+2025-11-08 15:22:30 [debug    ] data_quality_pass              coverage_ratio=0.9999953703918038 duplicates=0 symbol=ASTR/USDT
+2025-11-08 15:22:30 [info     ] download_success               exchange=binance rows=216000 symbol=ASTR/USDT
+2025-11-08 15:22:30 [info     ] coin_data_cached               cache_path=data/candles/ASTR/ASTR-USDT_1m_20250611_20251108.parquet message='Coin data saved - will be synced to Dropbox within 5 minutes' rows=216000 symbol=ASTR/USDT
+2025-11-08 15:22:30 [info     ] adaptive_download_success      coverage=0.9999953703918038 days=150 rows=216000 symbol=ASTR/USDT
+   ✅ 216,000 rows (150 days, 100.0% coverage)
+      (2.42 MB)
+2025-11-08 15:22:30 [debug    ] upload_file_using_pre_normalized_path dated_folder= remote_path=/Runpodhuracan/data/candles/ASTR/ASTR-USDT_1m_20250611_20251108.parquet
+2025-11-08 15:22:31 [info     ] file_uploaded                  local_path=data/candles/ASTR/ASTR-USDT_1m_20250611_20251108.parquet remote_path=/Runpodhuracan/data/candles/ASTR/ASTR-USDT_1m_20250611_20251108.parquet size_bytes=2540738
+   📤 Uploaded to Dropbox: ASTR/ASTR-USDT_1m_20250611_20251108.parquet
+[2/3] 📥 GIGGLE/USDT...
+2025-11-08 15:22:32 [info     ] download_start                 exchange=binance symbol=GIGGLE/USDT
+2025-11-08 15:22:40 [warning  ] download_failed                error='Coverage 0.0959 below threshold for GIGGLE/USDT (20723 of 216001)' exchange=binance symbol=GIGGLE/USDT
+2025-11-08 15:22:40 [debug    ] adaptive_download_failed       days=150 error='Coverage 0.0959 below threshold for GIGGLE/USDT (20723 of 216001)' symbol=GIGGLE/USDT
+2025-11-08 15:22:40 [info     ] download_start                 exchange=binance symbol=GIGGLE/USDT
+2025-11-08 15:22:48 [warning  ] download_failed                error='Coverage 0.2398 below threshold for GIGGLE/USDT (20723 of 86401)' exchange=binance symbol=GIGGLE/USDT
+2025-11-08 15:22:48 [debug    ] adaptive_download_failed       days=60 error='Coverage 0.2398 below threshold for GIGGLE/USDT (20723 of 86401)' symbol=GIGGLE/USDT
+2025-11-08 15:22:48 [info     ] download_start                 exchange=binance symbol=GIGGLE/USDT
+2025-11-08 15:22:55 [warning  ] download_failed                error='Coverage 0.4797 below threshold for GIGGLE/USDT (20723 of 43201)' exchange=binance symbol=GIGGLE/USDT
+2025-11-08 15:22:55 [debug    ] adaptive_download_failed       days=30 error='Coverage 0.4797 below threshold for GIGGLE/USDT (20723 of 43201)' symbol=GIGGLE/USDT
+2025-11-08 15:22:55 [warning  ] symbol_skipped_low_coverage    message='Not enough data after trying all adaptive windows' symbol=GIGGLE/USDT
+   ⚠️  Skipped: Not enough data (tried [150, 60, 30])
+[3/3] 📥 MMT/USDT...
+2025-11-08 15:22:56 [info     ] download_start                 exchange=binance symbol=MMT/USDT
+2025-11-08 15:22:58 [warning  ] download_failed                error='Coverage 0.0276 below threshold for MMT/USDT (5963 of 216001)' exchange=binance symbol=MMT/USDT
+2025-11-08 15:22:58 [debug    ] adaptive_download_failed       days=150 error='Coverage 0.0276 below threshold for MMT/USDT (5963 of 216001)' symbol=MMT/USDT
+2025-11-08 15:22:58 [info     ] download_start                 exchange=binance symbol=MMT/USDT
+2025-11-08 15:23:00 [warning  ] download_failed                error='Coverage 0.0690 below threshold for MMT/USDT (5963 of 86401)' exchange=binance symbol=MMT/USDT
+2025-11-08 15:23:00 [debug    ] adaptive_download_failed       days=60 error='Coverage 0.0690 below threshold for MMT/USDT (5963 of 86401)' symbol=MMT/USDT
+2025-11-08 15:23:00 [info     ] download_start                 exchange=binance symbol=MMT/USDT
+2025-11-08 15:23:02 [warning  ] download_failed                error='Coverage 0.1381 below threshold for MMT/USDT (5964 of 43201)' exchange=binance symbol=MMT/USDT
+2025-11-08 15:23:02 [debug    ] adaptive_download_failed       days=30 error='Coverage 0.1381 below threshold for MMT/USDT (5964 of 43201)' symbol=MMT/USDT
+2025-11-08 15:23:02 [warning  ] symbol_skipped_low_coverage    message='Not enough data after trying all adaptive windows' symbol=MMT/USDT
+   ⚠️  Skipped: Not enough data (tried [150, 60, 30])
+
+============================================================
+📊 Summary
+============================================================
+   ✅ Downloaded: 1/3
+   📤 Uploaded: 1/1
+   ⚠️  Skipped: 2/3
+============================================================
+
+✅ Successfully downloaded 1 coin(s)
+✅ Successfully uploaded 1 file(s) to Dropbox
+   Location: /Runpodhuracan/data/candles/
+

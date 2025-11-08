@@ -82,3 +82,4 @@
 3. **Verify Dropbox** - Check that files appear in dated folders
 4. **Test Telegram commands** - `/health`, `/status`, `/download` should all work
 
+

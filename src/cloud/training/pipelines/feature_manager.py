@@ -171,3 +171,4 @@ def get_feature_manager() -> FeatureManager:
         _feature_manager = FeatureManager()
     return _feature_manager
 
+
