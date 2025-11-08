@@ -106,9 +106,10 @@ class DropboxSync:
         try:
             self._dbx = dropbox.Dropbox(self._access_token)
         except Exception as e:
+            error_msg = str(e)
             logger.error(
                 "dropbox_client_init_failed",
-                error=str(e),
+                error=error_msg,
                 token_prefix=self._access_token[:30],
                 message="Failed to initialize Dropbox client",
             )
@@ -123,12 +124,31 @@ class DropboxSync:
                 app_folder=app_folder,
             )
         except AuthError as e:
-            logger.error(
-                "dropbox_auth_failed",
-                error=str(e),
-                token_prefix=self._access_token[:20],
-                message="Token authentication failed - check if token is valid and not expired",
-            )
+            error_msg = str(e)
+            # Check if it's an expired token error
+            if "expired_access_token" in error_msg or "expired" in error_msg.lower():
+                logger.error(
+                    "dropbox_token_expired",
+                    error=error_msg,
+                    token_prefix=self._access_token[:20],
+                    message=(
+                        "Dropbox access token has expired. "
+                        "To fix this:\n"
+                        "1. Go to https://www.dropbox.com/developers/apps\n"
+                        "2. Select your app (or create a new one)\n"
+                        "3. Generate a new access token\n"
+                        "4. Update DROPBOX_ACCESS_TOKEN environment variable or settings file\n"
+                        "5. Restart the engine"
+                    ),
+                    help_url="https://www.dropbox.com/developers/apps",
+                )
+            else:
+                logger.error(
+                    "dropbox_auth_failed",
+                    error=error_msg,
+                    token_prefix=self._access_token[:20],
+                    message="Token authentication failed - check if token is valid and not expired",
+                )
             raise
         except Exception as e:
             logger.error(

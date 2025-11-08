@@ -134,13 +134,31 @@ def run_daily_retrain() -> None:
                 print("⚠️  Dropbox folder creation failed - check logs\n")
         except Exception as sync_error:
             # Dropbox errors are non-fatal - continue without Dropbox sync
-            logger.warning(
-                "dropbox_folder_creation_failed_non_fatal",
-                error=str(sync_error),
-                message="Continuing without Dropbox sync - engine will still run",
-            )
-            print(f"⚠️  Dropbox folder creation failed (non-fatal): {str(sync_error)}\n")
-            print("   Engine will continue without Dropbox sync\n")
+            error_msg = str(sync_error)
+            
+            # Check if it's an expired token error
+            if "expired" in error_msg.lower() or "expired_access_token" in error_msg:
+                logger.warning(
+                    "dropbox_token_expired_non_fatal",
+                    error=error_msg,
+                    message="Dropbox token expired - continuing without Dropbox sync",
+                    help_message=(
+                        "To fix: Generate a new token at https://www.dropbox.com/developers/apps "
+                        "and update DROPBOX_ACCESS_TOKEN environment variable"
+                    ),
+                )
+                print(f"⚠️  Dropbox token expired (non-fatal): {error_msg}\n")
+                print("   💡 To fix: Generate a new token at https://www.dropbox.com/developers/apps\n")
+                print("   💡 Then update DROPBOX_ACCESS_TOKEN environment variable\n")
+                print("   Engine will continue without Dropbox sync\n")
+            else:
+                logger.warning(
+                    "dropbox_folder_creation_failed_non_fatal",
+                    error=error_msg,
+                    message="Continuing without Dropbox sync - engine will still run",
+                )
+                print(f"⚠️  Dropbox folder creation failed (non-fatal): {error_msg}\n")
+                print("   Engine will continue without Dropbox sync\n")
             dropbox_sync = None
     
     # Initialize comprehensive Telegram monitoring
