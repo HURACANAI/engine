@@ -819,12 +819,25 @@ class EnhancedHealthChecker:
         """Check S3 connectivity."""
         logger.info("checking_s3_health")
         
-        if not self.settings or not self.settings.s3 or not self.settings.s3.enabled:
+        # Check if S3 is configured (has access keys)
+        if not self.settings or not self.settings.s3:
             return HealthCheckResult(
                 name="S3",
                 status="DISABLED",
                 message="S3 not configured",
-                details={"enabled": False},
+                details={"configured": False},
+            )
+        
+        # Check if S3 credentials are provided
+        has_access_key = hasattr(self.settings.s3, 'access_key') and self.settings.s3.access_key
+        has_secret_key = hasattr(self.settings.s3, 'secret_key') and self.settings.s3.secret_key
+        
+        if not has_access_key or not has_secret_key:
+            return HealthCheckResult(
+                name="S3",
+                status="DISABLED",
+                message="S3 credentials not configured",
+                details={"configured": False, "has_access_key": has_access_key, "has_secret_key": has_secret_key},
             )
         
         try:
@@ -833,9 +846,9 @@ class EnhancedHealthChecker:
             
             s3_client = boto3.client(
                 "s3",
-                aws_access_key_id=self.settings.s3.access_key_id,
-                aws_secret_access_key=self.settings.s3.secret_access_key,
-                endpoint_url=self.settings.s3.endpoint_url,
+                aws_access_key_id=self.settings.s3.access_key,
+                aws_secret_access_key=self.settings.s3.secret_key,
+                endpoint_url=self.settings.s3.endpoint_url if hasattr(self.settings.s3, 'endpoint_url') else None,
             )
             
             # Try to list buckets (or head bucket if bucket is specified)
