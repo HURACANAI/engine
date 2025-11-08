@@ -1,0 +1,46 @@
+# Trading Strategy Ideas for RBI Agent
+# ======================================
+#
+# How to use this file:
+# - One strategy idea per line
+# - Lines starting with # are ignored
+# - Can include:
+#   * Plain text descriptions
+#   * YouTube URLs (RBI agent will extract strategy)
+#   * PDF links (RBI agent will analyze)
+#   * Trading concepts from research papers
+#
+# RBI Agent will:
+# 1. Analyze each idea
+# 2. Generate backtest code
+# 3. Test on 20+ data sources
+# 4. Save strategies with >5% return
+#
+# Tips for good strategy ideas:
+# - Be specific about entry/exit conditions
+# - Mention indicators (RSI, MACD, volume, etc.)
+# - Include timeframe if relevant
+# - Describe market conditions when it works
+#
+# Examples below:
+
+# === REVERSAL STRATEGIES ===
+Buy when RSI drops below 30 on 15-minute chart, sell when RSI rises above 70
+
+# === TREND FOLLOWING ===
+Moving average crossover: Buy when 20 EMA crosses above 50 EMA with volume confirmation
+
+# === BREAKOUT STRATEGIES ===
+Breakout strategy: Buy when price breaks above 20-day high with volume spike above 1.5x average
+
+# === MOMENTUM STRATEGIES ===
+MACD crossover with divergence confirmation on hourly timeframe
+
+# === VOLATILITY STRATEGIES ===
+Bollinger Band squeeze: Buy when bands tighten below 2% width then expand
+
+# Add your ideas below:
+# (Remove the # to make them active)
+
+# === YOUR CUSTOM STRATEGIES ===
+#

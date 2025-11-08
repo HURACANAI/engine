@@ -1,0 +1,35 @@
+# Strategy Research Pipeline - Dependencies
+# Based on moon-dev-ai-agents
+# Python 3.10+ required
+
+# Core dependencies
+python-dotenv>=1.0.0
+termcolor>=2.3.0
+pydantic>=2.0.0
+
+# AI/ML Models
+anthropic>=0.25.0          # Claude models
+openai>=1.30.0             # GPT models
+google-generativeai>=0.5.0  # Gemini models
+groq>=0.4.0                # Groq (fast inference)
+requests>=2.31.0           # For API calls
+
+# Data handling
+pandas>=2.0.0
+numpy>=1.24.0
+polars>=0.20.0
+
+# Backtesting (optional - for validation)
+backtesting>=0.3.3
+pandas-ta>=0.3.14b
+
+# Utilities
+pathlib>=1.0.1
+dataclasses-json>=0.6.0
+
+# Optional: Local models
+# ollama>=0.1.0            # For local Ollama models
+
+# Optional: Additional LLM providers
+# deepseek>=0.1.0          # DeepSeek API (very cheap!)
+# xai>=0.1.0               # Grok models
