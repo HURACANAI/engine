@@ -389,6 +389,7 @@ def run_daily_retrain() -> None:
         logger.info("telegram_monitoring_initialized", log_file=str(log_file))
         
         # Initialize command handler for interactive commands (/health, /status, /help)
+        telegram_command_handler = None
         try:
             from ..monitoring.telegram_command_handler import TelegramCommandHandler
             telegram_command_handler = TelegramCommandHandler(
@@ -403,6 +404,7 @@ def run_daily_retrain() -> None:
         except Exception as e:
             logger.warning("telegram_command_handler_init_failed", error=str(e))
             print(f"⚠️  Telegram command handler failed to start: {e}")
+            telegram_command_handler = None
     else:
         logger.warning("telegram_monitoring_disabled", reason="not configured")
 
