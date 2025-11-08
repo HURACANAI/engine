@@ -18,6 +18,7 @@ from .enhanced_health_check import (
     EnhancedHealthChecker,
     ComprehensiveHealthReport,
     HealthCheckResult,
+    TelegramCommandHandler,
 )
 
 __all__ = [

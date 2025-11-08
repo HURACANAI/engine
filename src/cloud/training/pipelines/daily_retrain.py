@@ -670,6 +670,11 @@ def run_daily_retrain() -> None:
                 message="Dropbox sync is running in background - data will be synced continuously",
             )
         
+        # Stop command handler
+        if telegram_command_handler:
+            telegram_command_handler.stop_polling()
+            logger.info("telegram_command_handler_stopped")
+        
         if ray.is_initialized():
             ray.shutdown()
 
