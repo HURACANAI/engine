@@ -52,8 +52,8 @@ def download_and_upload_candles(
         dropbox_token: Dropbox access token (if None, uses settings)
         app_folder: Dropbox app folder name
     """
-    # Load settings
-    settings = EngineSettings()
+    # Load settings (loads from config files)
+    settings = EngineSettings.load(environment=os.getenv("HURACAN_ENV", "local"))
     
     # Initialize Dropbox
     dropbox_access_token = dropbox_token or settings.dropbox.access_token
@@ -123,8 +123,12 @@ def download_and_upload_candles(
             filename = f"{symbol_safe}_{timeframe}_{start_at:%Y%m%d}_{end_at:%Y%m%d}.parquet"
             cache_path = Path("data/candles") / filename
             
+            # Ensure cache directory exists
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            
             if not cache_path.exists():
                 print(f"   ❌ Cache file not found: {cache_path}")
+                print(f"   ⚠️  Data was downloaded but cache file was not created")
                 failed_count += 1
                 continue
             
@@ -189,8 +193,11 @@ def get_all_symbols_from_universe() -> List[str]:
     try:
         from src.cloud.training.services.universe import UniverseSelector
         from src.cloud.training.config.settings import EngineSettings
+        from src.cloud.training.services.exchange import ExchangeClient
         
-        settings = EngineSettings()
+        # Load settings (loads from config files)
+        settings = EngineSettings.load(environment=os.getenv("HURACAN_ENV", "local"))
+        
         exchange = ExchangeClient(
             exchange_id="binance",
             credentials=settings.exchange.credentials.get("binance", {}),
@@ -199,10 +206,13 @@ def get_all_symbols_from_universe() -> List[str]:
         universe_selector = UniverseSelector(exchange=exchange, settings=settings)
         universe = universe_selector.select()
         rows = list(universe.iter_rows(named=True))
-        return [row["symbol"] for row in rows]
+        symbols = [row["symbol"] for row in rows]
+        logger.info("universe_symbols_loaded", count=len(symbols), symbols=symbols[:10])
+        return symbols
     except Exception as e:
         logger.warning("failed_to_get_universe_symbols", error=str(e))
-        return []
+        # Fallback to common symbols if universe selector fails
+        return ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "ADA/USDT", "DOGE/USDT", "MATIC/USDT", "DOT/USDT", "AVAX/USDT"]
 
 
 def main():
