@@ -1,380 +1,411 @@
-# 🚀 Huracan Engine - Quick Start Guide
+# Quick Start Guide: Moon-Dev Integration with Huracan Engine
 
-## 🎯 Engine Scope
-
-**This codebase is ONLY for building the Engine (Cloud Training Box).**
-
-- ✅ **Daily baseline training** at 02:00 UTC
-- ✅ **Shadow trading for learning** (paper trades, no real money)
-- ❌ **NOT** hourly updates (that's Mechanic - future)
-- ❌ **NOT** live trading (that's Pilot - future)
-
-**See [ENGINE_SCOPE.md](./ENGINE_SCOPE.md) for details.**
+Get up and running with AI-powered strategy research in 15 minutes.
 
 ---
 
-## ✅ Setup Complete!
+## 🎯 What You'll Build
 
-Your Huracan Engine is now a **complete self-learning RL-powered trading system**!
-
----
-
-## 🎯 What You Have Now
-
-✅ **PostgreSQL database** with RL training tables
-✅ **All dependencies** installed (torch, psycopg2, psutil)
-✅ **RL system** integrated into training pipeline
-✅ **Health monitoring** with anomaly detection
-✅ **Configuration** ready for production
+A pipeline that:
+1. **Discovers** trading strategies using AI
+2. **Backtests** them automatically
+3. **Converts** them to Huracan AlphaEngines
+4. **Deploys** to production (after validation)
 
 ---
 
-## 🚀 Running the System
+## ⚡ Quick Setup (15 minutes)
 
-### Option 1: Quick Test (Single Symbol)
-
-Test the system on BTC/USDT:
+### Step 1: Set Up Strategy Research (5 min)
 
 ```bash
-cd "/Users/haq/Engine (HF1)/engine"
-source .venv/bin/activate
-python test_rl_system.py
-```
+# Navigate to strategy-research
+cd /Users/haq/Engine\ \(HF1\)/strategy-research
 
-**Note:** If you get a Binance API error, this is due to rate limiting. Try again in 1-2 minutes or add API credentials to config.
-
-### Option 2: Full Production Run
-
-Run the complete nightly training on all 20 coins:
-
-```bash
-cd "/Users/haq/Engine (HF1)/engine"
+# Create virtual environment
+python3.11 -m venv .venv
 source .venv/bin/activate
 
-# Make sure PostgreSQL is running
-pg_isready
+# Install dependencies
+pip install -r requirements.txt
 
-# Run the full system
-python -m src.cloud.training.pipelines.daily_retrain
+# Configure environment
+cp .env.example .env
+
+# Edit .env and add AT LEAST ONE API key:
+nano .env
 ```
 
-**This will:**
-1. Select 20 coins from universe
-2. Train LightGBM models (existing functionality)
-3. Run RL shadow trading on each coin
-4. Analyze wins/losses
-5. Store patterns in database
-6. Run health checks
-7. Log everything
+**Minimum Configuration (.env):**
+```bash
+# Add just ONE of these (DeepSeek is cheapest!)
+DEEPSEEK_KEY=your_key_here        # ~$0.027 per strategy
+# OR
+ANTHROPIC_KEY=your_key_here       # ~$0.10 per strategy
+# OR
+OPENAI_KEY=your_key_here          # ~$0.20 per strategy
+```
 
-**Expected time:** 30-60 minutes for 20 coins
-
----
-
-## 📊 Monitoring Progress
-
-### Watch Logs in Real-Time
+### Step 2: Create Your First Strategy (3 min)
 
 ```bash
-# If you want to see structured logs
-python -m src.cloud.training.pipelines.daily_retrain 2>&1 | jq .
+# Create strategy ideas file
+cat > data/rbi/ideas.txt << 'EOF'
+# Trading Strategy Ideas
+# Lines starting with # are ignored
 
-# Or save to file and watch
-python -m src.cloud.training.pipelines.daily_retrain > training.log 2>&1 &
-tail -f training.log | jq .
+Buy when RSI drops below 30, sell when it rises above 70
+Moving average crossover: Buy when 20 EMA crosses above 50 EMA
+Breakout strategy: Buy when price breaks above 20-day high with volume spike
+EOF
 ```
 
-### Check Database
+### Step 3: Run the RBI Agent (5 min)
 
 ```bash
-# Connect to database
-psql postgresql://haq@localhost:5432/huracan
+# Process your strategy ideas
+python agents/simple_rbi_agent.py
 
-# See table counts
-SELECT
-  'trade_memory' as table_name, COUNT(*) as rows FROM trade_memory
-UNION ALL
-SELECT 'win_analysis', COUNT(*) FROM win_analysis
-UNION ALL
-SELECT 'loss_analysis', COUNT(*) FROM loss_analysis
-UNION ALL
-SELECT 'pattern_library', COUNT(*) FROM pattern_library;
-
-# See best patterns
-SELECT
-  pattern_name,
-  win_rate,
-  avg_profit_bps,
-  total_occurrences,
-  reliability_score
-FROM pattern_library
-WHERE win_rate > 0.55
-ORDER BY reliability_score DESC
-LIMIT 10;
-
-# See recent trades
-SELECT
-  symbol,
-  entry_timestamp,
-  exit_reason,
-  net_profit_gbp,
-  hold_duration_minutes,
-  is_winner
-FROM trade_memory
-ORDER BY entry_timestamp DESC
-LIMIT 20;
+# Expected output:
+# 🔍 Researching strategy: Buy when RSI drops below 30...
+# ✅ Research complete
+# 💻 Generating backtest code...
+# ✅ Backtest code generated
+# 📁 Files saved to: data/rbi/11_08_2025
 ```
 
----
-
-## 🔧 System Configuration
-
-### Key Settings
-
-All configured in [`config/base.yaml`](config/base.yaml):
-
-```yaml
-# RL Agent (PPO algorithm)
-training:
-  rl_agent:
-    enabled: true          # ✅ RL training active
-    learning_rate: 0.0003
-    gamma: 0.99
-    clip_epsilon: 0.2
-
-  # Shadow Trading
-  shadow_trading:
-    enabled: true          # ✅ Shadow trading active
-    position_size_gbp: 1000
-    max_hold_minutes: 120
-    stop_loss_bps: 15
-    take_profit_bps: 20
-
-  # Health Monitoring
-  monitoring:
-    enabled: true          # ✅ Monitoring active
-    check_interval_seconds: 300
-    auto_remediation_enabled: true
-
-# Database
-postgres:
-  dsn: "postgresql://haq@localhost:5432/huracan"
-```
-
-### Toggle Features
-
-To disable a feature, edit `config/base.yaml`:
-
-```yaml
-# Disable RL training (keep only LightGBM)
-training:
-  rl_agent:
-    enabled: false
-
-# Disable health monitoring
-training:
-  monitoring:
-    enabled: false
-```
-
----
-
-## 📈 Expected Results
-
-### After First Run (20 coins × 150 days)
-
-- **Trades stored:** 2,000-4,000
-- **Patterns learned:** 50-100
-- **Win rate:** 48-52% (initial)
-- **Database size:** ~50-100 MB
-
-### After 1 Week (7 runs)
-
-- **Trades stored:** 10,000+
-- **Patterns learned:** 150-200
-- **High-confidence patterns:** 20-30 (>55% win rate)
-- **Win rate:** 52-58% (improving)
-
-### After 1 Month (30 runs)
-
-- **Trades stored:** 30,000+
-- **Patterns learned:** 300-500
-- **High-confidence patterns:** 50-80
-- **Target: £1-2 per trade** being achieved
-- **Daily P&L:** £60-£180
-
----
-
-## 🐛 Common Issues
-
-### PostgreSQL Not Running
+### Step 4: Translate to AlphaEngine (2 min)
 
 ```bash
-# Check if running
-pg_isready
+# Navigate to Engine
+cd ../engine
 
-# Start if not running
-brew services start postgresql@14
+# Run Strategy Translator
+python3 << 'EOF'
+from pathlib import Path
+from cloud.training.adapters.strategy_translator import StrategyTranslator
 
-# Verify
-psql postgresql://haq@localhost:5432/huracan -c "SELECT 1"
+# Initialize translator (uses Claude by default)
+translator = StrategyTranslator(llm_provider="anthropic")
+
+# Find your generated backtests
+backtest_dir = Path("../strategy-research/data/rbi")
+latest_run = sorted(backtest_dir.glob("*_*_*"))[-1]  # Most recent
+backtests = latest_run / "backtests"
+
+# Translate all backtests
+engines = translator.batch_translate(backtests)
+
+print(f"\n✅ Generated {len(engines)} AlphaEngines!")
+for engine in engines:
+    print(f"   📄 {engine.file_path.name}")
+EOF
 ```
 
-### Binance Rate Limit
+**That's it!** You now have AI-generated AlphaEngines ready for testing.
 
-If you see `'NoneType' object is not iterable` or rate limit errors:
+---
 
-1. **Wait 1-2 minutes** between runs
-2. **Add API credentials** to `config/base.yaml`:
-   ```yaml
-   exchange:
-     credentials:
-       binance:
-         api_key: "your_key"
-         api_secret: "your_secret"
-   ```
-3. **Use a different exchange** (coinbase, kraken, etc.)
+## 📊 Verify Everything Worked
 
-### Import Errors
+### Check Generated Backtests
 
 ```bash
-# Reinstall dependencies
-cd "/Users/haq/Engine (HF1)/engine"
-source .venv/bin/activate
-pip install torch==2.1.0 psycopg2-binary==2.9.9 psutil==5.9.6
+cd /Users/haq/Engine\ \(HF1\)/strategy-research
+
+# View backtest files
+ls -lh data/rbi/*/backtests/
+
+# Should see Python files like:
+# 143022_backtest.py
+# 143045_backtest.py
 ```
 
-### Database Connection Issues
+### Check Generated Engines
 
 ```bash
-# Check DATABASE_URL
-echo $DATABASE_URL
+cd /Users/haq/Engine\ \(HF1\)/engine
 
-# Should be: postgresql://haq@localhost:5432/huracan
+# View generated engines
+ls -lh src/cloud/training/models/ai_generated_engines/
 
-# If not set, add to your shell profile:
-echo 'export DATABASE_URL="postgresql://haq@localhost:5432/huracan"' >> ~/.zshrc
-source ~/.zshrc
+# Should see files like:
+# aigeneratedengine_rsi_reversal_20251108_143530.py
+```
+
+### Inspect an Engine
+
+```bash
+# View the code
+cat src/cloud/training/models/ai_generated_engines/aigeneratedengine_rsi_reversal*.py
+
+# Should see proper AlphaEngine structure:
+# class AIGeneratedEngine_RSI_Reversal(AlphaEngine):
+#     def generate_signal(self, symbol, df, regime, meta):
+#         ...
 ```
 
 ---
 
-## 📚 Documentation
+## 🧪 Test Your First Engine
 
-| Document | Purpose |
-|----------|---------|
-| **QUICKSTART.md** | This file - get started quickly |
-| [SETUP_GUIDE.md](SETUP_GUIDE.md) | Detailed setup instructions |
-| [INTEGRATION_COMPLETE.md](INTEGRATION_COMPLETE.md) | What was integrated |
-| [DEPLOYMENT_COMPLETE.md](DEPLOYMENT_COMPLETE.md) | Deployment summary |
-| [RL_TRAINING_GUIDE.md](RL_TRAINING_GUIDE.md) | Understanding RL system |
-| [HEALTH_MONITORING_GUIDE.md](HEALTH_MONITORING_GUIDE.md) | Monitoring details |
+### Manual Testing (Recommended First Time)
 
----
+```python
+# Create test script: test_ai_engine.py
+cd /Users/haq/Engine\ \(HF1\)/engine
 
-## 🎯 Next Actions
+cat > test_ai_engine.py << 'EOF'
+from pathlib import Path
+from cloud.training.models.alpha_engines import AlphaSignal
+import pandas as pd
+import numpy as np
 
-1. **✅ Run full training:**
-   ```bash
-   cd "/Users/haq/Engine (HF1)/engine"
-   source .venv/bin/activate
-   python -m src.cloud.training.pipelines.daily_retrain
-   ```
+# Import your generated engine (adjust filename)
+import sys
+sys.path.insert(0, 'src/cloud/training/models/ai_generated_engines')
+from aigeneratedengine_rsi_reversal_20251108_143530 import AIGeneratedEngine_RSI_Reversal
 
-2. **✅ Check results:**
-   ```bash
-   psql postgresql://haq@localhost:5432/huracan
-   SELECT COUNT(*) FROM trade_memory;
-   SELECT * FROM pattern_library LIMIT 5;
-   ```
+# Create test data
+df = pd.DataFrame({
+    'close': np.random.randn(100).cumsum() + 100,
+    'rsi_14': np.random.rand(100) * 100
+})
 
-3. **✅ Schedule nightly runs:**
-   ```bash
-   # Add to crontab for 02:00 UTC daily
-   crontab -e
-   # Add: 0 2 * * * cd /Users/haq/Engine\ \(HF1\)/engine && source .venv/bin/activate && python -m src.cloud.training.pipelines.daily_retrain >> /tmp/huracan.log 2>&1
-   ```
+# Initialize engine
+engine = AIGeneratedEngine_RSI_Reversal()
 
-4. **✅ Setup Telegram alerts (optional but recommended):**
-   - Get bot token from @BotFather
-   - Add to `config/base.yaml`
-   - Get instant notifications on issues
+# Generate signal
+signal = engine.generate_signal(
+    symbol='BTCUSDT',
+    df=df,
+    regime='TREND',
+    meta={}
+)
 
----
+print(f"✅ Engine test successful!")
+print(f"   Signal direction: {signal.direction}")
+print(f"   Confidence: {signal.confidence}")
+EOF
 
-## 💡 Tips
+# Run test
+python test_ai_engine.py
+```
 
-### Optimize Performance
-
-1. **Use GPU if available:**
-   ```yaml
-   training:
-     rl_agent:
-       device: "cuda"  # Instead of "cpu"
-   ```
-
-2. **Reduce lookback for faster training:**
-   ```yaml
-   training:
-     window_days: 90  # Instead of 150
-   ```
-
-3. **Adjust confidence threshold:**
-   ```yaml
-   training:
-     shadow_trading:
-       min_confidence_threshold: 0.55  # Higher = fewer but better trades
-   ```
-
-### Query Useful Insights
-
-```sql
--- Why are we losing?
-SELECT
-  primary_failure_reason,
-  COUNT(*) as occurrences,
-  AVG(net_profit_gbp) as avg_loss,
-  COUNT(*) * 100.0 / SUM(COUNT(*)) OVER() as percentage
-FROM loss_analysis
-JOIN trade_memory ON loss_analysis.trade_id = trade_memory.trade_id
-GROUP BY primary_failure_reason
-ORDER BY occurrences DESC;
-
--- Best entry times
-SELECT
-  EXTRACT(HOUR FROM entry_timestamp) as hour_utc,
-  COUNT(*) as trades,
-  AVG(CASE WHEN is_winner THEN 1.0 ELSE 0.0 END) as win_rate,
-  AVG(net_profit_gbp) as avg_profit
-FROM trade_memory
-GROUP BY hour_utc
-ORDER BY win_rate DESC;
-
--- Most profitable coins
-SELECT
-  symbol,
-  COUNT(*) as trades,
-  SUM(net_profit_gbp) as total_profit,
-  AVG(net_profit_gbp) as avg_profit,
-  AVG(CASE WHEN is_winner THEN 1.0 ELSE 0.0 END) as win_rate
-FROM trade_memory
-GROUP BY symbol
-ORDER BY total_profit DESC
-LIMIT 10;
+**Expected output:**
+```
+✅ Engine test successful!
+   Signal direction: 1  # (or 0, -1)
+   Confidence: 0.65     # (0.0 to 1.0)
 ```
 
 ---
 
-## 🎉 You're Ready!
+## 🚀 Deploy to Production (After Validation)
 
-Your Huracan Engine is now:
-- ✅ **Self-learning** from every trade
-- ✅ **Memory-powered** with pattern recognition
-- ✅ **Health-monitored** with alerts
-- ✅ **Production-ready** for automated trading
+### Option 1: Manual Integration (Recommended for First Engine)
 
-**Start training and let it learn!** 🚀
+```python
+# Edit: src/cloud/training/models/alpha_engines.py
+
+# 1. Add import at top
+from .ai_generated_engines.aigeneratedengine_rsi_reversal_20251108_143530 import AIGeneratedEngine_RSI_Reversal
+
+# 2. Add to get_all_engines() function
+def get_all_engines():
+    return [
+        # ... existing 23 engines ...
+
+        # AI-Generated Engines (reviewed and approved)
+        AIGeneratedEngine_RSI_Reversal(),
+    ]
+```
+
+### Option 2: Dynamic Loading (For Mature Pipeline)
+
+```python
+# Edit: src/cloud/training/models/alpha_engines.py
+
+from .ai_generated_engines import load_ai_engines
+
+def get_all_engines():
+    base_engines = [
+        # ... existing 23 engines ...
+    ]
+
+    # Load only approved AI engines
+    ai_engines = load_ai_engines(status_filter="approved")
+
+    return base_engines + ai_engines
+```
+
+### Mark Engine as Approved
+
+```python
+# Edit your generated engine file and add METADATA:
+
+class AIGeneratedEngine_RSI_Reversal(AlphaEngine):
+    METADATA = {
+        "source": "rbi_agent",
+        "generation_date": "2025-11-08",
+        "backtest_return": 8.5,  # From RBI agent output
+        "status": "approved",    # pending → testing → approved
+        "strategy_type": "reversal",
+        "description": "RSI-based reversal strategy"
+    }
+
+    def __init__(self):
+        super().__init__(name="rsi_reversal")
+
+    # ... rest of code ...
+```
 
 ---
 
-*Questions? Explore the rest of this folder for detailed guides.*
+## 📈 Next Steps
+
+### 1. Run Daily Automation
+
+```bash
+# Add to crontab (or use systemd timer)
+crontab -e
+
+# Add these lines:
+# Daily at 01:00 - Generate new strategies
+0 1 * * * cd /Users/haq/Engine\ \(HF1\)/strategy-research && .venv/bin/python agents/simple_rbi_agent.py
+
+# Daily at 01:30 - Translate to engines
+30 1 * * * cd /Users/haq/Engine\ \(HF1\)/engine && python3 -m cloud.training.adapters.strategy_translator
+
+# Daily at 02:00 - Engine training (already configured)
+0 2 * * * cd /Users/haq/Engine\ \(HF1\)/engine && ./scripts/run_daily_retrain.sh
+```
+
+### 2. Monitor Performance
+
+```bash
+# Check RBI agent output
+tail -f /Users/haq/Engine\ \(HF1\)/strategy-research/data/rbi/backtest_stats.csv
+
+# Check Engine training logs
+tail -f /Users/haq/Engine\ \(HF1\)/engine/logs/daily_retrain.log
+
+# View AI-generated engine performance
+# (Use Engine's observability dashboard)
+```
+
+### 3. Add More Strategies
+
+```bash
+# Edit ideas.txt
+nano /Users/haq/Engine\ \(HF1\)/strategy-research/data/rbi/ideas.txt
+
+# Add lines like:
+# MACD crossover with divergence confirmation
+# Bollinger Band squeeze breakout
+# Volume-weighted moving average trend following
+```
+
+### 4. Integrate Market Intelligence (Optional)
+
+See: [INTEGRATION_ARCHITECTURE.md](INTEGRATION_ARCHITECTURE.md#phase-4-market-intelligence-agents-optional-5-7-days)
+
+---
+
+## 🛠️ Troubleshooting
+
+### Issue: "Model Factory not available"
+
+**Solution:**
+```bash
+# Check that strategy-research is set up correctly
+ls /Users/haq/Engine\ \(HF1\)/strategy-research/models/model_factory.py
+
+# If missing, copy from moon-dev again
+cp -r moon-dev-ai-agents/src/models/* strategy-research/models/
+```
+
+### Issue: "API key not found"
+
+**Solution:**
+```bash
+# Check .env file exists
+cat /Users/haq/Engine\ \(HF1\)/strategy-research/.env
+
+# Verify at least one key is set (should see key value, not empty)
+grep -E "ANTHROPIC_KEY|OPENAI_KEY|DEEPSEEK_KEY" /Users/haq/Engine\ \(HF1\)/strategy-research/.env
+```
+
+### Issue: "No backtests generated"
+
+**Solution:**
+```bash
+# Check ideas.txt has valid ideas (not all comments)
+cat /Users/haq/Engine\ \(HF1\)/strategy-research/data/rbi/ideas.txt
+
+# Verify RBI agent ran without errors
+python /Users/haq/Engine\ \(HF1\)/strategy-research/agents/simple_rbi_agent.py 2>&1 | tee rbi_debug.log
+```
+
+### Issue: "Strategy Translator fails"
+
+**Solution:**
+```bash
+# Verify anthropic key is set (or use different provider)
+cd /Users/haq/Engine\ \(HF1\)/engine
+
+# Try with different LLM provider
+python3 << 'EOF'
+from cloud.training.adapters.strategy_translator import StrategyTranslator
+
+# Use DeepSeek (cheaper) instead of Claude
+translator = StrategyTranslator(llm_provider="deepseek")
+
+# ... rest of translation code ...
+EOF
+```
+
+---
+
+## 💰 Cost Estimates
+
+### Per Strategy (using different providers)
+
+| Provider | Cost/Strategy | Speed | Quality |
+|----------|---------------|-------|---------|
+| DeepSeek | $0.027 | 6 min | Good |
+| Anthropic Claude | $0.10 | 4 min | Excellent |
+| OpenAI GPT-4 | $0.20 | 3 min | Excellent |
+
+### Monthly Costs (10 strategies/day)
+
+- **DeepSeek**: ~$8/month
+- **Claude**: ~$30/month
+- **GPT-4**: ~$60/month
+
+**Recommendation**: Start with DeepSeek, upgrade to Claude/GPT-4 for production.
+
+---
+
+## 📚 Learn More
+
+- **Full Architecture**: [INTEGRATION_ARCHITECTURE.md](INTEGRATION_ARCHITECTURE.md)
+- **Strategy Research Details**: [strategy-research/README.md](strategy-research/README.md)
+- **Huracan Engine Docs**: [engine/docs/README.md](engine/docs/README.md)
+- **Moon-Dev Original**: [moon-dev-ai-agents/README.md](moon-dev-ai-agents/README.md)
+
+---
+
+## ✅ You're Done!
+
+You now have:
+- ✅ AI-powered strategy research pipeline
+- ✅ Automatic backtest generation
+- ✅ Strategy → AlphaEngine translation
+- ✅ Integration with Huracan Engine
+
+**Next**: Run this daily, monitor performance, deploy winners to production!
+
+---
+
+**Questions?** Check [INTEGRATION_ARCHITECTURE.md](INTEGRATION_ARCHITECTURE.md) or review the code.

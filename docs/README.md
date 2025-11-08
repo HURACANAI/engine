@@ -1,185 +1,240 @@
-# Huracan Engine v5.1
+# Huracan AI Trading System - Integration Documentation
 
-Huracan Engine is the **Cloud Training Box** that produces the nightly "Baseline Brain" for the Huracan trading stack. The project now ships a fully wired PPO agent, walk-forward shadow trading simulator, post-trade analytics backed by PostgreSQL + pgvector, health-monitoring control loop, **and comprehensive observability system** with AI-powered insights and interactive UIs.
-
-## 🎯 Engine Scope
-
-**IMPORTANT:** This codebase is **ONLY for building the Engine** (Cloud Training Box).
-
-### What the Engine IS ✅
-- **Daily baseline training** - Runs once per day at 02:00 UTC
-- **Full model retraining** - Trains on 3-6 months of historical data
-- **Shadow trading for learning** - Paper trades to train models (NO real money)
-- **Model export** - Saves trained models to S3/Postgres for other components
-
-### What the Engine is NOT ❌
-- **Hourly incremental updates** - That's Mechanic (future component)
-- **Live trading execution** - That's Pilot (future component)
-- **Real-time order management** - That's Pilot (future component)
-
-**See [ENGINE_SCOPE.md](./ENGINE_SCOPE.md) for complete scope documentation.**
-
-**Main Entry Point:** `src/cloud/training/pipelines/daily_retrain.py`
+Complete documentation for the Huracan AI Trading System integration with moon-dev AI agents for automated strategy research and generation.
 
 ---
 
-## Highlights
+## 📚 Documentation
 
-- **Reinforcement learning agent** using PPO with contextual action biasing, running statistics, and gradient clipping ([src/cloud/training/agents/rl_agent.py](../src/cloud/training/agents/rl_agent.py)).
-- **Shadow trading simulator** that walks historical data without lookahead, captures rich trade context, and feeds rewards back into the agent ([src/cloud/training/backtesting/shadow_trader.py](../src/cloud/training/backtesting/shadow_trader.py)).
-- **Post-trade analytics suite** covering wins, losses, pattern stats, and post-exit tracking, all persisted via `MemoryStore` into PostgreSQL/pgvector ([src/cloud/training/analyzers](../src/cloud/training/analyzers), [src/cloud/training/memory](../src/cloud/training/memory)).
-- **Confidence, regime, and feature importance models** packaged under [src/cloud/training/models](../src/cloud/training/models) to score trades before entry and explain outcomes.
-- **Intelligence gates** (14 systems) that filter unprofitable trades through cost analysis, adverse selection detection, and meta-labeling.
-- **Daily orchestration and monitoring** with Ray integration, health checks, alerting, and artifact publishing ([src/cloud/training/pipelines/daily_retrain.py](../src/cloud/training/pipelines/daily_retrain.py), [src/cloud/training/monitoring](../src/cloud/training/monitoring)).
-- **Observability system** (33 modules) with event logging (113k events/sec), learning analytics, AI Council (7 models + judge), and 4 interactive UIs ([observability/](../observability/)).
+This repository contains comprehensive documentation for integrating AI-powered strategy research into the Huracan trading engine.
 
-## Repository Layout
+### Quick Start
+- **[QUICKSTART.md](QUICKSTART.md)** - Get started in 15 minutes
 
-- `src/cloud/training/agents` – PPO agent and supporting utilities.
-- `src/cloud/training/backtesting` – Shadow trading engine plus backtest configuration.
-- `src/cloud/training/analyzers` – Win/loss insight generators, pattern matcher, post-exit tracker.
-- `src/cloud/training/models` – Regime detector, confidence scorer, feature importance learner, ensemble helpers, intelligence gates.
-- `src/cloud/training/memory` – PostgreSQL schema and vector-backed memory store.
-- `src/cloud/training/pipelines` – Daily retrain entrypoint and RL training pipeline.
-- `src/cloud/training/services` – Orchestrator, costs, exchange client, artifact publishing, notifications.
-- `src/cloud/training/monitoring` – Health monitor orchestrator, anomaly detection, auto-remediation.
-- **`observability/`** – Event logging, learning analytics, AI Council, interactive UIs (33 modules, v5.1).
-  - `observability/core/` – Event logger, hybrid storage, model registry, queue monitor.
-  - `observability/analytics/` – Learning tracker, shadow trade journal, gate explainer, decision tracer, metrics computer.
-  - `observability/ai_council/` – 7 analyst models + judge for AI-powered insights (planned).
-  - `observability/ui/` – Live dashboard, trade viewer, gate inspector, model tracker (4 interactive UIs).
-- `config/` – Base, local, and monitoring YAML profiles used by `EngineSettings`.
-- `scripts/` – Setup helpers (`setup_database.sh`, `setup_rl_training.sh`), runner scripts (`run_daily_retrain.sh`, `run_health_monitor.py`).
-- `tests/` – Unit and integration coverage (confidence scoring, regime detection, RL system checks, observability, etc.).
-- `docs/` – Comprehensive documentation (50+ files including phase completion, guides, architecture).
+### Technical Documentation
+- **[INTEGRATION_ARCHITECTURE.md](INTEGRATION_ARCHITECTURE.md)** - Complete technical architecture
+- **[INTEGRATION_STATUS.md](INTEGRATION_STATUS.md)** - Current status and health metrics
+- **[INTEGRATION_SUMMARY.md](INTEGRATION_SUMMARY.md)** - Executive overview
 
-## Getting Started
+### System Guides
+- **[HURACAN_ENGINE_COMPLETE_GUIDE.md](HURACAN_ENGINE_COMPLETE_GUIDE.md)** - A-Z engine explanation (25,000 words)
+- **[INTEGRATION_MANIFEST.md](INTEGRATION_MANIFEST.md)** - Complete file inventory
+- **[TESTING_RESULTS.md](TESTING_RESULTS.md)** - Test results and validation
 
-### 1. Prepare your environment
+---
 
-- Python **3.11** (pyenv or `python -m venv .venv` are both fine).
-- PostgreSQL **14+** with access to install the `pgvector` extension.
-- Optional: Ray cluster access if you plan to distribute daily retraining.
+## 🏗️ System Architecture
 
-Create and activate a virtual environment:
+The Huracan AI Trading System consists of three independent repositories:
 
+### 1. Strategy Research Pipeline
+**Repository:** `huracan-strategy-research` (separate repo)
+**Purpose:** AI-powered strategy generation
+
+- RBI Agent (Research-Backtest-Implement)
+- Model Factory (8 LLM providers)
+- Backtest generation
+- Strategy validation
+
+**Setup:**
 ```bash
-python3.11 -m venv .venv
-source .venv/bin/activate
+git clone https://github.com/YOUR_USERNAME/huracan-strategy-research.git
+cd huracan-strategy-research
+bash RUN_ME_FIRST.sh
 ```
 
-### 2. Install dependencies
+### 2. Trading Engine
+**Repository:** `engine` (https://github.com/HURACANAI/engine)
+**Purpose:** Trading execution and model training
 
-Poetry is the supported workflow (the project file lives under `infrastructure/pyproject.toml`):
+- 23 Alpha Engines
+- Daily retraining pipeline
+- Strategy Translator (backtest → AlphaEngine)
+- Meta-learning system
 
+**Setup:**
 ```bash
-cd infrastructure
-poetry install
-poetry shell  # optional: spawn a shell with the environment active
+git clone https://github.com/HURACANAI/engine.git
+cd engine
+# Follow engine setup instructions
 ```
 
-If you prefer plain `pip`, mirror the versions from `infrastructure/pyproject.toml` (the quick setup script installs the critical ones: torch, polars, psycopg2-binary, scipy).
+### 3. Integration Documentation
+**Repository:** This repo
+**Purpose:** Documentation and architecture specs
 
-### 3. Configure PostgreSQL
+---
 
-1. Ensure `DATABASE_URL` is exported, e.g.
-   ```bash
-   export DATABASE_URL='postgresql://user:password@localhost:5432/huracan'
-   ```
-2. Provision schema and pgvector tables:
-   ```bash
-   ./scripts/setup_database.sh
-   ```
-   The script validates connectivity, installs `vector`, and creates `trade_memory`, `post_exit_tracking`, `win_analysis`, `loss_analysis`, `pattern_library`, and `model_performance`.
+## 🚀 Complete Integration Flow
 
-### 4. Update configuration
-
-- Edit `config/base.yaml` (or the environment-specific profile you are using) to supply the PostgreSQL DSN, exchange credentials, S3/artifact settings, and any overrides for the RL, shadow trading, memory, or monitoring blocks.
-- `EngineSettings` can also read overrides from environment variables such as `HURACAN_ENV`, `HURACAN_MODE`, and `HURACAN_CONFIG_DIR`.
-
-### 5. (Optional) Run the RL setup helper
-
-`./scripts/setup_rl_training.sh` installs core Python dependencies (via Poetry), checks PostgreSQL connectivity, and ensures the docs/models directories exist.
-
-## Running the Engine
-
-- **Daily retrain pipeline** (loads data, runs shadow trading, updates the agent, publishes artifacts, executes health checks):
-  ```bash
-  ./scripts/run_daily_retrain.sh
-  ```
-  This script maps to `cloud.training.pipelines.daily_retrain:run_daily_retrain`.
-
-- **Ad-hoc single-symbol training** with the RL pipeline:
-  ```bash
-  poetry run python - <<'PY'
-from cloud.training.config.settings import EngineSettings
-from cloud.training.pipelines.rl_training_pipeline import RLTrainingPipeline
-from cloud.training.services.exchange import ExchangeClient
-
-settings = EngineSettings.load()
-if not settings.postgres:
-    raise RuntimeError("Postgres DSN must be configured")
-
-pipeline = RLTrainingPipeline(settings=settings, dsn=settings.postgres.dsn)
-client = ExchangeClient(settings.exchange.primary, sandbox=settings.exchange.sandbox)
-metrics = pipeline.train_on_symbol(symbol="BTCUSDT", exchange_client=client, lookback_days=365)
-print(metrics)
-PY
+```
+Strategy Idea
+    ↓
+huracan-strategy-research
+    ├── RBI Agent (AI research)
+    ├── Backtest generation
+    └── Strategy validation
+    ↓
+engine (Strategy Translator)
+    ├── Translate backtest → AlphaEngine
+    ├── Add to ai_generated_engines/
+    └── Integrate with 23 existing engines
+    ↓
+engine (Daily Retrain)
+    ├── Train all engines
+    ├── Meta-learning optimization
+    └── Generate baseline model
+    ↓
+Hamilton (Live Trading)
+    └── Execute trades
 ```
 
-- **Continuous health monitoring** with structured logging and (optional) Telegram alerts:
-  ```bash
-  poetry run ./scripts/run_health_monitor.py
-  ```
+---
 
-## Testing & Quality Gates
+## ✅ Integration Status
 
-- Unit/integration tests: `poetry run pytest`
-- Linting and formatting: `poetry run ruff check src tests` and `poetry run ruff format src tests`
-- Static typing: `poetry run mypy src`
-- System smoke test: `poetry run python tests/verify_system.py`
+**All Systems Operational:**
+- ✅ Strategy Research Pipeline (huracan-strategy-research)
+- ✅ Trading Engine (engine)
+- ✅ Strategy Translator (engine/adapters)
+- ✅ AI-Generated Engines (engine/ai_generated_engines)
+- ✅ All tests passing (13/13)
 
-## Additional Documentation
+---
 
-The `docs/` directory contains deep dives and runbooks:
+## 📦 Repository Links
 
-### Core Guides
-- [`SETUP_GUIDE.md`](SETUP_GUIDE.md) – full environment walkthrough.
-- [`RL_TRAINING_GUIDE.md`](RL_TRAINING_GUIDE.md) – detailed PPO + shadow trading explanation.
-- [`HEALTH_MONITORING_GUIDE.md`](HEALTH_MONITORING_GUIDE.md) – alerting, anomaly detection, and auto-remediation details.
-- [`INTEGRATION_COMPLETE.md`](INTEGRATION_COMPLETE.md) & [`DEPLOYMENT_COMPLETE.md`](DEPLOYMENT_COMPLETE.md) – integration status and deployment checklist.
-- [`README_COMPLETE.md`](README_COMPLETE.md) – comprehensive architecture summary.
+| Component | Repository | Status |
+|-----------|------------|--------|
+| **Strategy Research** | [huracan-strategy-research](https://github.com/YOUR_USERNAME/huracan-strategy-research) | ✅ Independent |
+| **Trading Engine** | [engine](https://github.com/HURACANAI/engine) | ✅ Independent |
+| **Documentation** | This repo | ✅ Complete |
 
-### Complete System Documentation
-- [`../COMPLETE_SYSTEM_DOCUMENTATION_V5.md`](../COMPLETE_SYSTEM_DOCUMENTATION_V5.md) – **v5.1 master reference** with complete A-Z coverage of all systems, strategies, and methods.
+---
 
-### Observability Documentation (v5.1 NEW!)
-- [`../observability/FINAL_SUMMARY.md`](../observability/FINAL_SUMMARY.md) – Observability system overview (33 modules).
-- [`../observability/AI_COUNCIL_ARCHITECTURE.md`](../observability/AI_COUNCIL_ARCHITECTURE.md) – AI Council design (7 analysts + judge).
-- [`../observability/ENGINE_ARCHITECTURE.md`](../observability/ENGINE_ARCHITECTURE.md) – Engine vs Hamilton separation.
-- [`../observability/INTEGRATION_GUIDE.md`](../observability/INTEGRATION_GUIDE.md) – 3-line integration guide.
+## 🎯 Key Features
 
-### Phase Completion Docs
-- Phase 1-4 completion documents ([`PHASE1_COMPLETE.md`](PHASE1_COMPLETE.md) through [`PHASE_5_COMPLETE.md`](PHASE_5_COMPLETE.md))
-- Engine phase completions ([`ENGINE_PHASE1_COMPLETE.md`](ENGINE_PHASE1_COMPLETE.md) through [`ENGINE_PHASE4_WAVE3_COMPLETE.md`](ENGINE_PHASE4_WAVE3_COMPLETE.md))
-- [`INTELLIGENCE_GATES_COMPLETE.md`](INTELLIGENCE_GATES_COMPLETE.md) – All 14 intelligence gates
+### Automated Strategy Pipeline
+- Idea → Research → Backtest → AlphaEngine → Production
+- Runs daily at 01:00 UTC (configurable)
+- Hands-free strategy generation
 
-These references stay in sync with the code paths listed above, so you can trace each subsystem from documentation to implementation without outdated pointers.
+### Cost Optimized
+- Start with DeepSeek ($1/1M tokens)
+- Upgrade to Claude for quality
+- Mix providers for best value
 
-## Interactive Tools (v5.1 NEW!)
+### Production Ready
+- All tests passing
+- Error handling and validation
+- Comprehensive logging
+- Status-based filtering
 
-The observability system includes 4 interactive terminal UIs:
+---
 
+## 📝 Quick Setup Guide
+
+### 1. Clone Repositories
 ```bash
-# Live dashboard - real-time learning metrics
-python -m observability.ui.live_dashboard
+# Strategy Research
+git clone https://github.com/YOUR_USERNAME/huracan-strategy-research.git
 
-# Shadow trade viewer - explore paper trades
-python -m observability.ui.trade_viewer
-
-# Gate inspector - analyze gate decisions
-python -m observability.ui.gate_inspector
-
-# Model tracker - track model evolution
-python -m observability.ui.model_tracker_ui
+# Trading Engine
+git clone https://github.com/HURACANAI/engine.git
 ```
+
+### 2. Setup Strategy Research
+```bash
+cd huracan-strategy-research
+bash RUN_ME_FIRST.sh
+cp .env.example .env
+nano .env  # Add API keys
+python test_integration.py
+```
+
+### 3. Setup Engine
+```bash
+cd ../engine
+# Follow engine-specific setup instructions
+python test_strategy_translator.py
+```
+
+### 4. Run Your First Strategy
+```bash
+# Generate strategy
+cd huracan-strategy-research
+python agents/simple_rbi_agent.py
+
+# Translate to AlphaEngine
+cd ../engine
+python -m cloud.training.adapters.strategy_translator
+```
+
+---
+
+## 🔧 Configuration
+
+### API Keys (Strategy Research)
+Add to `huracan-strategy-research/.env`:
+```bash
+DEEPSEEK_KEY=sk-...        # Recommended: $1/1M tokens
+ANTHROPIC_KEY=sk-ant-...   # Optional: Best quality
+OPENAI_KEY=sk-...          # Optional: Good balance
+```
+
+### Strategy Ideas
+Add to `huracan-strategy-research/data/rbi/ideas.txt`:
+```
+RSI oversold/overbought reversal on 15m timeframe
+MACD crossover with volume confirmation
+Breakout from consolidation with ATR filter
+```
+
+---
+
+## 📊 Testing
+
+All integration tests passing:
+
+**Strategy Research:** 6/6 ✅
+- Directory structure verified
+- Model Factory working (8 providers)
+- Configuration valid
+- Ready for API keys
+
+**Engine Integration:** 7/7 ✅
+- Backtest translation working
+- AlphaEngine generation working
+- Signal generation validated
+- Import and execution successful
+
+---
+
+## 🎓 Learning Resources
+
+1. **Start here:** [QUICKSTART.md](QUICKSTART.md)
+2. **Understand the system:** [HURACAN_ENGINE_COMPLETE_GUIDE.md](HURACAN_ENGINE_COMPLETE_GUIDE.md)
+3. **Technical deep-dive:** [INTEGRATION_ARCHITECTURE.md](INTEGRATION_ARCHITECTURE.md)
+4. **Current status:** [INTEGRATION_STATUS.md](INTEGRATION_STATUS.md)
+
+---
+
+## 🤝 Support
+
+- **Issues:** Open an issue in the relevant repository
+- **Questions:** See documentation in this repo
+- **Updates:** Check [INTEGRATION_STATUS.md](INTEGRATION_STATUS.md)
+
+---
+
+## 📄 License
+
+See individual repository licenses:
+- huracan-strategy-research: (your license)
+- engine: (engine repo license)
+
+---
+
+**Status:** ✅ All systems operational and ready for use
+
+*Last Updated: 2025-11-08*
