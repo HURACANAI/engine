@@ -77,11 +77,12 @@ class TradeRecord:
     trade_id: str
     pred_id: str
     timestamp_open: datetime
-    timestamp_close: Optional[datetime] = None
     symbol: str
     side: str  # "long" or "short"
     size: float  # Position size in base currency
     entry_price: float
+    # Optional fields with defaults come after required fields
+    timestamp_close: Optional[datetime] = None
     exit_price: Optional[float] = None
     stop: Optional[float] = None
     target: Optional[float] = None
