@@ -459,4 +459,121 @@ class EnhancedMetricsCalculator:
             win_rate=0.0,
             profit_factor=0.0
         )
+    
+    def calculate_cost_aware_metrics(
+        self,
+        returns: List[float],
+        trades: Optional[List[Dict[str, any]]] = None,
+        taker_fee_bps: float = 10.0,
+        maker_fee_bps: float = 5.0,
+        avg_spread_bps: Optional[Dict[str, float]] = None,
+        slippage_bps_per_sigma: float = 2.0,
+    ) -> Dict[str, float]:
+        """Calculate cost-aware net metrics after transaction costs.
+        
+        Args:
+            returns: List of gross returns (before costs)
+            trades: List of trade dictionaries (optional)
+            taker_fee_bps: Taker fee in basis points (default: 10.0)
+            maker_fee_bps: Maker fee in basis points (default: 5.0)
+            avg_spread_bps: Map of symbol to average spread in bps (optional)
+            slippage_bps_per_sigma: Slippage in bps per sigma of volatility (default: 2.0)
+            
+        Returns:
+            Dict with cost-aware metrics ready for manifest.json:
+            - sharpe: Sharpe ratio after costs
+            - hit_rate: Win rate after costs
+            - dd: Maximum drawdown after costs
+            - cost_bps: Average cost per trade in bps
+            - net_return: Net return after costs
+            - taker_fee_bps: Taker fee used
+            - maker_fee_bps: Maker fee used
+            - avg_spread_bps: Average spread (weighted by symbol)
+            - slippage_bps_per_sigma: Slippage parameter used
+        """
+        returns_array = np.array(returns)
+        
+        if len(returns_array) == 0:
+            return {
+                "sharpe": 0.0,
+                "hit_rate": 0.0,
+                "dd": 0.0,
+                "cost_bps": 0.0,
+                "net_return": 0.0,
+                "taker_fee_bps": taker_fee_bps,
+                "maker_fee_bps": maker_fee_bps,
+                "avg_spread_bps": 0.0,
+                "slippage_bps_per_sigma": slippage_bps_per_sigma,
+            }
+        
+        # Calculate average spread (weighted by symbol if provided)
+        if avg_spread_bps and trades:
+            # Calculate weighted average spread
+            symbol_spreads = {}
+            symbol_counts = {}
+            for trade in trades:
+                symbol = trade.get("symbol", "unknown")
+                if symbol in avg_spread_bps:
+                    symbol_spreads[symbol] = avg_spread_bps[symbol]
+                    symbol_counts[symbol] = symbol_counts.get(symbol, 0) + 1
+            
+            if symbol_counts:
+                total_count = sum(symbol_counts.values())
+                weighted_spread = sum(
+                    symbol_spreads.get(symbol, 0.0) * count
+                    for symbol, count in symbol_counts.items()
+                ) / total_count
+            else:
+                weighted_spread = np.mean(list(avg_spread_bps.values())) if avg_spread_bps else 5.0
+        else:
+            weighted_spread = 5.0  # Default spread
+        
+        # Estimate costs per trade
+        # Cost = taker_fee + maker_fee (round trip) + spread/2 (half spread on entry) + slippage
+        # For simplicity, assume all trades are taker (worst case)
+        cost_per_trade_bps = taker_fee_bps * 2  # Round trip
+        cost_per_trade_bps += weighted_spread / 2  # Half spread on entry
+        cost_per_trade_bps += slippage_bps_per_sigma * np.std(returns_array) if len(returns_array) > 0 else 0.0
+        
+        # Calculate net returns (gross returns minus costs)
+        net_returns = returns_array - (cost_per_trade_bps / 10000.0)  # Convert bps to decimal
+        
+        # Calculate net metrics
+        net_mean = float(np.mean(net_returns))
+        net_std = float(np.std(net_returns))
+        net_sharpe = (net_mean * self.trading_days_per_year) / (net_std * np.sqrt(self.trading_days_per_year)) if net_std > 0 else 0.0
+        
+        # Calculate net drawdown
+        net_cumulative = np.cumsum(net_returns)
+        net_running_max = np.maximum.accumulate(net_cumulative)
+        net_drawdown = net_cumulative - net_running_max
+        net_max_dd = float(abs(np.min(net_drawdown))) if len(net_drawdown) > 0 else 0.0
+        
+        # Calculate hit rate (win rate after costs)
+        net_wins = sum(1 for r in net_returns if r > 0)
+        net_hit_rate = net_wins / len(net_returns) if len(net_returns) > 0 else 0.0
+        
+        # Total net return
+        net_total_return = float(np.sum(net_returns))
+        
+        cost_aware_metrics = {
+            "sharpe": float(net_sharpe),
+            "hit_rate": float(net_hit_rate),
+            "dd": float(net_max_dd),
+            "cost_bps": float(cost_per_trade_bps),
+            "net_return": float(net_total_return),
+            "taker_fee_bps": taker_fee_bps,
+            "maker_fee_bps": maker_fee_bps,
+            "avg_spread_bps": float(weighted_spread),
+            "slippage_bps_per_sigma": slippage_bps_per_sigma,
+        }
+        
+        logger.info(
+            "cost_aware_metrics_calculated",
+            sharpe=cost_aware_metrics["sharpe"],
+            hit_rate=cost_aware_metrics["hit_rate"],
+            cost_bps=cost_aware_metrics["cost_bps"],
+        )
+        
+        return cost_aware_metrics
 

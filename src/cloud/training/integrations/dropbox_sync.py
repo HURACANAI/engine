@@ -1165,4 +1165,69 @@ class DropboxSync:
             logger.error("data_cache_restore_failed", error=str(e))
             # Return 0 on error - training will download data normally
             return 0
+    
+    def write_text(
+        self,
+        remote_path: str,
+        text_content: str,
+        use_dated_folder: bool = False,
+        overwrite: bool = True,
+    ) -> bool:
+        """Write text content directly to Dropbox.
+        
+        Useful for writing JSON manifests, heartbeats, and other text files.
+        
+        Args:
+            remote_path: Remote Dropbox path (e.g., "champion/latest.json")
+            text_content: Text content to write
+            use_dated_folder: Whether to use dated folder (default: False for shared files)
+            overwrite: Whether to overwrite existing files
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self._enabled:
+            return False
+        
+        # Normalize path
+        if not use_dated_folder:
+            # For shared files (champion, heartbeats, registry), use app folder root
+            if not remote_path.startswith("/"):
+                remote_path = f"/{self._app_folder}/{remote_path}"
+            else:
+                # Path already starts with /, ensure it has app folder
+                if not remote_path.startswith(f"/{self._app_folder}"):
+                    remote_path = f"/{self._app_folder}{remote_path}"
+        else:
+            # Use dated folder
+            remote_path = self._normalize_path(remote_path, use_dated_folder=True)
+        
+        try:
+            # Convert text to bytes
+            file_data = text_content.encode('utf-8')
+            
+            # Write mode
+            mode = dropbox.files.WriteMode.overwrite if overwrite else dropbox.files.WriteMode.add  # type: ignore[misc]
+            
+            # Upload file
+            self._dbx.files_upload(
+                file_data,
+                remote_path,
+                mode=mode,
+            )
+            
+            logger.info(
+                "text_written_to_dropbox",
+                remote_path=remote_path,
+                size_bytes=len(file_data),
+            )
+            return True
+            
+        except Exception as e:
+            logger.error(
+                "text_write_failed",
+                remote_path=remote_path,
+                error=str(e),
+            )
+            return False
 

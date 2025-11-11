@@ -514,12 +514,21 @@ class ComprehensiveTelegramMonitor:
         total_trades: int,
         total_profit_gbp: float,
         duration_minutes: int,
+        run_id: Optional[str] = None,
+        dropbox_path: Optional[str] = None,
     ):
         """Notify about system shutdown."""
         message = f"*🏁 Engine Completed*\n\n"
         message += f"Total Trades: {total_trades}\n"
         message += f"Total Profit: £{total_profit_gbp:,.2f}\n"
         message += f"Duration: {duration_minutes} minutes\n"
+        
+        if run_id:
+            message += f"\nRun ID: `{run_id}`\n"
+        
+        if dropbox_path:
+            message += f"\n📁 Dropbox: `{dropbox_path}`\n"
+            message += f"Manifest and artifacts available in Dropbox"
         
         self._send_notification(
             NotificationLevel.MEDIUM,

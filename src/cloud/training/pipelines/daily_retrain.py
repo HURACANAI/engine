@@ -28,7 +28,7 @@ import logging
 import os
 import sys
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, Dict, List
 
 import ray
 import structlog
@@ -46,7 +46,12 @@ from ..monitoring.system_status import SystemStatusReporter
 from ..monitoring.comprehensive_telegram_monitor import ComprehensiveTelegramMonitor, NotificationLevel
 from ..monitoring.learning_tracker import LearningTracker, LearningCategory
 from ..integrations.dropbox_sync import DropboxSync
+from ..integrations.data_exporter import ManifestBuilder
+from ..metrics.enhanced_metrics import EnhancedMetricsCalculator
 from pathlib import Path
+import uuid
+import threading
+import time as time_module
 
 
 def configure_logging() -> None:
@@ -96,7 +101,8 @@ def run_daily_retrain() -> None:
     configure_logging()
     logger = structlog.get_logger("daily_retrain")
     start_ts = datetime.now(tz=timezone.utc)
-    logger.info("run_start", timestamp=start_ts.isoformat())
+    run_id = f"engine_{start_ts.strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
+    logger.info("run_start", timestamp=start_ts.isoformat(), run_id=run_id)
 
     settings = EngineSettings.load()
     
@@ -685,6 +691,55 @@ def run_daily_retrain() -> None:
                 print(f"   • {feature_name}: {feature_info.error}")
     print("=" * 60 + "\n")
 
+    # Initialize ManifestBuilder for integration contracts
+    manifest_builder = None
+    dated_folder_str = ""
+    if dropbox_sync and hasattr(dropbox_sync, "_dated_folder") and dropbox_sync._dated_folder:
+        # Extract date part from dated folder (e.g., "/Runpodhuracan/2025-11-11" -> "2025-11-11")
+        dated_folder_full = dropbox_sync._dated_folder
+        if hasattr(dropbox_sync, "_app_folder") and dropbox_sync._app_folder:
+            # Remove app folder prefix
+            dated_folder_str = dated_folder_full.replace(f"/{dropbox_sync._app_folder}/", "")
+        else:
+            # Extract date from path (format: /Runpodhuracan/YYYY-MM-DD)
+            parts = dated_folder_full.strip("/").split("/")
+            if len(parts) >= 2:
+                dated_folder_str = parts[-1]  # Last part should be the date
+        manifest_builder = ManifestBuilder(
+            dropbox_sync=dropbox_sync,
+            output_dir=Path("exports"),
+        )
+        logger.info("manifest_builder_initialized", dated_folder=dated_folder_str, full_path=dated_folder_full)
+    
+    # Initialize heartbeat tracking
+    heartbeat_thread = None
+    heartbeat_stop_event = threading.Event()
+    current_phase = "loading"
+    current_symbol: Optional[str] = None
+    training_progress = 0.0
+    
+    def update_heartbeat():
+        """Update heartbeat every 30-60 seconds."""
+        while not heartbeat_stop_event.is_set():
+            try:
+                if manifest_builder:
+                    manifest_builder.write_heartbeat(
+                        utc_timestamp=datetime.now(tz=timezone.utc),
+                        phase=current_phase,
+                        current_symbol=current_symbol,
+                        progress=training_progress,
+                    )
+                time_module.sleep(45)  # Update every 45 seconds
+            except Exception as e:
+                logger.warning("heartbeat_update_failed", error=str(e))
+                time_module.sleep(60)  # Retry after 60 seconds on error
+    
+    # Start heartbeat thread
+    if manifest_builder:
+        heartbeat_thread = threading.Thread(target=update_heartbeat, daemon=True)
+        heartbeat_thread.start()
+        logger.info("heartbeat_thread_started")
+    
     # Initialize Training Orchestrator
     orchestrator = TrainingOrchestrator(
         settings=settings,
@@ -697,7 +752,14 @@ def run_daily_retrain() -> None:
         learning_tracker=learning_tracker,  # Pass learning tracker
     )
 
+    # Track last files written for failure reporting
+    last_files_written: List[str] = []
+    
     try:
+        # Update phase to features
+        current_phase = "features"
+        training_progress = 0.1
+        
         # Run pre-training health check (NON-FATAL)
         if health_monitor and feature_manager.is_feature_working("health_monitor"):
             try:
@@ -765,9 +827,32 @@ def run_daily_retrain() -> None:
                 print(f"⚠️  WARNING: Pre-training health check failed: {health_check_error}\n")
                 print("   💡 Engine will continue\n")
 
+        # Update phase to training
+        current_phase = "training"
+        training_progress = 0.3
+        
         # Run main training
         results = orchestrator.run()
         logger.info("run_complete", total_results=len(results))
+        
+        # Update phase to validating
+        current_phase = "validating"
+        training_progress = 0.8
+        
+        # Save learning snapshot after training
+        if learning_tracker:
+            try:
+                snapshot = learning_tracker.generate_snapshot()
+                snapshot_path = learning_tracker.save_snapshot(snapshot)
+                if snapshot_path:
+                    last_files_written.append(str(snapshot_path))
+                    logger.info("learning_snapshot_saved", path=str(snapshot_path))
+            except Exception as e:
+                logger.warning("learning_snapshot_failed", error=str(e))
+        
+        # Update phase to publishing
+        current_phase = "publishing"
+        training_progress = 0.9
         
         # Calculate summary stats for Telegram
         if telegram_monitor and results:
@@ -780,11 +865,174 @@ def run_daily_retrain() -> None:
             end_ts = datetime.now(tz=timezone.utc)
             duration_minutes = int((end_ts - start_ts).total_seconds() / 60)
             
+            # Build Dropbox path for notification
+            dropbox_path = None
+            if dropbox_sync and hasattr(dropbox_sync, "_dated_folder"):
+                dropbox_path = f"{dropbox_sync._dated_folder}/manifest.json"
+            
             telegram_monitor.notify_system_shutdown(
                 total_trades=total_trades,
                 total_profit_gbp=total_profit,
                 duration_minutes=duration_minutes,
+                run_id=run_id,
+                dropbox_path=dropbox_path,
             )
+        
+        # Build manifest and integration contracts
+        if manifest_builder and results:
+            try:
+                # Collect symbols, models, and metrics
+                symbols_trained = [r.symbol for r in results]
+                model_artifacts_map: Dict[str, str] = {}
+                metrics_map: Dict[str, Dict[str, float]] = {}
+                published_models: Dict[str, str] = {}
+                all_gates_passed = True
+                costs_bps_default = 15.0  # Default cost estimate
+                
+                # Initialize cost-aware metrics calculator
+                metrics_calculator = EnhancedMetricsCalculator()
+                
+                for result in results:
+                    symbol = result.symbol
+                    
+                    # Model artifact path
+                    if result.artifacts_path:
+                        model_artifacts_map[symbol] = result.artifacts_path
+                    elif result.published:
+                        model_artifacts_map[symbol] = f"models/{symbol}_model.pkl"
+                    
+                    # Calculate cost-aware metrics
+                    if result.metrics_payload:
+                        # Extract returns from metrics if available
+                        returns = result.metrics.get("returns", [])
+                        if not returns and result.metrics.get("pnl_bps"):
+                            # Estimate returns from P&L
+                            returns = [result.metrics.get("pnl_bps", 0.0) / 10000.0]
+                        
+                        # Get cost parameters from CostBreakdown
+                        taker_fee = result.costs.fee_bps if hasattr(result.costs, "fee_bps") else 10.0
+                        maker_fee = taker_fee * 0.5  # Assume maker is half of taker
+                        spread_bps = result.costs.spread_bps if hasattr(result.costs, "spread_bps") else 5.0
+                        slippage = result.costs.slippage_bps if hasattr(result.costs, "slippage_bps") else 2.0
+                        
+                        cost_metrics = metrics_calculator.calculate_cost_aware_metrics(
+                            returns=returns if returns else [0.0],
+                            trades=None,  # Could pass trade list if available
+                            taker_fee_bps=taker_fee,
+                            maker_fee_bps=maker_fee,
+                            avg_spread_bps={symbol: spread_bps} if spread_bps else None,
+                            slippage_bps_per_sigma=slippage,
+                        )
+                        
+                        # Combine with existing metrics
+                        metrics_map[symbol] = {
+                            **result.metrics,
+                            **cost_metrics,
+                        }
+                    else:
+                        metrics_map[symbol] = result.metrics
+                    
+                    # Check if gates passed
+                    if result.gate_results:
+                        gates_passed = all(result.gate_results.values())
+                        if not gates_passed:
+                            all_gates_passed = False
+                    
+                    # Collect published models for champion pointer
+                    if result.published and result.artifacts_path:
+                        published_models[symbol] = result.artifacts_path
+                
+                # Data paths
+                data_paths = {
+                    "candles_dir": "data/candles",
+                    "features_dir": "data/features",
+                    "logs_dir": "logs",
+                }
+                
+                # Engine version
+                engine_version = getattr(settings, "version", "1.0.0")
+                
+                # Write manifest
+                end_ts = datetime.now(tz=timezone.utc)
+                manifest_path = manifest_builder.write_manifest(
+                    run_id=run_id,
+                    utc_started=start_ts,
+                    utc_finished=end_ts,
+                    engine_version=engine_version,
+                    symbols_trained=symbols_trained,
+                    model_artifacts_map=model_artifacts_map,
+                    metrics_map=metrics_map,
+                    data_paths=data_paths,
+                    status="ok",
+                    dated_folder=dated_folder_str,
+                )
+                if manifest_path:
+                    last_files_written.append(str(manifest_path))
+                    logger.info("manifest_written", run_id=run_id, path=str(manifest_path))
+                
+                # Update champion pointer if gates passed
+                if all_gates_passed and published_models:
+                    date_str = start_ts.strftime("%Y-%m-%d")
+                    champion_updated = manifest_builder.write_champion_pointer(
+                        date=date_str,
+                        run_id=run_id,
+                        models=published_models,
+                        costs_bps_default=costs_bps_default,
+                        gate_passed=True,
+                    )
+                    if champion_updated:
+                        logger.info("champion_pointer_updated", run_id=run_id)
+                
+                # Write mechanic contract for published models
+                if published_models:
+                    # Collect promote rules from settings or use defaults
+                    promote_rules = {
+                        "min_sharpe": 1.0,
+                        "min_hit_rate": 0.5,
+                        "max_drawdown": 0.15,
+                    }
+                    
+                    mechanic_contract_path = manifest_builder.write_mechanic_contract(
+                        baseline_run_id=run_id,
+                        symbols=list(published_models.keys()),
+                        model_paths=published_models,
+                        evaluation_window_hours=24,  # Recent 24 hours
+                        promote_rules=promote_rules,
+                        dated_folder=dated_folder_str,
+                    )
+                    if mechanic_contract_path:
+                        last_files_written.append(str(mechanic_contract_path))
+                        logger.info("mechanic_contract_written", path=str(mechanic_contract_path))
+                
+                # Write feature recipes for each symbol
+                for result in results:
+                    if result.feature_metadata:
+                        try:
+                            # Extract feature recipe parameters
+                            timeframes = ["1h"]  # Default, could be extracted from settings
+                            indicators = result.feature_metadata.get("feature_importances", {})
+                            fill_rules = {"strategy": "forward_fill"}
+                            normalization = {"type": "standard", "scaler": "StandardScaler"}
+                            
+                            feature_recipe_path = manifest_builder.write_feature_recipe(
+                                symbol=result.symbol,
+                                timeframes=timeframes,
+                                indicators=indicators,
+                                fill_rules=fill_rules,
+                                normalization=normalization,
+                                dated_folder=dated_folder_str,
+                            )
+                            if feature_recipe_path:
+                                last_files_written.append(str(feature_recipe_path))
+                        except Exception as e:
+                            logger.warning("feature_recipe_write_failed", symbol=result.symbol, error=str(e))
+                
+            except Exception as e:
+                logger.error("manifest_building_failed", error=str(e), exc_info=True)
+        
+        # Update progress to complete
+        training_progress = 1.0
+        current_phase = "complete"
 
         # Run post-training health check
         if health_monitor:
@@ -848,12 +1096,48 @@ def run_daily_retrain() -> None:
     except Exception as exc:  # noqa: BLE001
         logger.exception("run_failed", error=str(exc))
         
+        # Update phase to failed
+        current_phase = "failed"
+        training_progress = 0.0
+        
+        # Write failure report
+        if manifest_builder:
+            try:
+                # Generate suggestions based on error type
+                suggestions = [
+                    "Check logs for detailed error messages",
+                    "Verify exchange connection and credentials",
+                    "Check database connectivity",
+                    "Verify data availability for training",
+                ]
+                
+                if "database" in str(exc).lower() or "postgres" in str(exc).lower():
+                    suggestions.append("Verify PostgreSQL connection string")
+                if "exchange" in str(exc).lower() or "api" in str(exc).lower():
+                    suggestions.append("Verify exchange API credentials")
+                if "memory" in str(exc).lower() or "oom" in str(exc).lower():
+                    suggestions.append("Reduce batch size or number of symbols")
+                
+                failure_report_path = manifest_builder.write_failure_report(
+                    run_id=run_id,
+                    step=current_phase,
+                    exception_type=type(exc).__name__,
+                    message=str(exc),
+                    last_files_written=last_files_written,
+                    suggestions=suggestions,
+                    dated_folder=dated_folder_str,
+                )
+                if failure_report_path:
+                    logger.error("failure_report_written", path=str(failure_report_path))
+            except Exception as failure_error:
+                logger.error("failure_report_write_failed", error=str(failure_error))
+        
         # Notify Telegram about error
         if telegram_monitor:
             telegram_monitor.notify_error(
                 error_type=type(exc).__name__,
                 error_message=str(exc),
-                context={"timestamp": datetime.now(tz=timezone.utc).isoformat()},
+                context={"timestamp": datetime.now(tz=timezone.utc).isoformat(), "run_id": run_id},
             )
 
         # Run emergency health check on failure
@@ -887,6 +1171,24 @@ def run_daily_retrain() -> None:
 
         raise
     finally:
+        # Stop heartbeat thread
+        if heartbeat_thread:
+            heartbeat_stop_event.set()
+            heartbeat_thread.join(timeout=5.0)
+            logger.info("heartbeat_thread_stopped")
+        
+        # Final heartbeat update
+        if manifest_builder:
+            try:
+                manifest_builder.write_heartbeat(
+                    utc_timestamp=datetime.now(tz=timezone.utc),
+                    phase=current_phase,
+                    current_symbol=None,
+                    progress=training_progress,
+                )
+            except Exception as e:
+                logger.warning("final_heartbeat_failed", error=str(e))
+        
         # Export log file path
         if telegram_monitor and log_file.exists():
             logger.info("monitoring_log_available", log_file=str(log_file))
@@ -909,6 +1211,17 @@ def run_daily_retrain() -> None:
         
         if ray.is_initialized():
             ray.shutdown()
+        
+        # Final summary
+        end_ts = datetime.now(tz=timezone.utc)
+        duration_seconds = (end_ts - start_ts).total_seconds()
+        logger.info(
+            "daily_retrain_complete",
+            run_id=run_id,
+            duration_seconds=duration_seconds,
+            duration_minutes=int(duration_seconds / 60),
+            status=current_phase,
+        )
 
 
 if __name__ == "__main__":

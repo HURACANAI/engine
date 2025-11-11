@@ -939,3 +939,456 @@ class ComprehensiveDataExporter:
             logger.error("performance_summary_export_failed", error=str(e))
             return 0
 
+
+class ManifestBuilder:
+    """Builder for daily run manifest and integration contracts.
+    
+    Creates JSON files that enable Engine, Mechanic, Hamilton, and Broadcaster
+    to interoperate through Dropbox (and later S3 or Postgres).
+    """
+    
+    def __init__(
+        self,
+        dropbox_sync: Optional[Any] = None,
+        output_dir: Path = Path("exports"),
+    ):
+        """Initialize manifest builder.
+        
+        Args:
+            dropbox_sync: DropboxSync instance for uploading manifests
+            output_dir: Local directory to save manifests
+        """
+        self.dropbox_sync = dropbox_sync
+        self.output_dir = Path(output_dir)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        
+        logger.info("manifest_builder_initialized", output_dir=str(self.output_dir))
+    
+    def write_manifest(
+        self,
+        run_id: str,
+        utc_started: datetime,
+        utc_finished: datetime,
+        engine_version: str,
+        symbols_trained: List[str],
+        model_artifacts_map: Dict[str, str],
+        metrics_map: Dict[str, Dict[str, float]],
+        data_paths: Dict[str, str],
+        status: str,
+        dated_folder: str = "",
+    ) -> Optional[Path]:
+        """Write daily run manifest JSON.
+        
+        Args:
+            run_id: Unique run identifier
+            utc_started: UTC start timestamp
+            utc_finished: UTC finish timestamp
+            engine_version: Engine version string
+            symbols_trained: List of symbols trained
+            model_artifacts_map: Map of symbol to model artifact path
+            metrics_map: Map of symbol to metrics dict
+            data_paths: Dict with candles_dir, features_dir, logs_dir
+            status: "ok" or "failed"
+            dated_folder: Dated folder path (e.g., "2025-11-11")
+            
+        Returns:
+            Path to local manifest file, or None if failed
+        """
+        manifest = {
+            "run_id": run_id,
+            "utc_started": utc_started.isoformat(),
+            "utc_finished": utc_finished.isoformat(),
+            "engine_version": engine_version,
+            "symbols_trained": symbols_trained,
+            "model_artifacts_map": model_artifacts_map,
+            "metrics_map": metrics_map,
+            "data_paths": data_paths,
+            "status": status,
+        }
+        
+        # Save locally
+        manifest_path = self.output_dir / f"manifest_{run_id}.json"
+        try:
+            with open(manifest_path, "w") as f:
+                json.dump(manifest, f, indent=2)
+            
+            logger.info("manifest_written", run_id=run_id, path=str(manifest_path))
+            
+            # Upload to Dropbox if available
+            if self.dropbox_sync:
+                remote_path = f"{dated_folder}/manifest.json" if dated_folder else "manifest.json"
+                json_str = json.dumps(manifest, indent=2)
+                self.dropbox_sync.write_text(
+                    remote_path=remote_path,
+                    text_content=json_str,
+                    use_dated_folder=bool(dated_folder),
+                )
+            
+            return manifest_path
+            
+        except Exception as e:
+            logger.error("manifest_write_failed", error=str(e))
+            return None
+    
+    def write_champion_pointer(
+        self,
+        date: str,
+        run_id: str,
+        models: Dict[str, str],
+        costs_bps_default: float,
+        gate_passed: bool = True,
+    ) -> bool:
+        """Write champion pointer for Hamilton.
+        
+        Only updates if gates passed (gate_passed=True).
+        
+        Args:
+            date: Date string (YYYY-MM-DD)
+            run_id: Run identifier
+            models: Map of symbol to model path
+            costs_bps_default: Default costs in bps
+            gate_passed: Whether gates passed (only update if True)
+            
+        Returns:
+            True if written, False otherwise
+        """
+        if not gate_passed:
+            logger.info("champion_pointer_skipped", reason="gates_failed")
+            return False
+        
+        champion = {
+            "date": date,
+            "run_id": run_id,
+            "models": models,
+            "costs_bps_default": costs_bps_default,
+        }
+        
+        try:
+            # Save locally
+            champion_path = self.output_dir / "champion_latest.json"
+            with open(champion_path, "w") as f:
+                json.dump(champion, f, indent=2)
+            
+            # Upload to Dropbox (shared location, not dated folder)
+            if self.dropbox_sync:
+                json_str = json.dumps(champion, indent=2)
+                success = self.dropbox_sync.write_text(
+                    remote_path="champion/latest.json",
+                    text_content=json_str,
+                    use_dated_folder=False,  # Shared location
+                )
+                if success:
+                    logger.info("champion_pointer_written", run_id=run_id, models=list(models.keys()))
+                    return True
+                else:
+                    logger.warning("champion_pointer_upload_failed")
+                    return False
+            
+            return True
+            
+        except Exception as e:
+            logger.error("champion_pointer_write_failed", error=str(e))
+            return False
+    
+    def write_heartbeat(
+        self,
+        utc_timestamp: datetime,
+        phase: str,
+        current_symbol: Optional[str] = None,
+        progress: float = 0.0,
+    ) -> bool:
+        """Write heartbeat JSON for Broadcaster and status page.
+        
+        Args:
+            utc_timestamp: Current UTC timestamp
+            phase: Current phase (loading, features, training, validating, publishing)
+            current_symbol: Current symbol being processed
+            progress: Progress from 0.0 to 1.0
+            
+        Returns:
+            True if written, False otherwise
+        """
+        heartbeat = {
+            "utc_timestamp": utc_timestamp.isoformat(),
+            "phase": phase,
+            "current_symbol": current_symbol,
+            "progress": progress,
+        }
+        
+        try:
+            # Save locally
+            heartbeat_path = self.output_dir / "heartbeat_engine.json"
+            with open(heartbeat_path, "w") as f:
+                json.dump(heartbeat, f, indent=2)
+            
+            # Upload to Dropbox (shared location)
+            if self.dropbox_sync:
+                json_str = json.dumps(heartbeat, indent=2)
+                success = self.dropbox_sync.write_text(
+                    remote_path="heartbeats/engine.json",
+                    text_content=json_str,
+                    use_dated_folder=False,  # Shared location
+                )
+                if success:
+                    logger.debug("heartbeat_written", phase=phase, progress=progress)
+                    return True
+                else:
+                    logger.warning("heartbeat_upload_failed")
+                    return False
+            
+            return True
+            
+        except Exception as e:
+            logger.error("heartbeat_write_failed", error=str(e))
+            return False
+    
+    def write_failure_report(
+        self,
+        run_id: str,
+        step: str,
+        exception_type: str,
+        message: str,
+        last_files_written: List[str],
+        suggestions: List[str],
+        dated_folder: str = "",
+    ) -> Optional[Path]:
+        """Write failure report JSON for post-mortem debugging.
+        
+        Args:
+            run_id: Run identifier
+            step: Step where failure occurred
+            exception_type: Exception type name
+            message: Error message
+            last_files_written: List of last files written before failure
+            suggestions: List of suggestions for debugging
+            dated_folder: Dated folder path
+            
+        Returns:
+            Path to failure report file, or None if failed
+        """
+        failure_report = {
+            "run_id": run_id,
+            "step": step,
+            "exception_type": exception_type,
+            "message": message,
+            "last_files_written": last_files_written,
+            "suggestions": suggestions,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+        
+        try:
+            # Save locally
+            failure_path = self.output_dir / f"failure_report_{run_id}.json"
+            with open(failure_path, "w") as f:
+                json.dump(failure_report, f, indent=2)
+            
+            # Upload to Dropbox
+            if self.dropbox_sync:
+                remote_path = f"{dated_folder}/logs/failure_report.json" if dated_folder else "logs/failure_report.json"
+                json_str = json.dumps(failure_report, indent=2)
+                self.dropbox_sync.write_text(
+                    remote_path=remote_path,
+                    text_content=json_str,
+                    use_dated_folder=bool(dated_folder),
+                )
+            
+            logger.error("failure_report_written", run_id=run_id, step=step)
+            return failure_path
+            
+        except Exception as e:
+            logger.error("failure_report_write_failed", error=str(e))
+            return None
+    
+    def write_feature_recipe(
+        self,
+        symbol: str,
+        timeframes: List[str],
+        indicators: Dict[str, Dict[str, Any]],
+        fill_rules: Dict[str, str],
+        normalization: Dict[str, Any],
+        dated_folder: str = "",
+    ) -> Optional[Path]:
+        """Write feature recipe JSON for Hamilton feature parity.
+        
+        Args:
+            symbol: Trading symbol
+            timeframes: List of timeframes used
+            indicators: Dict of indicator names to parameters
+            fill_rules: Dict of fill rule names to strategies
+            normalization: Dict of normalization parameters
+            dated_folder: Dated folder path
+            
+        Returns:
+            Path to feature recipe file, or None if failed
+        """
+        feature_recipe = {
+            "symbol": symbol,
+            "timeframes": timeframes,
+            "indicators": indicators,
+            "fill_rules": fill_rules,
+            "normalization": normalization,
+            "version": "1.0",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+        
+        try:
+            # Save locally
+            recipe_path = self.output_dir / f"feature_recipe_{symbol}.json"
+            with open(recipe_path, "w") as f:
+                json.dump(feature_recipe, f, indent=2)
+            
+            # Upload to Dropbox
+            if self.dropbox_sync:
+                remote_path = f"{dated_folder}/features/{symbol}/feature_recipe.json" if dated_folder else f"features/{symbol}/feature_recipe.json"
+                json_str = json.dumps(feature_recipe, indent=2)
+                self.dropbox_sync.write_text(
+                    remote_path=remote_path,
+                    text_content=json_str,
+                    use_dated_folder=bool(dated_folder),
+                )
+            
+            logger.info("feature_recipe_written", symbol=symbol)
+            return recipe_path
+            
+        except Exception as e:
+            logger.error("feature_recipe_write_failed", error=str(e), symbol=symbol)
+            return None
+    
+    def write_mechanic_contract(
+        self,
+        baseline_run_id: str,
+        symbols: List[str],
+        model_paths: Dict[str, str],
+        evaluation_window_hours: int,
+        promote_rules: Dict[str, Any],
+        dated_folder: str = "",
+    ) -> Optional[Path]:
+        """Write Mechanic handoff contract.
+        
+        Args:
+            baseline_run_id: Baseline run identifier
+            symbols: List of symbols
+            model_paths: Map of symbol to model path
+            evaluation_window_hours: Recent hours to use for evaluation
+            promote_rules: Inline threshold rules
+            dated_folder: Dated folder path
+            
+        Returns:
+            Path to mechanic contract file, or None if failed
+        """
+        mechanic_contract = {
+            "baseline_run_id": baseline_run_id,
+            "symbols": symbols,
+            "model_paths": model_paths,
+            "evaluation_window_hours": evaluation_window_hours,
+            "promote_rules": promote_rules,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+        
+        try:
+            # Save locally
+            contract_path = self.output_dir / f"mechanic_contract_{baseline_run_id}.json"
+            with open(contract_path, "w") as f:
+                json.dump(mechanic_contract, f, indent=2)
+            
+            # Upload to Dropbox
+            if self.dropbox_sync:
+                remote_path = f"{dated_folder}/handoff/mechanic_contract.json" if dated_folder else "handoff/mechanic_contract.json"
+                json_str = json.dumps(mechanic_contract, indent=2)
+                self.dropbox_sync.write_text(
+                    remote_path=remote_path,
+                    text_content=json_str,
+                    use_dated_folder=bool(dated_folder),
+                )
+            
+            logger.info("mechanic_contract_written", run_id=baseline_run_id)
+            return contract_path
+            
+        except Exception as e:
+            logger.error("mechanic_contract_write_failed", error=str(e))
+            return None
+    
+    def read_symbol_registry(self) -> Dict[str, Any]:
+        """Read symbol registry from Dropbox or local file.
+        
+        Returns:
+            Symbol registry dict with candidates, allowed, cost caps, etc.
+        """
+        registry_path = self.output_dir / "symbols_registry.json"
+        
+        # Try to read from local file first
+        if registry_path.exists():
+            try:
+                with open(registry_path, "r") as f:
+                    registry = json.load(f)
+                logger.info("symbol_registry_read_local", path=str(registry_path))
+                return registry
+            except Exception as e:
+                logger.warning("symbol_registry_read_failed", error=str(e))
+        
+        # Default registry if not found
+        default_registry = {
+            "candidates": [],
+            "allowed": [],
+            "cost_caps": {},
+            "min_volume": {},
+        }
+        
+        return default_registry
+    
+    def write_symbol_registry(
+        self,
+        candidates: List[str],
+        allowed: List[str],
+        cost_caps: Dict[str, float],
+        min_volume: Dict[str, float],
+        evaluated_symbols: Optional[Dict[str, Dict[str, Any]]] = None,
+    ) -> bool:
+        """Write symbol registry for scale-out (future 400 coin runs).
+        
+        Args:
+            candidates: List of candidate symbols
+            allowed: List of allowed symbols
+            cost_caps: Map of symbol to cost cap
+            min_volume: Map of symbol to min volume
+            evaluated_symbols: Optional map of symbol to evaluation results with reasons
+            
+        Returns:
+            True if written, False otherwise
+        """
+        registry = {
+            "candidates": candidates,
+            "allowed": allowed,
+            "cost_caps": cost_caps,
+            "min_volume": min_volume,
+            "evaluated_symbols": evaluated_symbols or {},
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+        
+        try:
+            # Save locally
+            registry_path = self.output_dir / "symbols_registry.json"
+            with open(registry_path, "w") as f:
+                json.dump(registry, f, indent=2)
+            
+            # Upload to Dropbox (shared location)
+            if self.dropbox_sync:
+                json_str = json.dumps(registry, indent=2)
+                success = self.dropbox_sync.write_text(
+                    remote_path="registry/symbols.json",
+                    text_content=json_str,
+                    use_dated_folder=False,  # Shared location
+                )
+                if success:
+                    logger.info("symbol_registry_written", candidates=len(candidates), allowed=len(allowed))
+                    return True
+                else:
+                    logger.warning("symbol_registry_upload_failed")
+                    return False
+            
+            return True
+            
+        except Exception as e:
+            logger.error("symbol_registry_write_failed", error=str(e))
+            return False
+
