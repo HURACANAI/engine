@@ -10,7 +10,7 @@ import sys
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-import structlog
+import structlog  # type: ignore[import-untyped]
 
 
 class SimpleLogger:

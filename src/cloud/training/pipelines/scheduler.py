@@ -16,7 +16,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
-import structlog
+import structlog  # type: ignore[import-untyped]
 
 from ..pipelines.work_item import WorkItem, WorkStatus, TrainResult
 from ..utils.resume_ledger import ResumeLedger
@@ -49,7 +49,7 @@ class SchedulerConfig:
         """Set defaults based on GPU availability."""
         # Detect GPU and set defaults
         try:
-            import torch
+            import torch  # type: ignore[import-untyped]
             has_gpu = torch.cuda.is_available()
         except ImportError:
             has_gpu = os.getenv("CUDA_VISIBLE_DEVICES") is not None
@@ -88,7 +88,7 @@ class HybridTrainingScheduler:
         self.resume_ledger = resume_ledger or ResumeLedger()
         self._config = app_config  # Store app config for passing to train_func
         
-        self.work_queue: queue.Queue[str] = queue.Queue()
+        self.work_queue: queue.Queue[str | None] = queue.Queue()
         self.active_workers: Dict[str, WorkItem] = {}
         self.completed_results: List[TrainResult] = []
         self.lock = threading.Lock()
@@ -206,7 +206,7 @@ class HybridTrainingScheduler:
         """
         # Try Ray first
         try:
-            import ray
+            import ray  # type: ignore[import-untyped]
             if ray.is_initialized():
                 return self._run_parallel_ray(symbols)
         except ImportError:
@@ -224,9 +224,9 @@ class HybridTrainingScheduler:
         Returns:
             List of training results
         """
-        import ray
+        import ray  # type: ignore[import-untyped]
         
-        @ray.remote
+        @ray.remote  # type: ignore[misc,attr-defined]
         def train_symbol_ray(symbol: str, config_dict: Dict[str, Any]) -> TrainResult:
             """Ray remote function for training."""
             return self.train_func(symbol, config_dict)
@@ -238,7 +238,7 @@ class HybridTrainingScheduler:
         }
         
         # Submit all tasks
-        futures = [train_symbol_ray.remote(symbol, config_dict) for symbol in symbols]
+        futures = [train_symbol_ray.remote(symbol, config_dict) for symbol in symbols]  # type: ignore[attr-defined]
         
         # Wait for all tasks
         results = ray.get(futures)
@@ -365,7 +365,7 @@ class HybridTrainingScheduler:
                 import signal
                 import threading
                 
-                result_container = {"result": None, "exception": None}
+                result_container: Dict[str, Any] = {"result": None, "exception": None}
                 
                 def train_with_timeout():
                     try:

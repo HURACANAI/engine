@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
-import structlog
+import structlog  # type: ignore[import-untyped]
 
 from src.shared.contracts.per_coin import (
     RunManifest,
@@ -352,7 +352,7 @@ class PerCoinTrainingService:
         Returns:
             Dictionary with exported paths
         """
-        exported_paths = {
+        exported_paths: Dict[str, str | None] = {
             "model": None,
             "metrics": None,
             "costs": None,
@@ -360,9 +360,9 @@ class PerCoinTrainingService:
         }
         
         # Export model file if available
-        if result.artifacts and result.artifacts.model_path:
+        if result.artifacts_path:
             model_path = self.contract_writer.write_model_file(
-                model_path=result.artifacts.model_path,
+                model_path=result.artifacts_path,
                 symbol=symbol,
                 date_str=date_str,
             )

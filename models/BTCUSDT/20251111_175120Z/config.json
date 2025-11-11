@@ -1,0 +1,42 @@
+{
+  "symbol": "BTC/USDT",
+  "model_type": "xgboost",
+  "features": [
+    "ret_1",
+    "ret_5",
+    "ret_20",
+    "high_low_ratio",
+    "close_open_ratio",
+    "sma_20",
+    "price_vs_sma_20",
+    "sma_50",
+    "price_vs_sma_50",
+    "volume_ratio",
+    "rsi_14",
+    "volatility_20",
+    "hour_of_day",
+    "day_of_week",
+    "is_weekend"
+  ],
+  "training_date": "2025-11-11T17:53:45.116193+00:00",
+  "train_samples": 172660,
+  "test_samples": 43166,
+  "train_metrics": {
+    "mse": 1.8198322342374304e-07,
+    "mae": 0.00027980443820925705,
+    "r2": 0.03396525806822914,
+    "sharpe": 5.3189141409210015e-09,
+    "hit_rate": 0.5270473763465771,
+    "mean_return": 2.269028308615859e-12,
+    "std_return": 0.0004265961526167751
+  },
+  "test_metrics": {
+    "mse": 5.543071822118342e-07,
+    "mae": 0.0004422413221900067,
+    "r2": -0.016649695894201733,
+    "sharpe": 0.013951164190221655,
+    "hit_rate": 0.5029652967613399,
+    "mean_return": 1.0386003678933333e-05,
+    "std_return": 0.0007444542646994911
+  }
+}

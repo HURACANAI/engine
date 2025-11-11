@@ -11,7 +11,7 @@ import pandas as pd
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Optional, Tuple
 
-import structlog
+import structlog  # type: ignore[import-untyped]
 
 logger = structlog.get_logger(__name__)
 
@@ -73,34 +73,37 @@ class SlippageCalibrator:
         # Fit: slippage_bps = alpha * volatility + beta
         
         # Remove outliers
+        volatility_series = recent_df['volatility']  # type: ignore[assignment]
+        spread_series = recent_df['spread_bps']  # type: ignore[assignment]
         recent_df = recent_df[
-            (recent_df['spread_bps'] > 0) & 
-            (recent_df['spread_bps'] < 100) &  # Max 1% spread
-            (recent_df['volatility'].notna())
+            (spread_series > 0) & 
+            (spread_series < 100) &  # Max 1% spread
+            (volatility_series.notna())  # type: ignore[attr-defined]
         ]
         
         if len(recent_df) < 10:
             logger.warning("insufficient_data_points_for_slippage", symbol=symbol, points=len(recent_df))
             # Use median spread as fallback
-            median_slippage = recent_df['spread_bps'].median() if not recent_df.empty else 2.0
-            return float(median_slippage), datetime.now(timezone.utc)
+            spread_series_filtered = recent_df['spread_bps']  # type: ignore[assignment]
+            median_slippage = float(spread_series_filtered.median()) if not recent_df.empty else 2.0  # type: ignore[attr-defined]
+            return median_slippage, datetime.now(timezone.utc)
         
         # Fit linear model: slippage_bps = alpha * volatility + beta
         # We want slippage_bps_per_sigma, which is alpha
-        X = recent_df['volatility'].values
-        y = recent_df['spread_bps'].values
+        X = recent_df['volatility'].values  # type: ignore[attr-defined]
+        y = recent_df['spread_bps'].values  # type: ignore[attr-defined]
         
         # Simple linear regression
-        X_mean = np.mean(X)
-        y_mean = np.mean(y)
+        X_mean = float(np.mean(X))  # type: ignore[arg-type]
+        y_mean = float(np.mean(y))  # type: ignore[arg-type]
         
-        numerator = np.sum((X - X_mean) * (y - y_mean))
-        denominator = np.sum((X - X_mean) ** 2)
+        numerator = float(np.sum((X - X_mean) * (y - y_mean)))  # type: ignore[operator]
+        denominator = float(np.sum((X - X_mean) ** 2))  # type: ignore[operator]
         
         if denominator == 0:
             # No volatility variation, use median
-            median_slippage = np.median(y)
-            return float(median_slippage), datetime.now(timezone.utc)
+            median_slippage = float(np.median(y))  # type: ignore[arg-type]
+            return median_slippage, datetime.now(timezone.utc)
         
         alpha = numerator / denominator
         beta = y_mean - alpha * X_mean
@@ -116,7 +119,7 @@ class SlippageCalibrator:
             slippage_bps_per_sigma=slippage_bps_per_sigma,
             fit_date=fit_date.isoformat(),
             sample_size=len(recent_df),
-            median_spread=float(np.median(y)),
+            median_spread=float(np.median(y)),  # type: ignore[arg-type]
         )
         
         return float(slippage_bps_per_sigma), fit_date
@@ -155,8 +158,8 @@ class SlippageCalibrator:
             trades_df['timestamp'] = pd.to_datetime(trades_df['timestamp'])
             candles_df['timestamp'] = pd.to_datetime(candles_df['timestamp'])
             merged = pd.merge_asof(
-                trades_df.sort_values('timestamp'),
-                candles_df[['timestamp', 'volatility']].sort_values('timestamp'),
+                trades_df.sort_values('timestamp'),  # type: ignore[arg-type]
+                candles_df[['timestamp', 'volatility']].sort_values('timestamp'),  # type: ignore[arg-type]
                 on='timestamp',
                 direction='nearest',
             )
@@ -173,18 +176,18 @@ class SlippageCalibrator:
             return self.calibrate_slippage(symbol, candles_df)
         
         # Fit linear model
-        X = recent_df['volatility'].values
-        y = recent_df['slippage_bps'].values
+        X = recent_df['volatility'].values  # type: ignore[attr-defined]
+        y = recent_df['slippage_bps'].values  # type: ignore[attr-defined]
         
-        X_mean = np.mean(X)
-        y_mean = np.mean(y)
+        X_mean = float(np.mean(X))  # type: ignore[arg-type]
+        y_mean = float(np.mean(y))  # type: ignore[arg-type]
         
-        numerator = np.sum((X - X_mean) * (y - y_mean))
-        denominator = np.sum((X - X_mean) ** 2)
+        numerator = float(np.sum((X - X_mean) * (y - y_mean)))  # type: ignore[operator]
+        denominator = float(np.sum((X - X_mean) ** 2))  # type: ignore[operator]
         
         if denominator == 0:
-            median_slippage = np.median(y)
-            return float(median_slippage), datetime.now(timezone.utc)
+            median_slippage = float(np.median(y))  # type: ignore[arg-type]
+            return median_slippage, datetime.now(timezone.utc)
         
         alpha = numerator / denominator
         slippage_bps_per_sigma = max(0.5, min(10.0, alpha))

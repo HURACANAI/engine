@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
-import structlog
+import structlog  # type: ignore[import-untyped]
 
 from src.shared.contracts.per_coin import (
     ChampionPointer,

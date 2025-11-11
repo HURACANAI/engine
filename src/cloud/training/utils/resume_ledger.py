@@ -9,9 +9,9 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
-import structlog
+import structlog  # type: ignore[import-untyped]
 
 from ..pipelines.work_item import WorkStatus, TrainResult
 

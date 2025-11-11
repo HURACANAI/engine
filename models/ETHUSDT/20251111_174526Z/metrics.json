@@ -1,0 +1,11 @@
+{
+  "symbol": "ETH/USDT",
+  "sample_size": 172647,
+  "sharpe": 0.0161970439854584,
+  "hit_rate": 0.4989805847736435,
+  "net_pnl_pct": 0.00188269590211764,
+  "gross_pnl_pct": 0.00188269590211764,
+  "max_drawdown_pct": 0.11623700619742171,
+  "avg_trade_bps": 0.18826959021176398,
+  "status": "ok"
+}

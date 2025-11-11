@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional
 
-import structlog
+import structlog  # type: ignore[import-untyped]
 
 logger = structlog.get_logger(__name__)
 

@@ -1,0 +1,11 @@
+{
+  "symbol": "SOL/USDT",
+  "sample_size": 172639,
+  "sharpe": 0.007935751769318997,
+  "hit_rate": 0.4996061167747915,
+  "net_pnl_pct": 0.001288147672158168,
+  "gross_pnl_pct": 0.001288147672158168,
+  "max_drawdown_pct": 0.16232207226268996,
+  "avg_trade_bps": 0.1288147672158168,
+  "status": "ok"
+}

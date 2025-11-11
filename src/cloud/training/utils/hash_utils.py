@@ -10,7 +10,7 @@ import hashlib
 from pathlib import Path
 from typing import Optional
 
-import structlog
+import structlog  # type: ignore[import-untyped]
 
 logger = structlog.get_logger(__name__)
 

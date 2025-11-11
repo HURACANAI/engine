@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import structlog
+import structlog  # type: ignore[import-untyped]
 
 from .scheduler import HybridTrainingScheduler, SchedulerConfig, TrainingMode
 from .work_item import TrainResult
@@ -141,9 +141,13 @@ def train_symbol(symbol: str, cfg: Dict[str, Any]) -> TrainResult:
         
         # Step 8: Fetch and save costs (before training for cost-aware evaluation)
         costs_path = work_dir / "costs.json"
-        costs = get_symbol_costs(symbol, config)
-        costs["symbol"] = symbol
-        costs["last_updated_utc"] = datetime.now(timezone.utc).isoformat()
+        cost_data = get_symbol_costs(symbol, config)
+        # Create extended costs dict with metadata
+        costs: Dict[str, Any] = {
+            **cost_data,
+            "symbol": symbol,
+            "last_updated_utc": datetime.now(timezone.utc).isoformat(),
+        }
         with open(costs_path, 'w') as f:
             json.dump(costs, f, indent=2)
         
@@ -258,10 +262,10 @@ def run_scheduler(
     
     # Create scheduler
     scheduler = HybridTrainingScheduler(
-        config=scheduler_config,
+        config=config,
         train_func=train_symbol,
         resume_ledger=resume_ledger,
-        app_config=config,  # Pass app config
+        app_config=None,  # App config passed via train_func cfg parameter
     )
     
     # Schedule symbols

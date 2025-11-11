@@ -7,12 +7,13 @@ Trains one tailored model per coin with shared encoder for cross-coin learning.
 from __future__ import annotations
 
 import hashlib
+import os
 import pickle
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import structlog
+import structlog  # type: ignore[import-untyped]
 
 from ..services.job_queue import JobQueue, TrainingJob, JobStatus
 from ..services.shared_encoder import SharedEncoder
@@ -151,11 +152,20 @@ class PerCoinTrainingPipeline:
             artifacts = self._export_artifacts(symbol, model, metrics, cost_model, date_str)
             
             # Step 9: Update champion
+            cost_model_dict: Dict[str, Any]
+            if isinstance(cost_model, CostModel):
+                cost_model_dict = cost_model.to_dict()
+            elif isinstance(cost_model, dict):
+                cost_model_dict = cost_model
+            else:
+                # Fallback: try to convert to dict
+                cost_model_dict = cost_model.to_dict() if hasattr(cost_model, 'to_dict') else {}  # type: ignore
+            
             self.per_symbol_champion.update_champion(
                 symbol=symbol,
                 model_path=artifacts["model_path"],
                 metrics=metrics,
-                cost_model=cost_model.to_dict() if hasattr(cost_model, 'to_dict') else cost_model,
+                cost_model=cost_model_dict,
                 feature_recipe_hash=artifacts.get("feature_recipe_hash"),
             )
             
@@ -166,13 +176,33 @@ class PerCoinTrainingPipeline:
             # Store features for shared encoder training
             self.all_features[symbol] = features_df
             
+            # Extract data info for reporting
+            data_info = {
+                "rows": len(candles_df),
+                "days": 0,
+                "start_date": None,
+                "end_date": None,
+            }
+            
+            if "ts" in candles_df.columns and not candles_df.empty:
+                data_info["start_date"] = candles_df["ts"].min().isoformat() if hasattr(candles_df["ts"].min(), "isoformat") else str(candles_df["ts"].min())
+                data_info["end_date"] = candles_df["ts"].max().isoformat() if hasattr(candles_df["ts"].max(), "isoformat") else str(candles_df["ts"].max())
+                if len(candles_df) > 1:
+                    data_info["days"] = (candles_df["ts"].max() - candles_df["ts"].min()).days
+                else:
+                    data_info["days"] = 1
+            
             return {
                 "symbol": symbol,
+                "success": True,
                 "status": "completed",
+                "sample_size": metrics.get("sample_size", len(candles_df)),
+                "num_features": len(features_df.columns) if hasattr(features_df, "columns") else 0,
                 "metrics": metrics,
                 "cost_model": cost_model.to_dict() if hasattr(cost_model, 'to_dict') else cost_model,
                 "artifacts": artifacts,
                 "trade_ok": trade_ok,
+                "data_info": data_info,  # Include data info about days used
             }
             
         except Exception as e:
@@ -200,11 +230,14 @@ class PerCoinTrainingPipeline:
         if max_workers is None:
             max_workers = self.config.get("engine", {}).get("parallel_tasks", 8)
         
+        # Ensure max_workers is an int
+        max_workers_int = int(max_workers) if max_workers is not None else 8
+        
         # Create job queue
         job_queue = JobQueue(
             symbols=symbols,
             train_func=self.train_symbol,
-            max_workers=max_workers,
+            max_workers=max_workers_int,
         )
         
         # Run training
@@ -236,10 +269,74 @@ class PerCoinTrainingPipeline:
         Returns:
             DataFrame with candle data
         """
-        # TODO: Implement actual data loading
-        # For now, return empty DataFrame
+        from datetime import datetime, timedelta, timezone
+        from ..datasets.data_loader import CandleDataLoader, CandleQuery
+        from ..datasets.quality_checks import DataQualitySuite
+        from ..services.exchange import ExchangeClient
+        from ...config.settings import EngineSettings
         import pandas as pd
-        return pd.DataFrame()
+        
+        # Get lookback days from config
+        lookback_days = self.config.get("engine", {}).get("lookback_days", 180)
+        
+        # Initialize exchange client
+        settings = EngineSettings.load(environment=os.getenv("HURACAN_ENV", "local"))
+        exchange = ExchangeClient(
+            exchange_id="binance",
+            credentials={},
+            sandbox=settings.exchange.sandbox,
+        )
+        
+        # Initialize data loader
+        quality_suite = DataQualitySuite(coverage_threshold=0.01)
+        loader = CandleDataLoader(
+            exchange_client=exchange,
+            quality_suite=quality_suite,
+            cache_dir=Path("data/candles"),
+            fallback_exchanges=[],
+        )
+        
+        # Calculate date range
+        end_at = datetime.now(tz=timezone.utc)
+        start_at = end_at - timedelta(days=lookback_days)
+        
+        # Create query
+        query = CandleQuery(
+            symbol=symbol,
+            timeframe="1d",  # Use daily candles for training
+            start_at=start_at,
+            end_at=end_at,
+        )
+        
+        # Load data
+        try:
+            frame = loader.load(query, use_cache=True)
+            
+            if frame.is_empty():
+                logger.warning("no_data_loaded", symbol=symbol, lookback_days=lookback_days)
+                return pd.DataFrame()
+            
+            # Convert to pandas DataFrame
+            df = frame.to_pandas()
+            
+            # Calculate actual days used
+            if "ts" in df.columns:
+                actual_days = (df["ts"].max() - df["ts"].min()).days
+                logger.info(
+                    "data_loaded",
+                    symbol=symbol,
+                    rows=len(df),
+                    lookback_days=lookback_days,
+                    actual_days=actual_days,
+                    start_date=df["ts"].min(),
+                    end_date=df["ts"].max(),
+                )
+            
+            return df
+            
+        except Exception as e:
+            logger.error("data_load_failed", symbol=symbol, error=str(e))
+            return pd.DataFrame()
     
     def _build_features(self, symbol: str, candles_df: Any) -> Any:
         """Build features for a symbol.
@@ -267,16 +364,124 @@ class PerCoinTrainingPipeline:
         Returns:
             Tuple of (model, metrics)
         """
-        # TODO: Implement actual model training
-        # For now, return dummy model and metrics
+        import pandas as pd
+        import numpy as np
+        from sklearn.model_selection import train_test_split
+        from sklearn.metrics import mean_squared_error, r2_score
+        
+        if features_df.empty:
+            return None, {
+                "sharpe": 0.0,
+                "hit_rate": 0.0,
+                "net_pnl_pct": 0.0,
+                "max_drawdown_pct": 0.0,
+                "sample_size": 0,
+            }
+        
+        # Get model type from config
+        model_type = self.config.get("engine", {}).get("model_type", "xgboost")
+        
+        # Create target (next period return)
+        if "close" in candles_df.columns:
+            # Align target with features
+            target = candles_df['close'].pct_change().shift(-1)
+            # Align indices
+            aligned_target = target.loc[features_df.index]
+            aligned_target = aligned_target.dropna()
+            aligned_features = features_df.loc[aligned_target.index]
+        else:
+            # Fallback: use first feature as target
+            aligned_features = features_df.iloc[:-1]
+            aligned_target = features_df.iloc[1:, 0] if len(features_df.columns) > 0 else pd.Series([0] * (len(features_df) - 1))
+        
+        if aligned_features.empty or len(aligned_target) == 0:
+            return None, {
+                "sharpe": 0.0,
+                "hit_rate": 0.0,
+                "net_pnl_pct": 0.0,
+                "max_drawdown_pct": 0.0,
+                "sample_size": 0,
+            }
+        
+        # Remove non-numeric columns
+        numeric_features = aligned_features.select_dtypes(include=[np.number])
+        if numeric_features.empty:
+            return None, {
+                "sharpe": 0.0,
+                "hit_rate": 0.0,
+                "net_pnl_pct": 0.0,
+                "max_drawdown_pct": 0.0,
+                "sample_size": 0,
+            }
+        
+        # Split into train/test (temporal split)
+        split_idx = int(len(numeric_features) * 0.8)
+        X_train = numeric_features.iloc[:split_idx]
+        X_test = numeric_features.iloc[split_idx:]
+        y_train = aligned_target.iloc[:split_idx]
+        y_test = aligned_target.iloc[split_idx:]
+        
+        # Train model
         model = None
+        try:
+            if model_type == "xgboost":
+                try:
+                    from xgboost import XGBRegressor
+                    model = XGBRegressor(objective='reg:squarederror', n_estimators=100, random_state=42, n_jobs=-1)
+                    model.fit(X_train.values, y_train.values)
+                except ImportError:
+                    logger.warning("xgboost_not_available", using_fallback=True)
+                    model_type = "linear"
+            
+            if model is None or model_type == "linear":
+                from sklearn.linear_model import LinearRegression
+                model = LinearRegression()
+                model.fit(X_train.values, y_train.values)
+        except Exception as e:
+            logger.error("model_training_failed", symbol=symbol, error=str(e))
+            return None, {
+                "sharpe": 0.0,
+                "hit_rate": 0.0,
+                "net_pnl_pct": 0.0,
+                "max_drawdown_pct": 0.0,
+                "sample_size": len(X_train),
+            }
+        
+        # Make predictions
+        y_pred_train = pd.Series(model.predict(X_train.values), index=X_train.index)
+        y_pred_test = pd.Series(model.predict(X_test.values), index=X_test.index)
+        
+        # Calculate metrics
+        train_mse = mean_squared_error(y_train, y_pred_train)
+        test_mse = mean_squared_error(y_test, y_pred_test)
+        train_r2 = r2_score(y_train, y_pred_train)
+        test_r2 = r2_score(y_test, y_pred_test)
+        
+        # Hit rate: % of times prediction direction matches actual return direction
+        correct_direction = ((y_pred_test > 0) == (y_test > 0)).sum()
+        hit_rate = correct_direction / len(y_test) if len(y_test) > 0 else 0.0
+        
+        # Sharpe Ratio: mean return / std dev of return
+        mean_return = y_test.mean()
+        std_return = y_test.std()
+        sharpe = mean_return / std_return if std_return > 0 else 0.0
+        
+        # Max drawdown (simplified)
+        cumulative_returns = (1 + y_test).cumprod()
+        running_max = cumulative_returns.cummax()
+        drawdown = (cumulative_returns - running_max) / running_max
+        max_drawdown_pct = abs(drawdown.min()) * 100 if len(drawdown) > 0 else 0.0
+        
         metrics = {
-            "sharpe": 1.0,
-            "hit_rate": 0.55,
-            "net_pnl_pct": 2.0,
-            "max_drawdown_pct": 10.0,
-            "sample_size": 1000,
+            "sharpe": float(sharpe),
+            "hit_rate": float(hit_rate),
+            "net_pnl_pct": float(mean_return * 100),
+            "max_drawdown_pct": float(max_drawdown_pct),
+            "sample_size": len(X_train),
+            "test_r2": float(test_r2),
+            "test_mse": float(test_mse),
         }
+        
         return model, metrics
     
     def _create_cost_model(self, symbol: str, slippage_bps: float, fit_date: datetime) -> CostModel:

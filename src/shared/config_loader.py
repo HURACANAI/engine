@@ -10,10 +10,10 @@ import os
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-import yaml
+import yaml  # type: ignore[import-untyped]
 
 
-def load_config(config_path: Optional[str] = None) -> Dict[str, Any]:
+def load_config(config_path: Optional[str | Path] = None) -> Dict[str, Any]:
     """Load configuration from YAML file.
     
     Args:
@@ -25,14 +25,14 @@ def load_config(config_path: Optional[str] = None) -> Dict[str, Any]:
     if config_path is None:
         # Find config.yaml in project root
         project_root = Path(__file__).parent.parent.parent
-        config_path = project_root / "config.yaml"
+        config_path_obj = project_root / "config.yaml"
+    else:
+        config_path_obj = Path(config_path)
     
-    config_path = Path(config_path)
+    if not config_path_obj.exists():
+        raise FileNotFoundError(f"Config file not found: {config_path_obj}")
     
-    if not config_path.exists():
-        raise FileNotFoundError(f"Config file not found: {config_path}")
-    
-    with open(config_path, 'r') as f:
+    with open(config_path_obj, 'r') as f:
         config = yaml.safe_load(f)
     
     # Resolve environment variables

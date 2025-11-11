@@ -16,5 +16,15 @@ sys.path.insert(0, str(project_root))
 
 from src.cloud.training.pipelines.daily_retrain_scheduler import main
 
+
+def run_daily_retrain() -> int:
+    """Run daily retrain - wrapper function for main().
+    
+    Returns:
+        Exit code (0 for success, non-zero for failure)
+    """
+    return main()
+
+
 if __name__ == "__main__":
     sys.exit(main())

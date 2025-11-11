@@ -48,9 +48,54 @@ class DataQualitySuite:
         return frame
 
     def _expected_rows(self, query: Any) -> int:
+        """Calculate expected number of rows based on timeframe.
+        
+        Args:
+            query: CandleQuery with timeframe, start_at, end_at
+            
+        Returns:
+            Expected number of candles
+        """
         delta = query.end_at - query.start_at
-        minutes = int(delta.total_seconds() // 60)
-        return max(minutes + 1, 1)
+        timeframe = getattr(query, 'timeframe', '1m')  # Default to 1m if not set
+        
+        # Parse timeframe (e.g., '1m', '1h', '1d', '4h', '1w')
+        timeframe_str = str(timeframe).lower()
+        
+        # Extract number and unit
+        if timeframe_str.endswith('m'):
+            # Minutes (1m, 5m, 15m, etc.)
+            interval_minutes = int(timeframe_str[:-1])
+            total_minutes = int(delta.total_seconds() // 60)
+            expected = total_minutes // interval_minutes + 1
+        elif timeframe_str.endswith('h'):
+            # Hours (1h, 4h, 12h, etc.)
+            interval_hours = int(timeframe_str[:-1])
+            total_hours = int(delta.total_seconds() // 3600)
+            expected = total_hours // interval_hours + 1
+        elif timeframe_str.endswith('d'):
+            # Days (1d, 7d, etc.)
+            interval_days = int(timeframe_str[:-1])
+            total_days = int(delta.total_seconds() // 86400)
+            expected = total_days // interval_days + 1
+        elif timeframe_str.endswith('w'):
+            # Weeks (1w, etc.)
+            interval_weeks = int(timeframe_str[:-1])
+            total_weeks = int(delta.total_seconds() // (86400 * 7))
+            expected = total_weeks // interval_weeks + 1
+        elif timeframe_str.endswith('M'):
+            # Months (1M, etc.) - approximate as 30 days
+            interval_months = int(timeframe_str[:-1])
+            total_months = int(delta.total_seconds() // (86400 * 30))
+            expected = total_months // interval_months + 1
+        else:
+            # Fallback: assume minutes
+            logger.warning("unknown_timeframe_format", timeframe=timeframe, defaulting_to_minutes=True)
+            interval_minutes = 1
+            total_minutes = int(delta.total_seconds() // 60)
+            expected = total_minutes // interval_minutes + 1
+        
+        return max(expected, 1)
 
     def _assert_monotonic(self, frame: pl.DataFrame) -> None:
         if not frame["ts"].is_sorted():

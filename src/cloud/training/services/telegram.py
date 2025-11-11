@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 from typing import Any, Dict, List, Optional
 
-import structlog
+import structlog  # type: ignore[import-untyped]
 
 logger = structlog.get_logger(__name__)
 

@@ -1,0 +1,11 @@
+{
+  "symbol": "BTC/USDT",
+  "sample_size": 172660,
+  "sharpe": 0.013951164190221655,
+  "hit_rate": 0.5029652967613399,
+  "net_pnl_pct": 0.0010386003678933334,
+  "gross_pnl_pct": 0.0010386003678933334,
+  "max_drawdown_pct": 0.07444542646994912,
+  "avg_trade_bps": 0.10386003678933334,
+  "status": "ok"
+}

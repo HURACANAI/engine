@@ -10,9 +10,9 @@ import hashlib
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
-import structlog
+import structlog  # type: ignore[import-untyped]
 
 from typing import TYPE_CHECKING
 

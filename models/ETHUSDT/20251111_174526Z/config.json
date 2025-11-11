@@ -1,0 +1,42 @@
+{
+  "symbol": "ETH/USDT",
+  "model_type": "xgboost",
+  "features": [
+    "ret_1",
+    "ret_5",
+    "ret_20",
+    "high_low_ratio",
+    "close_open_ratio",
+    "sma_20",
+    "price_vs_sma_20",
+    "sma_50",
+    "price_vs_sma_50",
+    "volume_ratio",
+    "rsi_14",
+    "volatility_20",
+    "hour_of_day",
+    "day_of_week",
+    "is_weekend"
+  ],
+  "training_date": "2025-11-11T17:47:53.032927+00:00",
+  "train_samples": 172647,
+  "test_samples": 43162,
+  "train_metrics": {
+    "mse": 6.950668689741447e-07,
+    "mae": 0.0005647415348258664,
+    "r2": 0.07338023347343248,
+    "sharpe": 1.4410881329298014e-07,
+    "hit_rate": 0.5223954079711782,
+    "mean_return": 1.201448317564558e-10,
+    "std_return": 0.0008337091189016705
+  },
+  "test_metrics": {
+    "mse": 1.3514273122655193e-06,
+    "mae": 0.0007007529073683103,
+    "r2": -0.021666746400153425,
+    "sharpe": 0.0161970439854584,
+    "hit_rate": 0.4989805847736435,
+    "mean_return": 1.88269590211764e-05,
+    "std_return": 0.001162370061974217
+  }
+}

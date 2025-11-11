@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 import pandas as pd
-import structlog
+import structlog  # type: ignore[import-untyped]
 
 logger = structlog.get_logger(__name__)
 
@@ -112,7 +112,13 @@ class DataGates:
         
         # Check price gaps
         if 'close' in candles_df.columns:
-            candles_df = candles_df.sort_values('timestamp' if 'timestamp' in candles_df.columns else candles_df.index)
+            if 'timestamp' in candles_df.columns:
+                sort_by: str | int = 'timestamp'
+            else:
+                # Use index name or default to index position
+                index_name = candles_df.index.name
+                sort_by = str(index_name) if index_name else 0
+            candles_df = candles_df.sort_values(sort_by)  # type: ignore[arg-type]
             candles_df['price_change_pct'] = candles_df['close'].pct_change().abs() * 100
             
             max_gap = candles_df['price_change_pct'].max()

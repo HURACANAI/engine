@@ -1,0 +1,42 @@
+{
+  "symbol": "SOL/USDT",
+  "model_type": "xgboost",
+  "features": [
+    "ret_1",
+    "ret_5",
+    "ret_20",
+    "high_low_ratio",
+    "close_open_ratio",
+    "sma_20",
+    "price_vs_sma_20",
+    "sma_50",
+    "price_vs_sma_50",
+    "volume_ratio",
+    "rsi_14",
+    "volatility_20",
+    "hour_of_day",
+    "day_of_week",
+    "is_weekend"
+  ],
+  "training_date": "2025-11-11T17:50:20.216873+00:00",
+  "train_samples": 172639,
+  "test_samples": 43160,
+  "train_metrics": {
+    "mse": 9.052570411198387e-07,
+    "mae": 0.0006739998182206542,
+    "r2": 0.08324476102384593,
+    "sharpe": 1.4004433654319724e-05,
+    "hit_rate": 0.5308649841576932,
+    "mean_return": 1.3324556538229766e-08,
+    "std_return": 0.0009514527232680882
+  },
+  "test_metrics": {
+    "mse": 2.634950398487387e-06,
+    "mae": 0.0008920717440984464,
+    "r2": -0.060734168246203035,
+    "sharpe": 0.007935751769318997,
+    "hit_rate": 0.4996061167747915,
+    "mean_return": 1.288147672158168e-05,
+    "std_return": 0.0016232207226268996
+  }
+}
