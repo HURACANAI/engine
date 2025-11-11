@@ -10,6 +10,14 @@ import numpy as np
 import polars as pl
 
 
+def _compat_cumsum(expr: pl.Expr) -> pl.Expr:
+    """Return the cumulative sum expression across Polars versions."""
+    cumsum_fn = getattr(pl, "cumsum", None)
+    if callable(cumsum_fn):
+        return cumsum_fn(expr)
+    return expr.cum_sum()
+
+
 def _rolling_zscore(column: pl.Expr, window: int) -> pl.Expr:
     mean = column.rolling_mean(window_size=window, min_periods=max(1, window // 2))
     std = column.rolling_std(window_size=window, min_periods=max(1, window // 2))
@@ -908,10 +916,10 @@ class FeatureRecipe:
         feature_frame = feature_frame.with_columns([
             (pl.col("typical_price") * pl.col("volume")).alias("typical_price_volume"),
         ])
-        # Use pl.cumsum() function instead of .cumsum() method for Polars compatibility
+        # Use helper for cumsum to support Polars versions with/without pl.cumsum()
         feature_frame = feature_frame.with_columns([
-            pl.cumsum(pl.col("typical_price_volume")).alias("cum_typical_volume"),
-            pl.cumsum(pl.col("volume")).alias("cum_volume"),
+            _compat_cumsum(pl.col("typical_price_volume")).alias("cum_typical_volume"),
+            _compat_cumsum(pl.col("volume")).alias("cum_volume"),
         ])
         feature_frame = feature_frame.with_columns([
             (pl.col("cum_typical_volume") / (pl.col("cum_volume") + 1e-9)).alias("vwap"),

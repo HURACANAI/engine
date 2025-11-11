@@ -1,0 +1,11 @@
+# Bytecode cache
+__pycache__/
+*.py[cod]
+
+# Local virtual environments
+.venv/
+venv/
+
+# IDE metadata
+.idea/
+.vscode/
