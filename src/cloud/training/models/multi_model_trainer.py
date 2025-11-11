@@ -429,8 +429,9 @@ class MultiModelTrainer:
             # Use AUC for classification
             try:
                 return roc_auc_score(y_true, y_pred)
-            except:
-                # Fallback to accuracy
+            except Exception as e:
+                # Fallback to accuracy if AUC calculation fails
+                logger.debug("auc_calculation_failed", error=str(e))
                 return (y_true == (y_pred > 0.5)).mean()
         else:
             # Use R² for regression

@@ -223,7 +223,8 @@ class CostEstimator:
                     if hasattr(spread, '__getitem__'):
                         return float(spread[0])
                     return float(spread)
-        except:
+        except Exception as e:
+            logger.debug("spread_extraction_failed", error=str(e))
             pass
 
         return self.default_spread
@@ -243,7 +244,8 @@ class CostEstimator:
                     high = entry_row['high'][0] if hasattr(entry_row['high'], '__getitem__') else entry_row['high']
                     low = entry_row['low'][0] if hasattr(entry_row['low'], '__getitem__') else entry_row['low']
                     return ((high / low) - 1) * 10000
-        except:
+        except Exception as e:
+            logger.debug("volatility_extraction_failed", error=str(e))
             pass
 
         # Conservative default
@@ -277,7 +279,8 @@ class CostEstimator:
                     # Simple square-root model
                     impact_factor = np.sqrt(position_size_gbp / (volume * 100))
                     return min(impact_factor * 10, 5.0)  # Cap at 5 bps
-        except:
+        except Exception as e:
+            logger.debug("market_impact_calculation_failed", error=str(e))
             pass
 
         # Conservative default for larger sizes

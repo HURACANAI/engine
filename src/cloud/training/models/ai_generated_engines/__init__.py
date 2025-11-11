@@ -57,13 +57,13 @@ def load_ai_engines(status_filter: str = "approved") -> List:
                 if spec is None or spec.loader is None:
                     print(f"   ❌ Failed to create spec for {engine_file.name}")
                     continue
-            module = importlib.util.module_from_spec(spec)
                 # Add parent directories to path for absolute imports
                 parent_dir = str(Path(__file__).parent.parent.parent.parent.parent)
                 if parent_dir not in sys.path:
                     sys.path.insert(0, parent_dir)
+                module = importlib.util.module_from_spec(spec)
                 sys.modules[module_name] = module
-            spec.loader.exec_module(module)
+                spec.loader.exec_module(module)
 
             # Find AlphaEngine subclass
             for attr_name in dir(module):

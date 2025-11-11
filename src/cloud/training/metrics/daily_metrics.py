@@ -47,34 +47,34 @@ class DailyMetrics:
     brier_score_by_regime: Dict[str, float] = field(default_factory=dict)
     
     # Consensus metrics
-    diversity_score: float
-    consensus_agreement: float
+    diversity_score: float = 0.0
+    consensus_agreement: float = 0.0
     
     # Slippage metrics
-    simulator_slippage_error: float  # Error vs realized costs
-    realized_slippage_bps: float
-    expected_slippage_bps: float
+    simulator_slippage_error: float = 0.0  # Error vs realized costs
+    realized_slippage_bps: float = 0.0
+    expected_slippage_bps: float = 0.0
     
     # Exploration metrics
-    exploration_budget_used: float
-    exploration_budget_cap: float
-    exploration_budget_ratio: float
+    exploration_budget_used: float = 0.0
+    exploration_budget_cap: float = 0.0
+    exploration_budget_ratio: float = 0.0
     
     # Early warning metrics
-    early_warning_precision: float
-    early_warning_recall: float
-    early_warning_f1: float
+    early_warning_precision: float = 0.0
+    early_warning_recall: float = 0.0
+    early_warning_f1: float = 0.0
     
     # Risk advisory metrics
-    drawdown_days_saved: int
-    risk_advisories_issued: int
-    risk_advisories_effective: int
+    drawdown_days_saved: int = 0
+    risk_advisories_issued: int = 0
+    risk_advisories_effective: int = 0
     
     # Additional metrics
-    total_trades: int
-    total_pnl_usd: float
-    max_drawdown: float
-    current_drawdown: float
+    total_trades: int = 0
+    total_pnl_usd: float = 0.0
+    max_drawdown: float = 0.0
+    current_drawdown: float = 0.0
     
     # Metadata
     metadata: Dict[str, any] = field(default_factory=dict)

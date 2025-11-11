@@ -181,7 +181,8 @@ class LSTMModel(BaseModel):
                 if self.scheduler is not None:
                     try:
                         current_lr = self.scheduler.get_lr()
-                    except:
+                    except Exception as e:
+                        logger.debug("scheduler_get_lr_failed", error=str(e))
                         current_lr = self.learning_rate
                 else:
                     current_lr = self.learning_rate

@@ -90,7 +90,7 @@ class StrategyTranslator:
                 else:
                     self.model = self.factory.get_model(llm_provider)
                 if self.model:
-                print(f"✅ Strategy Translator initialized with {llm_provider}/{llm_model or 'default'}")
+                    print(f"✅ Strategy Translator initialized with {llm_provider}/{llm_model or 'default'}")
                 else:
                     print(f"⚠️  Model not available - check API keys for {llm_provider}")
                     self.model = None

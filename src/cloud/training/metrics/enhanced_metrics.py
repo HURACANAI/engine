@@ -130,10 +130,10 @@ class EnhancedMetricsCalculator:
         Returns:
             PerformanceMetrics with all calculated metrics
         """
-        if not returns:
-            return self._empty_metrics()
-        
         returns_array = np.array(returns)
+        
+        if len(returns_array) == 0:
+            return self._empty_metrics()
         
         # Basic return metrics
         total_return = float(np.sum(returns_array))
@@ -271,7 +271,7 @@ class EnhancedMetricsCalculator:
         current_drawdown = float(abs(drawdown[-1])) if len(drawdown) > 0 else 0.0
         
         # Drawdown duration (simplified - would need timestamps for accurate days)
-        if timestamps and len(timestamps) > 1:
+        if timestamps is not None and len(timestamps) > 1:
             # Find max drawdown period
             max_dd_idx = np.argmin(drawdown)
             # Find recovery point (when drawdown returns to 0)
