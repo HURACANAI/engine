@@ -1005,9 +1005,11 @@ def test_reality_deviation_score_comprehensive():
         
         # record_prediction
         rds1.record_prediction(
-            symbol='BTC/USD',
             prediction=0.05,
-            timestamp=datetime.now()
+            actual=0.05,
+            symbol='BTC/USD',
+            confidence=0.8,
+            regime='trending'
         )
         record_coverage(module, "record_prediction", True)
         test_result(module, "record_prediction", True)
