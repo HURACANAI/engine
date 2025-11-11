@@ -1,0 +1,27 @@
+# Architecture Improvements - Additional Dependencies
+# Install with: pip install -r requirements-improvements.txt
+
+# Async Operations
+asyncpg>=0.29.0          # Async PostgreSQL driver
+aiohttp>=3.9.0           # Async HTTP client
+aiofiles>=23.2.0         # Async file I/O
+httpx>=0.25.0            # Alternative async HTTP client (optional)
+
+# Redis Caching
+redis>=5.0.0             # Redis client (supports async)
+hiredis>=2.2.0           # Fast Redis parser (optional, for better performance)
+
+# GraphQL API
+strawberry-graphql[fastapi]>=0.215.0  # GraphQL framework
+fastapi>=0.104.0         # Web framework (for GraphQL server)
+uvicorn[standard]>=0.24.0  # ASGI server
+
+# Microservices (Future)
+# grpcio>=1.60.0         # gRPC (for service communication)
+# grpcio-tools>=1.60.0   # gRPC code generation
+# protobuf>=4.25.0       # Protocol buffers
+
+# Message Queue (Optional, for microservices)
+# celery>=5.3.0          # Distributed task queue
+# rabbitmq>=0.2.0        # RabbitMQ client
+

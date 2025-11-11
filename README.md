@@ -4,6 +4,7 @@ Production-grade AI-driven cryptocurrency trading system.
 
 ## Quick Start
 
+- **[How It Works (Simple Explanation)](docs/HOW_IT_WORKS_SIMPLE.md)** - 🎯 **START HERE!** Simple explanation for beginners
 - **[Quick Start Guide](docs/setup/QUICK_START.md)** - Get started in 15 minutes
 - **[Architecture Standards](docs/architecture/ARCHITECTURE.md)** - Development guidelines
 - **[Start Here](docs/setup/START_HERE.md)** - First-time setup

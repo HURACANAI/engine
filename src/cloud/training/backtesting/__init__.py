@@ -1,1 +1,13 @@
-"""Backtesting framework with walk-forward validation and no lookahead bias."""
+"""
+Enhanced Backtest Reports.
+"""
+
+from .enhanced_reports import (
+    EnhancedBacktestReporter,
+    BacktestMetrics,
+)
+
+__all__ = [
+    "EnhancedBacktestReporter",
+    "BacktestMetrics",
+]

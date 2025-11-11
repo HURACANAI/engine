@@ -706,9 +706,23 @@ Before submitting code, ensure:
 ### Future Improvements
 
 1. **Async/Await**: Migrate I/O operations to async
+   - ✅ Foundation created (`database/async_pool.py`)
+   - 🚧 Migration in progress
+   - See: `docs/architecture/ARCHITECTURE_IMPROVEMENTS.md`
+
 2. **Caching Layer**: Add Redis for frequently accessed data
+   - ✅ Infrastructure created (`cache/redis_client.py`, `cache/cache_manager.py`)
+   - 🚧 Integration in progress
+   - See: `docs/architecture/ARCHITECTURE_IMPROVEMENTS.md`
+
 3. **GraphQL API**: Add GraphQL endpoint for flexible queries
+   - ✅ Foundation created (`api/graphql/schema.py`, `api/graphql/server.py`)
+   - 🚧 Resolvers implementation in progress
+   - See: `docs/architecture/ARCHITECTURE_IMPROVEMENTS.md`
+
 4. **Microservices**: Split into microservices for better scalability
+   - 📋 Design phase
+   - See: `docs/architecture/ARCHITECTURE_IMPROVEMENTS.md`
 
 ---
 

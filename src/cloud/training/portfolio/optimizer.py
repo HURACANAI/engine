@@ -1,457 +1,246 @@
 """
-Portfolio-Level Optimization
+Portfolio Optimization Layer.
 
-Optimizes across multiple assets simultaneously, not just individual trades.
-
-Traditional approach: Optimize each asset independently
-Portfolio approach: Optimize entire portfolio considering correlations, diversification, risk budget
-
-Key features:
-1. Multi-asset optimization: Allocate capital across BTC, ETH, SOL, etc.
-2. Correlation-aware: Reduce portfolio volatility through diversification
-3. Risk budgeting: Allocate risk, not just capital
-4. Portfolio constraints: Max positions, sector limits, concentration limits
-
-Example:
-- 3 assets all giving +10% expected return
-- But BTC-ETH correlation = 0.9 (highly correlated)
-- BTC-SOL correlation = 0.6 (moderately correlated)
-- Optimal: Underweight ETH, overweight SOL (better diversification)
+Optimizes weights across active signals with risk budget.
+Penalizes turnover and concentration.
 """
 
-from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from __future__ import annotations
 
+from dataclasses import dataclass
+from typing import Dict, List, Optional
 import numpy as np
-import polars as pl
-import structlog
 from scipy.optimize import minimize
+import structlog
 
 logger = structlog.get_logger(__name__)
 
 
 @dataclass
-class PortfolioConstraints:
-    """Portfolio optimization constraints."""
-
-    max_total_positions: int = 5  # Max simultaneous positions
-    max_position_weight: float = 0.4  # Max 40% in any single asset
-    min_position_weight: float = 0.05  # Min 5% per position (avoid dust)
-    max_sector_weight: float = 0.6  # Max 60% in any sector
-    max_correlation_exposure: float = 0.8  # Max correlation-weighted exposure
-    target_volatility: float = 0.15  # Target portfolio volatility (15% annualized)
-    min_diversification_ratio: float = 1.5  # Min diversification benefit
-
-
-@dataclass
-class AssetSignal:
-    """Trading signal for a single asset."""
-
+class Signal:
+    """Trading signal."""
     symbol: str
-    expected_return: float  # Expected return (bps or %)
-    confidence: float  # Agent confidence (0-1)
-    volatility: float  # Asset volatility
-    beta: float  # Beta to market (BTC)
-    correlation_to_btc: float  # Correlation with BTC
-    current_regime: str  # Market regime
-    sector: str  # Sector (L1, L2, DeFi, etc.)
+    direction: int  # -1, 0, +1
+    confidence: float
+    expected_edge_bps: float
+    volatility: float
 
 
 @dataclass
 class PortfolioAllocation:
-    """Optimal portfolio allocation."""
-
-    weights: Dict[str, float]  # Symbol → weight (sums to 1.0)
-    expected_return: float  # Portfolio expected return
-    expected_volatility: float  # Portfolio volatility
-    sharpe_ratio: float  # Expected Sharpe ratio
-    diversification_ratio: float  # Diversification benefit
-    risk_contributions: Dict[str, float]  # Symbol → risk contribution
-    metadata: Dict  # Additional info
+    """Portfolio allocation result."""
+    allocations: Dict[str, float]  # symbol -> size_usd
+    total_exposure: float
+    hhi: float  # Herfindahl-Hirschman Index (concentration)
+    turnover_penalty: float
+    risk_budget_used: float
 
 
 class PortfolioOptimizer:
     """
-    Multi-asset portfolio optimizer.
-
-    Optimizes allocation across multiple trading opportunities considering:
-    - Expected returns (from RL agents)
-    - Volatilities and correlations
-    - Portfolio constraints
-    - Risk budgeting
+    Portfolio optimizer with risk budget.
+    
+    Features:
+    - Optimize weights across active signals
+    - Risk budget constraint
+    - Turnover penalty
+    - Concentration penalty (HHI-based cap)
+    - Cash buffer preservation
     """
-
+    
     def __init__(
         self,
-        constraints: PortfolioConstraints,
-        risk_free_rate: float = 0.0,
-    ):
+        equity_usd: float = 100000.0,
+        risk_budget_pct: float = 70.0,  # 70% of equity at risk
+        max_hhi: float = 0.25,  # Max concentration (HHI)
+        turnover_penalty: float = 0.1,  # Penalty for high turnover
+        cash_buffer_pct: float = 10.0,  # 10% cash buffer
+    ) -> None:
         """
         Initialize portfolio optimizer.
-
+        
         Args:
-            constraints: Portfolio constraints
-            risk_free_rate: Risk-free rate for Sharpe calculation
+            equity_usd: Total equity
+            risk_budget_pct: Risk budget as % of equity
+            max_hhi: Maximum HHI (concentration)
+            turnover_penalty: Turnover penalty factor
+            cash_buffer_pct: Cash buffer as % of equity
         """
-        self.constraints = constraints
-        self.risk_free_rate = risk_free_rate
-
-        # Correlation matrix cache
-        self.correlation_matrix: Optional[np.ndarray] = None
-        self.symbols_order: List[str] = []
-
+        self.equity_usd = equity_usd
+        self.risk_budget_pct = risk_budget_pct
+        self.max_hhi = max_hhi
+        self.turnover_penalty = turnover_penalty
+        self.cash_buffer_pct = cash_buffer_pct
+        
+        # Track previous allocations for turnover calculation
+        self.previous_allocations: Dict[str, float] = {}
+        
         logger.info(
             "portfolio_optimizer_initialized",
-            max_positions=constraints.max_total_positions,
-            target_volatility=constraints.target_volatility,
+            equity_usd=equity_usd,
+            risk_budget_pct=risk_budget_pct,
+            max_hhi=max_hhi
         )
-
+    
     def optimize(
         self,
-        signals: List[AssetSignal],
-        correlation_matrix: Optional[np.ndarray] = None,
-        objective: str = "max_sharpe",
+        signals: List[Signal],
+        current_positions: Optional[Dict[str, float]] = None
     ) -> PortfolioAllocation:
         """
-        Optimize portfolio allocation.
-
+        Optimize portfolio allocation across signals.
+        
         Args:
-            signals: List of asset signals
-            correlation_matrix: Asset correlation matrix (if None, estimate from data)
-            objective: Optimization objective ("max_sharpe", "min_variance", "risk_parity")
-
+            signals: List of active signals
+            current_positions: Current positions (for turnover calculation)
+        
         Returns:
-            Optimal portfolio allocation
+            PortfolioAllocation with optimized weights
         """
-        if len(signals) == 0:
-            return self._empty_allocation()
-
-        # Filter signals by confidence
-        signals = [s for s in signals if s.confidence >= 0.5]
-
-        if len(signals) == 0:
-            return self._empty_allocation()
-
-        # Limit to max positions
-        signals = sorted(signals, key=lambda s: s.expected_return * s.confidence, reverse=True)
-        signals = signals[: self.constraints.max_total_positions]
-
-        # Update correlation matrix
-        self.symbols_order = [s.symbol for s in signals]
-        if correlation_matrix is not None:
-            self.correlation_matrix = correlation_matrix
-        else:
-            self.correlation_matrix = self._estimate_correlation_matrix(signals)
-
-        # Optimize based on objective
-        if objective == "max_sharpe":
-            weights = self._maximize_sharpe(signals)
-        elif objective == "min_variance":
-            weights = self._minimize_variance(signals)
-        elif objective == "risk_parity":
-            weights = self._risk_parity(signals)
-        else:
-            raise ValueError(f"Unknown objective: {objective}")
-
-        # Create allocation
-        allocation = self._create_allocation(signals, weights)
-
-        logger.info(
-            "portfolio_optimized",
-            num_assets=len(signals),
-            objective=objective,
-            expected_return=allocation.expected_return,
-            expected_volatility=allocation.expected_volatility,
-            sharpe_ratio=allocation.sharpe_ratio,
-        )
-
-        return allocation
-
-    def _maximize_sharpe(self, signals: List[AssetSignal]) -> np.ndarray:
-        """Maximize portfolio Sharpe ratio."""
+        if not signals:
+            return PortfolioAllocation(
+                allocations={},
+                total_exposure=0.0,
+                hhi=0.0,
+                turnover_penalty=0.0,
+                risk_budget_used=0.0
+            )
+        
+        if current_positions is None:
+            current_positions = {}
+        
+        # Calculate risk budget
+        risk_budget_usd = self.equity_usd * (self.risk_budget_pct / 100.0)
+        cash_buffer_usd = self.equity_usd * (self.cash_buffer_pct / 100.0)
+        max_exposure = self.equity_usd - cash_buffer_usd
+        
+        # Optimize weights
+        symbols = [s.symbol for s in signals]
         n = len(signals)
-
-        # Expected returns vector
-        returns = np.array([s.expected_return * s.confidence for s in signals])
-
-        # Volatilities
-        vols = np.array([s.volatility for s in signals])
-
-        # Covariance matrix
-        cov_matrix = self._build_covariance_matrix(vols)
-
-        # Objective: Minimize negative Sharpe ratio
-        def negative_sharpe(weights):
-            portfolio_return = np.dot(weights, returns)
-            portfolio_vol = np.sqrt(np.dot(weights, np.dot(cov_matrix, weights)))
-            if portfolio_vol == 0:
-                return 1e10
-            sharpe = (portfolio_return - self.risk_free_rate) / portfolio_vol
-            return -sharpe  # Minimize negative
-
+        
+        # Objective: maximize expected return - penalties
+        def objective(weights):
+            # Expected return
+            expected_return = sum(
+                w * s.expected_edge_bps * s.confidence
+                for w, s in zip(weights, signals)
+            )
+            
+            # Turnover penalty
+            turnover = self._calculate_turnover(weights, symbols, current_positions)
+            turnover_penalty = self.turnover_penalty * turnover
+            
+            # Concentration penalty (HHI)
+            hhi = self._calculate_hhi(weights)
+            concentration_penalty = max(0, hhi - self.max_hhi) * 100.0
+            
+            # Minimize negative return + penalties
+            return -(expected_return - turnover_penalty - concentration_penalty)
+        
         # Constraints
-        constraints = self._build_constraints(signals, n)
-
-        # Bounds
-        bounds = [(self.constraints.min_position_weight, self.constraints.max_position_weight) for _ in range(n)]
-
-        # Initial guess: equal weight
-        x0 = np.ones(n) / n
-
+        constraints = [
+            {'type': 'eq', 'fun': lambda w: np.sum(w) - 1.0},  # Sum to 1
+        ]
+        
+        # Bounds: 0 <= w <= 1
+        bounds = [(0.0, 1.0) for _ in range(n)]
+        
+        # Initial guess: equal weights
+        initial_weights = np.ones(n) / n
+        
         # Optimize
-        result = minimize(
-            negative_sharpe,
-            x0,
-            method="SLSQP",
-            bounds=bounds,
-            constraints=constraints,
-        )
-
-        if not result.success:
-            logger.warning("sharpe_optimization_failed", message=result.message)
-            return np.ones(n) / n  # Fallback to equal weight
-
-        return result.x
-
-    def _minimize_variance(self, signals: List[AssetSignal]) -> np.ndarray:
-        """Minimize portfolio variance."""
-        n = len(signals)
-
-        # Volatilities
-        vols = np.array([s.volatility for s in signals])
-
-        # Covariance matrix
-        cov_matrix = self._build_covariance_matrix(vols)
-
-        # Objective: Minimize variance
-        def portfolio_variance(weights):
-            return np.dot(weights, np.dot(cov_matrix, weights))
-
-        # Constraints
-        constraints = self._build_constraints(signals, n)
-
-        # Bounds
-        bounds = [(self.constraints.min_position_weight, self.constraints.max_position_weight) for _ in range(n)]
-
-        # Initial guess
-        x0 = np.ones(n) / n
-
-        # Optimize
-        result = minimize(
-            portfolio_variance,
-            x0,
-            method="SLSQP",
-            bounds=bounds,
-            constraints=constraints,
-        )
-
-        if not result.success:
-            logger.warning("variance_optimization_failed", message=result.message)
-            return np.ones(n) / n
-
-        return result.x
-
-    def _risk_parity(self, signals: List[AssetSignal]) -> np.ndarray:
-        """Equal risk contribution from each asset."""
-        n = len(signals)
-
-        # Volatilities
-        vols = np.array([s.volatility for s in signals])
-
-        # Covariance matrix
-        cov_matrix = self._build_covariance_matrix(vols)
-
-        # Objective: Minimize sum of squared differences in risk contributions
-        def risk_parity_objective(weights):
-            portfolio_vol = np.sqrt(np.dot(weights, np.dot(cov_matrix, weights)))
-            if portfolio_vol == 0:
-                return 1e10
-
-            # Marginal risk contributions
-            mrc = np.dot(cov_matrix, weights) / portfolio_vol
-
-            # Risk contributions
-            rc = weights * mrc
-
-            # Target: equal risk contribution
-            target_rc = portfolio_vol / n
-
-            # Minimize squared deviations
-            return np.sum((rc - target_rc) ** 2)
-
-        # Constraints
-        constraints = self._build_constraints(signals, n)
-
-        # Bounds
-        bounds = [(self.constraints.min_position_weight, self.constraints.max_position_weight) for _ in range(n)]
-
-        # Initial guess
-        x0 = np.ones(n) / n
-
-        # Optimize
-        result = minimize(
-            risk_parity_objective,
-            x0,
-            method="SLSQP",
-            bounds=bounds,
-            constraints=constraints,
-        )
-
-        if not result.success:
-            logger.warning("risk_parity_optimization_failed", message=result.message)
-            # Fallback: inverse volatility weighting
-            inv_vol = 1.0 / vols
-            return inv_vol / inv_vol.sum()
-
-        return result.x
-
-    def _build_covariance_matrix(self, vols: np.ndarray) -> np.ndarray:
-        """Build covariance matrix from volatilities and correlations."""
-        # Cov(i,j) = vol(i) * vol(j) * corr(i,j)
-        n = len(vols)
-        cov_matrix = np.zeros((n, n))
-
-        for i in range(n):
-            for j in range(n):
-                if i == j:
-                    cov_matrix[i, j] = vols[i] ** 2
-                else:
-                    corr = self.correlation_matrix[i, j] if self.correlation_matrix is not None else 0.5
-                    cov_matrix[i, j] = vols[i] * vols[j] * corr
-
-        return cov_matrix
-
-    def _build_constraints(self, signals: List[AssetSignal], n: int) -> List[Dict]:
-        """Build optimization constraints."""
-        constraints = []
-
-        # Weights sum to 1
-        constraints.append({"type": "eq", "fun": lambda w: np.sum(w) - 1.0})
-
-        # Sector constraints
-        sectors = {}
-        for idx, signal in enumerate(signals):
-            if signal.sector not in sectors:
-                sectors[signal.sector] = []
-            sectors[signal.sector].append(idx)
-
-        for sector, indices in sectors.items():
-            if len(indices) > 0:
-
-                def sector_constraint(w, idxs=indices):
-                    return self.constraints.max_sector_weight - np.sum([w[i] for i in idxs])
-
-                constraints.append({"type": "ineq", "fun": sector_constraint})
-
-        return constraints
-
-    def _estimate_correlation_matrix(self, signals: List[AssetSignal]) -> np.ndarray:
-        """Estimate correlation matrix from signals."""
-        n = len(signals)
-        corr_matrix = np.eye(n)  # Start with identity
-
-        # Use correlation to BTC as proxy
-        for i in range(n):
-            for j in range(i + 1, n):
-                # Estimate correlation from individual BTC correlations
-                corr_i = signals[i].correlation_to_btc
-                corr_j = signals[j].correlation_to_btc
-
-                # Simple heuristic: corr(i,j) ≈ corr(i,btc) * corr(j,btc)
-                estimated_corr = corr_i * corr_j
-
-                corr_matrix[i, j] = estimated_corr
-                corr_matrix[j, i] = estimated_corr
-
-        return corr_matrix
-
-    def _create_allocation(
-        self,
-        signals: List[AssetSignal],
-        weights: np.ndarray,
-    ) -> PortfolioAllocation:
-        """Create portfolio allocation from optimized weights."""
-        # Expected returns
-        returns = np.array([s.expected_return * s.confidence for s in signals])
-        portfolio_return = np.dot(weights, returns)
-
-        # Volatilities
-        vols = np.array([s.volatility for s in signals])
-        cov_matrix = self._build_covariance_matrix(vols)
-        portfolio_vol = np.sqrt(np.dot(weights, np.dot(cov_matrix, weights)))
-
-        # Sharpe ratio
-        sharpe = (portfolio_return - self.risk_free_rate) / portfolio_vol if portfolio_vol > 0 else 0.0
-
-        # Diversification ratio
-        weighted_vol = np.dot(weights, vols)  # Sum of weighted volatilities
-        diversification_ratio = weighted_vol / portfolio_vol if portfolio_vol > 0 else 1.0
-
-        # Risk contributions
-        mrc = np.dot(cov_matrix, weights) / portfolio_vol if portfolio_vol > 0 else np.zeros(len(weights))
-        rc = weights * mrc
-        risk_contributions = {signals[i].symbol: rc[i] for i in range(len(signals))}
-
-        # Weights dict
-        weights_dict = {signals[i].symbol: weights[i] for i in range(len(signals))}
-
+        try:
+            result = minimize(
+                objective,
+                initial_weights,
+                method='SLSQP',
+                bounds=bounds,
+                constraints=constraints
+            )
+            
+            if result.success:
+                optimal_weights = result.x
+            else:
+                logger.warning("portfolio_optimization_failed", message=result.message)
+                optimal_weights = initial_weights
+        except Exception as e:
+            logger.error("portfolio_optimization_error", error=str(e))
+            optimal_weights = initial_weights
+        
+        # Convert weights to USD allocations
+        allocations = {}
+        total_exposure = 0.0
+        
+        for weight, signal in zip(optimal_weights, signals):
+            if weight > 0.01:  # Only allocate if weight > 1%
+                size_usd = weight * max_exposure
+                allocations[signal.symbol] = size_usd
+                total_exposure += size_usd
+        
+        # Calculate metrics
+        hhi = self._calculate_hhi(optimal_weights)
+        turnover = self._calculate_turnover(optimal_weights, symbols, current_positions)
+        risk_budget_used = (total_exposure / self.equity_usd) * 100.0
+        
+        # Update previous allocations
+        self.previous_allocations = allocations.copy()
+        
         return PortfolioAllocation(
-            weights=weights_dict,
-            expected_return=portfolio_return,
-            expected_volatility=portfolio_vol,
-            sharpe_ratio=sharpe,
-            diversification_ratio=diversification_ratio,
-            risk_contributions=risk_contributions,
-            metadata={
-                "num_assets": len(signals),
-                "max_weight": max(weights),
-                "min_weight": min(weights),
-            },
+            allocations=allocations,
+            total_exposure=total_exposure,
+            hhi=hhi,
+            turnover_penalty=turnover * self.turnover_penalty,
+            risk_budget_used=risk_budget_used
         )
-
-    def _empty_allocation(self) -> PortfolioAllocation:
-        """Return empty allocation when no signals."""
-        return PortfolioAllocation(
-            weights={},
-            expected_return=0.0,
-            expected_volatility=0.0,
-            sharpe_ratio=0.0,
-            diversification_ratio=0.0,
-            risk_contributions={},
-            metadata={"num_assets": 0},
-        )
-
-    def rebalance_portfolio(
-        self,
-        current_allocation: PortfolioAllocation,
-        new_allocation: PortfolioAllocation,
-        rebalance_threshold: float = 0.05,
-    ) -> Dict[str, float]:
+    
+    def _calculate_hhi(self, weights: np.ndarray) -> float:
         """
-        Calculate rebalancing trades.
-
+        Calculate Herfindahl-Hirschman Index (concentration measure).
+        
+        HHI = sum(w_i^2)
+        Range: [0, 1] where 1 = maximum concentration
+        
         Args:
-            current_allocation: Current portfolio weights
-            new_allocation: Target portfolio weights
-            rebalance_threshold: Min weight change to trigger rebalance (5%)
-
+            weights: Portfolio weights
+        
         Returns:
-            Dict of symbol → weight_change (positive = buy, negative = sell)
+            HHI value
         """
-        trades = {}
-
-        # All symbols
-        all_symbols = set(current_allocation.weights.keys()) | set(new_allocation.weights.keys())
-
-        for symbol in all_symbols:
-            current_weight = current_allocation.weights.get(symbol, 0.0)
-            new_weight = new_allocation.weights.get(symbol, 0.0)
-            change = new_weight - current_weight
-
-            # Only rebalance if change exceeds threshold
-            if abs(change) >= rebalance_threshold:
-                trades[symbol] = change
-
-        logger.info("rebalance_calculated", num_trades=len(trades), threshold=rebalance_threshold)
-
-        return trades
+        return float(np.sum(weights ** 2))
+    
+    def _calculate_turnover(
+        self,
+        new_weights: np.ndarray,
+        symbols: List[str],
+        current_positions: Dict[str, float]
+    ) -> float:
+        """
+        Calculate portfolio turnover.
+        
+        Turnover = sum(|w_new - w_old|) / 2
+        
+        Args:
+            new_weights: New portfolio weights
+            symbols: List of symbols
+            current_positions: Current positions in USD
+        
+        Returns:
+            Turnover value (0 to 1)
+        """
+        if not current_positions:
+            return 0.0
+        
+        total_current = sum(abs(v) for v in current_positions.values())
+        if total_current == 0:
+            return 0.0
+        
+        # Calculate old weights
+        old_weights = np.zeros(len(symbols))
+        for i, symbol in enumerate(symbols):
+            if symbol in current_positions:
+                old_weights[i] = abs(current_positions[symbol]) / total_current
+        
+        # Calculate turnover
+        turnover = np.sum(np.abs(new_weights - old_weights)) / 2.0
+        
+        return float(turnover)

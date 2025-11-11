@@ -1,11 +1,13 @@
 """
-Data generation and augmentation modules.
+Data Governance.
 """
 
-from .synthetic_data_generator import SyntheticDataGenerator, SyntheticDataResult
+from .governance import (
+    DataGovernance,
+    DataQualityReport,
+)
 
 __all__ = [
-    'SyntheticDataGenerator',
-    'SyntheticDataResult',
+    "DataGovernance",
+    "DataQualityReport",
 ]
-

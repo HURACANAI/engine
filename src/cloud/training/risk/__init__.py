@@ -1,17 +1,15 @@
-"""Risk management modules for pre-trade validation and risk limits."""
+"""
+Risk Management - Presets and Circuit Breakers.
+"""
 
-from .pre_trade_risk import (
-    PreTradeRiskEngine,
-    RiskLimits,
-    RiskCheckResult,
-    PreTradeRiskResult,
-    RiskCheck,
+from .presets import (
+    RiskPresetManager,
+    RiskProfile,
+    RiskPreset,
 )
 
 __all__ = [
-    "PreTradeRiskEngine",
-    "RiskLimits",
-    "RiskCheckResult",
-    "PreTradeRiskResult",
-    "RiskCheck",
+    "RiskPresetManager",
+    "RiskProfile",
+    "RiskPreset",
 ]

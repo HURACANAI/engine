@@ -1,26 +1,15 @@
-"""Execution modules for order routing and execution."""
+"""
+Smart Execution Router - Reduces market footprint.
+"""
 
-from .smart_order_router import (
-    SmartOrderRouter,
-    RouteDecision,
-    ExchangeLiquidity,
-    RoutingDecision,
-)
-from .spread_threshold_manager import (
-    SpreadThresholdManager,
-    Order,
-    OrderStatus,
-    SpreadSnapshot,
+from .smart_router import (
+    SmartExecutionRouter,
+    VenueQuote,
+    ExecutionPlan,
 )
 
 __all__ = [
-    "SmartOrderRouter",
-    "RouteDecision",
-    "ExchangeLiquidity",
-    "RoutingDecision",
-    "SpreadThresholdManager",
-    "Order",
-    "OrderStatus",
-    "SpreadSnapshot",
+    "SmartExecutionRouter",
+    "VenueQuote",
+    "ExecutionPlan",
 ]
-
