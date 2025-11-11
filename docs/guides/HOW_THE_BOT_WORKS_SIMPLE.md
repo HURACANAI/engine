@@ -111,25 +111,62 @@ Imagine you have a robot friend that's really good at learning from history. Eve
 
 ---
 
-## 🎓 **STEP 6: Learn and Test**
+## 🎓 **STEP 6: Learn and Test (Per-Coin Training with Hybrid Scheduler)**
 
 **What happens:**
-1. The bot practices trading on old data (like playing a video game with old levels) to see what would have happened
-2. It learns patterns from these practice trades and creates a "model" (like a brain) that remembers what works
-3. It tests the model on new data it hasn't seen before to make sure it's good enough
+1. The bot uses a **hybrid training scheduler** to train one model per coin efficiently:
+   - **Sequential mode**: Train one coin at a time (safe, simple)
+   - **Parallel mode**: Train all coins at once (fast, requires more resources)
+   - **Hybrid mode**: Train coins in batches with a concurrency cap (balanced, default)
+   - Auto-detects GPU availability and sets defaults (12 concurrent on GPU, 2 on CPU)
+
+2. For each coin, the bot:
+   - Fetches costs (fees, spread, slippage) before training
+   - Loads historical data and builds features
+   - Trains a model using a **shared encoder** (learns patterns across all coins) + coin-specific features
+   - Tests the model on new data it hasn't seen before
+   - Only saves models that pass quality gates (after-cost metrics)
+   - Saves partial outputs early (features, split indices, training log)
+   - Saves final artifacts (model, config, metrics, costs, hash)
+
+3. The scheduler provides:
+   - **Resumability**: If interrupted, can resume from where it left off
+   - **Timeout protection**: Each coin has a timeout (default: 45 minutes)
+   - **Retries**: Failed coins are retried up to 2 times with backoff
+   - **Cost awareness**: Models are evaluated after costs (fees, spread, slippage)
+   - **Storage integration**: Uploads to Dropbox (or S3) as training completes
+
 4. Only models that pass the tests get saved for use
 
-**Why:** Practice makes perfect! The bot only uses models that actually work!
+**Why:** Practice makes perfect! The bot only uses models that actually work, and the hybrid scheduler makes training efficient and resumable!
 
 ---
 
-## 💾 **STEP 7: Save Everything**
+## 💾 **STEP 7: Save Everything (Per-Coin Artifacts)**
 
 **What happens:**
-1. If the model passed, the bot saves it along with all the information about how good it is
-2. It also saves all the trades it practiced, all the things it learned, and all the reports
+1. For each coin that passes quality gates, the bot saves to a unique folder:
+   - `models/{SYMBOL}/YYYYMMDD_HHMMSSZ/`
+   - Files saved:
+     - `model.bin` - The trained model
+     - `config.json` - Model configuration
+     - `metrics.json` - Performance metrics (Sharpe, hit rate, net PnL, etc.)
+     - `costs.json` - Cost model (fees, spread, slippage)
+     - `features.json` - Feature recipe
+     - `sha256.txt` - Integrity hash
+     - Partial outputs: `features.parquet`, `split_indices.json`, `training_log.json`
 
-**Why:** So the trading system can use these models to make real trades!
+2. The bot also saves:
+   - **Resume ledger**: `runs/YYYYMMDDZ/status.json` - Tracks which coins are completed/failed/skipped
+   - **Champion pointers**: `champions/{SYMBOL}.json` - Points to the best model for each coin
+   - **Roster file**: `champions/roster.json` - Ranked list of all coins for trading decisions
+   - **Summary**: `summary/YYYYMMDDZ/engine_summary.json` - Overall training statistics
+
+3. All files are uploaded to Dropbox (or S3) as training completes
+
+4. The bot also saves all the trades it practiced, all the things it learned, and all the reports
+
+**Why:** So the trading system can use these models to make real trades, and the system can resume if interrupted!
 
 ---
 
@@ -183,14 +220,20 @@ Imagine you have a robot friend that's really good at learning from history. Eve
 
 1. **Wake up** → Create folder for today's work
 2. **Get ready** → Load settings, connect to everything
-3. **Pick coins** → Choose best coins to study (typically ~20)
+3. **Pick coins** → Choose best coins to study (typically ~20-400, configurable)
 4. **Download data** → Get price history (typically 120-150 days)
 5. **Calculate features** → Make many measurements (typically 50+)
-6. **Learn and test** → Practice trading, learn patterns, test models
-7. **Save model** → Save the brain if it passed tests
-8. **Keep syncing** → Background helpers keep saving things
+6. **Learn and test** → Train per-coin models with hybrid scheduler:
+   - Train models in batches (sequential, parallel, or hybrid mode)
+   - Use shared encoder for cross-coin learning
+   - Fetch costs before training
+   - Test models with after-cost metrics
+   - Save partial outputs early
+   - Resume if interrupted
+7. **Save model** → Save per-coin artifacts (model, metrics, costs, hash) if passed tests
+8. **Keep syncing** → Background helpers keep saving things + upload to Dropbox/S3
 9. **Safety checks** → Health checks, circuit breakers, kill switch
-10. **Send updates** → Text you on Telegram about what happened
+10. **Send updates** → Text you on Telegram about what happened (start, progress, completion, failures)
 11. **Clean up** → Finish and get ready for tomorrow!
 
 ---
@@ -219,9 +262,14 @@ Think of it like this:
 
 ## ⏰ **How Long Does It Take?**
 
-- **Total time:** Typically 1-2 hours (varies with number of coins and models)
-- **Most time spent on:** Downloading coin data and training models
+- **Total time:** Varies with number of coins and training mode:
+  - **Sequential mode**: ~1-2 hours for 20 coins, ~4-8 hours for 100 coins
+  - **Parallel mode**: ~30 minutes for 20 coins, ~2-4 hours for 100 coins (requires more resources)
+  - **Hybrid mode** (default): ~45 minutes for 20 coins, ~3-6 hours for 100 coins (balanced)
+- **Per-coin timeout:** Default 45 minutes (configurable)
+- **Most time spent on:** Training models (especially with large feature sets)
 - **Runs:** Once per day (typically at 2:00 AM UTC, configurable)
+- **Resumability:** If interrupted, can resume from where it left off (saves time!)
 
 ---
 

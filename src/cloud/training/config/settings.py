@@ -146,6 +146,33 @@ class OptimizationSettings(BaseModel):
     query_optimization: QueryOptimizationSettings = Field(default_factory=QueryOptimizationSettings)
 
 
+class PerCoinGatesSettings(BaseModel):
+    """Gate thresholds for per-coin model promotion."""
+    min_sharpe: float = 1.0
+    min_hit_rate: float = 0.50  # 50% hit rate
+    max_drawdown_pct: float = 15.0  # 15% max drawdown
+    min_net_pnl_pct: float = 1.0  # 1% net P&L improvement over champion
+    min_sample_size: int = 100  # Minimum sample size for validation
+
+
+class PerCoinPromotionRulesSettings(BaseModel):
+    """Promotion rules for per-coin challenger promotion."""
+    min_hit_rate_improvement: float = 0.01  # 1% improvement
+    min_sharpe_improvement: float = 0.2  # 0.2 improvement
+    max_drawdown_tolerance: float = 0.0  # No tolerance (must be better or equal)
+    min_net_pnl_improvement: float = 0.01  # 1% improvement
+
+
+class PerCoinTrainingSettings(BaseModel):
+    """Per-coin training configuration."""
+    symbols_allowed: List[str] = Field(default_factory=list)  # Empty list = all symbols
+    per_symbol_costs: Dict[str, Dict[str, float]] = Field(default_factory=dict)  # Per-symbol cost overrides
+    parallel_tasks: int = 2  # Number of symbols to train in parallel
+    time_budget_per_symbol_minutes: int = 30  # Time budget per symbol in minutes
+    gates: PerCoinGatesSettings = Field(default_factory=PerCoinGatesSettings)
+    promotion_rules: PerCoinPromotionRulesSettings = Field(default_factory=PerCoinPromotionRulesSettings)
+
+
 class TrainingSettings(BaseModel):
     window_days: int = 150
     walk_forward: WalkForwardSettings = Field(default_factory=WalkForwardSettings)
@@ -155,6 +182,7 @@ class TrainingSettings(BaseModel):
     monitoring: MonitoringSettings = Field(default_factory=MonitoringSettings)
     validation: ValidationSettings = Field(default_factory=ValidationSettings)
     optimization: OptimizationSettings = Field(default_factory=OptimizationSettings)
+    per_coin: PerCoinTrainingSettings = Field(default_factory=PerCoinTrainingSettings)
 
 
 class CostSettings(BaseModel):

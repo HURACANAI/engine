@@ -507,43 +507,55 @@ The engine looks at TONS of data, like:
 
 ---
 
-## 🎓 How Does It Learn? (Training)
+## 🎓 How Does It Learn? (Per-Coin Training with Hybrid Scheduler)
 
-This is the cool part! The engine **learns from its mistakes** and gets better over time.
+This is the cool part! The engine **learns from its mistakes** and gets better over time. It now uses a **hybrid training scheduler** to train one model per coin efficiently.
 
-### Step 1: Look at Old Data (Like Studying History)
+### Step 1: Initialize Training Scheduler
 
-Imagine you're studying for a test by looking at old exams:
-- The engine looks at **3-6 months of old market data**
-- It's like: "What happened in the past when prices looked like this?"
+The engine uses a hybrid training scheduler with three modes:
+- **Sequential mode**: Train one coin at a time (safe, simple)
+- **Parallel mode**: Train all coins at once (fast, requires more resources)
+- **Hybrid mode** (default): Train coins in batches with concurrency cap (balanced)
 
-### Step 2: Practice Trading (Without Real Money)
+The scheduler auto-detects GPU availability and sets defaults (12 concurrent on GPU, 2 on CPU).
 
-The engine **pretends to trade** using old data:
-- "If I had bought Bitcoin on January 1st, would I have made money?"
-- "If I had sold on January 5th, would I have made money?"
-- It tries thousands of different strategies
+### Step 2: Train One Model Per Coin
 
-This is called **"backtesting"** - testing strategies on old data.
+For each coin, the engine:
+1. **Fetches costs** (fees, spread, slippage) before training
+2. **Loads historical data** (3-6 months of old market data)
+3. **Builds features** (50+ measurements describing the market state)
+4. **Trains a shared encoder** (learns patterns across all coins)
+5. **Trains a per-coin model** (combines shared encoder + coin-specific features)
+6. **Tests the model** on new data it hasn't seen before
+7. **Evaluates after costs** (only saves models that pass after-cost quality gates)
 
-### Step 3: Learn What Works
+### Step 3: Save Per-Coin Artifacts
 
-The engine figures out:
-- "Strategy A made 10% profit"
-- "Strategy B made 5% profit"
-- "Strategy C lost 3%"
-- **→ Use Strategy A more!**
+For each coin that passes quality gates, the engine saves:
+- `model.bin` - The trained model
+- `config.json` - Model configuration
+- `metrics.json` - Performance metrics (Sharpe, hit rate, net PnL, etc.)
+- `costs.json` - Cost model (fees, spread, slippage)
+- `features.json` - Feature recipe
+- `sha256.txt` - Integrity hash
 
-### Step 4: Get Better Over Time (Reinforcement Learning)
+### Step 4: Resume If Interrupted
 
-This is like playing a video game and getting better:
+The scheduler provides resumability:
+- If training is interrupted, it can resume from where it left off
+- Completed symbols are skipped (unless `--force` flag)
+- Failed symbols are retried (up to 2 times with backoff)
 
-1. **Try something** (buy Bitcoin)
-2. **See what happens** (price goes up = good! Price goes down = bad!)
-3. **Remember what worked** (do more of that!)
-4. **Remember what didn't work** (do less of that!)
+### Step 5: Generate Summary and Roster
 
-The engine does this **thousands of times** and gets smarter!
+The engine generates:
+- **Summary**: Overall training statistics (total_symbols, succeeded, failed, skipped, etc.)
+- **Roster**: Ranked list of all coins for trading decisions (Hamilton uses this)
+- **Champion pointers**: Points to the best model for each coin
+
+This is called **"per-coin training with hybrid scheduler"** - efficient, resumable, and cost-aware!
 
 ---
 
@@ -653,10 +665,14 @@ Here's the ENTIRE process from start to finish:
    - Gets all the market data from yesterday
    - Price history, volumes, everything
 
-3. **Train the Models** 🧠
-   - Looks at last 3-6 months of data
-   - Updates all 23 Alpha Engines
-   - Makes them smarter
+3. **Train the Models** 🧠 (Per-Coin Training with Hybrid Scheduler)
+   - Uses hybrid training scheduler to train one model per coin
+   - Trains in batches (sequential, parallel, or hybrid mode)
+   - Uses shared encoder for cross-coin learning
+   - Fetches costs before training
+   - Tests each model with after-cost metrics
+   - Saves per-coin artifacts (model, metrics, costs, hash)
+   - Generates summary and roster for trading decisions
 
 4. **Test Everything** ✅
    - "Are my predictions still good?"

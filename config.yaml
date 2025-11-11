@@ -1,0 +1,245 @@
+general:
+  version: "2.0"
+  timezone: "UTC"
+  dropbox_root: "/Huracan/"
+  s3_bucket: "huracan"  # S3 bucket name
+  symbols: ["BTCUSDT", "ETHUSDT", "SOLUSDT"]
+
+engine:
+  lookback_days: 180
+  features: ["rsi", "ema", "volatility", "momentum"]
+  model_type: "xgboost"
+  parallel_tasks: 8
+  # Shared encoder for cross-coin learning
+  shared_encoder:
+    type: "pca"  # "pca" or "autoencoder"
+    n_components: 50
+    enabled: true
+  # Training targets
+  target_symbols: 400  # Train on 400 coins in shadow
+  start_with_symbols: 150  # Start with 150 symbols to prove pipeline
+  # Data gates
+  data_gates:
+    min_volume_gbp: 10000000
+    max_spread_bps: 8.0
+    max_gap_pct: 0.10
+  # Slippage calibration
+  slippage_calibration:
+    enabled: true
+    lookback_days: 30
+  # Guardrails
+  guardrails:
+    net_edge_floor_bps: 3.0  # Minimum net edge to trade
+    spread_threshold_bps: 50.0  # Maximum spread to trade
+    sample_size_min: 100  # Minimum sample size for promotion
+
+mechanic:
+  fine_tune_hours: 6
+  challengers_per_symbol: 3
+  promote_if_net_pnl_above_pct: 1.0
+  rollback_drawdown_pct: 5.0
+  guardrails:
+    min_hours_live_before_promotion: 24
+    min_trades_before_promotion: 50
+  rollback_rules:
+    drawdown_floor_pct: 10.0
+    win_rate_floor_pct: 40.0
+  stagger_work:
+    enabled: true
+    round_robin_symbols: true
+    max_concurrent_challengers: 2
+  shadow_types: ["fine_tune", "threshold_tweak"]
+
+hamilton:
+  edge_threshold_bps: 10
+  max_positions: 3
+  cooldown_sec: 900
+  daily_loss_cap_pct: 1.0
+  weekly_loss_cap_pct: 3.0
+  pre_trade_checks:
+    min_balance_usd: 100
+    min_notional_multiplier: 1.0
+    funding_rate_threshold_pct: 0.1
+  session_limits:
+    daily_loss_cap_pct: 1.0
+    daily_trade_count_cap: 50
+  latency_meter:
+    enabled: true
+    threshold_ms: 200
+
+archive:
+  path_models: "models/"
+  path_reports: "reports/"
+  path_logs: "logs/"
+  path_trades: "trades/"
+  path_equity_curves: "equity_curves/"
+  path_promotions_log: "champion/promotions.json"
+  integrity_checks_on_startup: true
+
+broadcaster:
+  telegram_channel: "@huracan_bot"
+  instagram: enabled
+  alerts:
+    failed_training: true
+    failed_upload: true
+    missing_champion: true
+    halted_trading: true
+    promotion_events: true
+
+observability:
+  status_json_path: "engine_status.json"
+  heartbeat_interval_seconds: 30
+  mechanic_heartbeat_path: "mechanic_status.json"
+  hamilton_heartbeat_path: "hamilton_status.json"
+
+data_quality:
+  candle_repair:
+    forward_fill_max_gaps: 5
+    drop_days_with_large_holes_pct: 0.20
+  detect_split_or_symbol_change:
+    enabled: true
+    price_jump_threshold_pct: 10.0
+
+risk_compliance:
+  funding_and_borrow_costs:
+    track_funding: true
+    track_borrow_apr: true
+  exposure_caps:
+    enabled: true
+    correlated_cluster_max_exposure_pct: 50.0
+    sector_max_exposure_pct: 60.0
+
+scaling:
+  shard_by_symbol_group:
+    enabled: true
+    btc_eth_worker_id: 1
+    mid_caps_worker_id: 2
+  backpressure:
+    enabled: true
+    dropbox_queue_threshold: 100
+    slow_producer_factor: 0.5
+
+governance:
+  version_rules:
+    bump_engine_version_on_feature_change: true
+    bump_engine_version_on_gate_change: true
+  promotion_review:
+    enabled: true
+    human_report_path: "reports/promotion_reviews/"
+
+security:
+  read_only_keys_for_hamilton: true
+  separate_write_keys_for_engine_mechanic: true
+  secrets_rotation:
+    log_secret_version_only: true
+
+# Costs configuration
+costs:
+  taker_fee_bps: 4.0
+  maker_fee_bps: 2.0
+  median_spread_bps: 5.0
+  slippage_bps_per_sigma: 2.0
+  # Per-symbol cost overrides
+  per_symbol_costs: {}  # e.g., {"BTCUSDT": {"taker_fee_bps": 4.0, "maker_fee_bps": 2.0}}
+
+# Meta combiner configuration
+meta_combiner:
+  ema_alpha: 0.1  # EMA smoothing factor
+  min_weight: 0.01  # Minimum weight
+  max_weight: 1.0  # Maximum weight
+  accuracy_threshold: 0.45  # Minimum accuracy to include
+
+# Regime classifier configuration
+regime_classifier:
+  trend_threshold: 0.6  # Trend strength threshold
+  volatility_threshold: 0.05  # Volatility threshold for panic
+  volume_threshold: 0.5  # Volume threshold for illiquid
+  # Enhanced regime gating for swing trading
+  panic_allows_swing: false  # Panic regime blocks swing trading
+  panic_allows_position: false  # Panic regime blocks position trading
+  illiquid_allows_swing: false  # Illiquid regime blocks swing trading
+  illiquid_allows_position: false  # Illiquid regime blocks position trading
+  panic_risk_multiplier: 2.0  # 2x risk in panic
+  illiquid_risk_multiplier: 1.5  # 1.5x risk in illiquid
+  high_volatility_risk_multiplier: 1.3  # 1.3x risk in high volatility
+  volatility_threshold_high: 0.05  # High volatility threshold
+  volatility_threshold_low: 0.01  # Low volatility threshold
+
+# Swing trading configuration
+swing_trading:
+  enabled: true
+  # Position management
+  default_stop_loss_bps: 200.0  # Default 2% stop loss
+  use_trailing_stop: true
+  trailing_stop_distance_bps: 100.0  # 1% trailing distance
+  # Take profit levels: [(profit_bps, exit_pct), ...]
+  take_profit_levels:
+    - [200.0, 0.30]  # 30% at 2% profit
+    - [400.0, 0.40]  # 40% at 4% profit
+    - [600.0, 0.20]  # 20% at 6% profit
+    # Remaining 10% trails
+  # Risk management
+  max_holding_hours: null  # null = no time limit
+  max_funding_cost_bps: 500.0  # Max 5% funding cost
+  # Regime gating
+  exit_on_panic: true  # Exit on panic regime
+  exit_on_illiquid: false  # Exit on illiquid regime
+
+# Horizon-based portfolio allocation
+portfolio_allocation:
+  # Allocation limits by horizon (% of total portfolio)
+  scalp_max_allocation_pct: 20.0  # Max 20% for scalps
+  swing_max_allocation_pct: 40.0  # Max 40% for swings
+  position_max_allocation_pct: 30.0  # Max 30% for positions
+  core_max_allocation_pct: 50.0  # Max 50% for core (can overlap)
+  # Position limits
+  scalp_max_positions: 5
+  swing_max_positions: 3
+  position_max_positions: 2
+  core_max_positions: 3
+  # Rebalancing
+  rebalance_threshold_pct: 5.0  # Rebalance if allocation drifts by 5%
+  rebalance_frequency_hours: 24.0  # Rebalance every 24 hours
+
+# Enhanced cost calculator with holding context
+enhanced_costs:
+  # Funding and overnight costs
+  funding_rate_bps_per_8h: 1.0  # Funding rate per 8 hours in basis points
+  borrow_rate_bps_per_day: 0.0  # Borrow rate per day (for margin)
+  overnight_risk_multiplier: 1.2  # Multiplier for overnight risk
+  # Liquidity over time
+  liquidity_decay_factor: 0.95  # Liquidity decay factor per day
+  spread_widening_bps_per_day: 0.5  # Spread widening per day
+  # Include funding for swing trades
+  include_funding_for_swing: true
+  include_funding_for_position: true
+  include_funding_for_core: true
+  include_borrow_for_core: false
+
+# Database configuration
+database:
+  connection_string: "${DATABASE_URL}"  # Environment variable
+  pool_size: 10
+  max_overflow: 20
+
+# S3 configuration
+s3:
+  bucket: "huracan"
+  region: "us-east-1"
+  endpoint_url: null  # For S3-compatible storage (e.g., R2)
+  access_key: "${AWS_ACCESS_KEY_ID}"  # Environment variable
+  secret_key: "${AWS_SECRET_ACCESS_KEY}"  # Environment variable
+
+# Telegram configuration
+telegram:
+  token: "${TELEGRAM_TOKEN}"  # Environment variable
+  chat_id: "${TELEGRAM_CHAT_ID}"  # Environment variable
+  symbols_selector_file: "symbols_selector.json"
+
+# Scheduler configuration
+scheduler:
+  mode: "hybrid"  # sequential, parallel, hybrid
+  max_concurrent: 12  # Default: 12 on GPU, 2 on CPU
+  timeout_minutes: 45
+  retry_count: 2
+  retry_backoff_seconds: 2

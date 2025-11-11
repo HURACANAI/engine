@@ -314,137 +314,176 @@ This bot is an automated trading system that learns from historical market data 
 
 ---
 
-## 🎓 STEP 6: Learn and Test
+## 🎓 STEP 6: Learn and Test (Per-Coin Training with Hybrid Scheduler)
 
 ### What Happens:
 
-#### 6A. Practice Trading (Shadow Trading / Backtesting)
+The Engine uses a **hybrid training scheduler** to train one model per coin efficiently. This section describes the training process.
 
-1. **Simulate Trades on Historical Data**
-   - Goes through historical data day by day
-   - At each point, asks: "Should I buy, sell, or wait?"
-   - Simulates executing trades at historical prices
-   - Tracks what would have happened (profit/loss)
+#### 6A. Initialize Hybrid Training Scheduler
 
-2. **Generate Trade Signals**
-   - Uses current model (or baseline) to generate signals
-   - For each timestamp, calculates:
-     - Entry signal (buy/sell/wait)
-     - Entry price
-     - Position size
-     - Stop loss level
-     - Take profit target
+1. **Select Training Mode**
+   - **Sequential mode**: Train one coin at a time (safe, simple, slower)
+   - **Parallel mode**: Train all coins at once (fast, requires more resources)
+   - **Hybrid mode** (default): Train coins in batches with concurrency cap (balanced)
+   - Auto-detects GPU availability and sets defaults:
+     - GPU nodes: 12 concurrent workers
+     - CPU-only nodes: 2 concurrent workers
 
-3. **Simulate Trade Execution**
-   - Enters trade at simulated entry price
-   - Applies costs: fees, spread, slippage
-   - Monitors price movement
-   - Exits when:
-     - Take profit hit
-     - Stop loss hit
-     - Time-based exit (max hold time)
-     - Signal reversal
+2. **Initialize Scheduler**
+   - Creates work queue for symbols
+   - Sets up resume ledger: `runs/YYYYMMDDZ/status.json`
+   - Configures timeout (default: 45 minutes per coin)
+   - Sets up retry logic (up to 2 retries with jittered backoff)
+   - Initializes storage client (Dropbox or S3)
 
-4. **Record Trade Results**
-   - For each simulated trade, records:
-     - Entry timestamp, entry price
-     - Exit timestamp, exit price
-     - Position size, direction (long/short)
-     - Gross profit (before costs)
-     - Fees, slippage, spread costs
-     - Net profit (after all costs)
-     - Hold duration
-     - Exit reason
-     - Market regime at entry/exit
-     - Features at entry time
+3. **Load Symbols**
+   - Reads symbol list from config or command line
+   - Supports: `topN`, CSV file, or comma-separated list
+   - Filters completed symbols (unless `--force` flag)
 
-5. **Store Trades in Database**
-   - Saves all simulated trades to `trade_memory` table
-   - Also saves to `shadow_trades` table (if exists)
-   - Purpose: Learn from every trade, analyze what works
+#### 6B. Train Each Coin (Per-Coin Training Loop)
 
-#### 6B. Train the Model
+For each coin in the queue:
 
-1. **Prepare Training Data**
-   - Takes all historical trades
-   - Creates features (X) and labels (y)
-   - Labels: Profit/Loss, Win/Loss, Return
-   - Uses triple-barrier labeling:
-     - Upper barrier: Take profit target
-     - Lower barrier: Stop loss
-     - Time barrier: Max hold time
+1. **Fetch Costs Before Training**
+   - Fetches per-symbol costs: fees, spread, slippage
+   - Saves to `costs.json` in work directory
+   - Purpose: Use costs for after-cost evaluation
 
-2. **Split Data**
-   - Training set: Typically 80% of data
-   - Validation set: Typically 10% of data
-   - Test set: Typically 10% of data
-   - Uses purged walk-forward splits (prevents data leakage)
+2. **Create Unique Work Directory**
+   - Creates: `models/{SYMBOL}/YYYYMMDD_HHMMSSZ/`
+   - Purpose: Isolate each training run, prevent conflicts
 
-3. **Train Machine Learning Model**
-   - Model type: LightGBM, XGBoost, or Random Forest ensemble
-   - Trains on features (X) to predict labels (y)
-   - Learns patterns: "When feature A is high AND feature B is low, I usually make money"
-   - Optimizes hyperparameters (learning rate, tree depth, etc.)
+3. **Load Data and Build Features**
+   - Loads historical price data
+   - Calculates features (50+ features)
+   - Saves partial outputs early:
+     - `features.parquet` - Feature data
+     - `split_indices.json` - Train/test split indices
+     - `training_log.json` - Training progress log
 
-4. **Calculate Feature Importance**
-   - Determines which features are most predictive
-   - Ranks features by importance score
-   - Purpose: Understand what the model is using to make decisions
+4. **Train Shared Encoder (First Run)**
+   - Trains shared encoder on all coin features
+   - Captures common patterns across coins
+   - Saves to `meta/shared_encoder.pkl`
+   - Purpose: Cross-coin learning without coupling
 
-5. **Store Model**
-   - Saves trained model as `.pkl` file: `models/{SYMBOL}_model.pkl`
-   - Model file contains:
-     - Trained ML model (LightGBM/XGBoost object)
-     - Feature scalers (if normalization used)
-     - Feature names and order
-     - Model parameters
+5. **Train Per-Coin Model**
+   - Combines shared encoder features + coin-specific features
+   - Trains XGBoost/LightGBM model per coin
+   - Uses walk-forward validation
+   - Optimizes hyperparameters
+   - Calculates feature importance
 
-#### 6C. Test the Model
+6. **Evaluate Model (After-Cost Metrics)**
+   - Calculates performance metrics:
+     - Sharpe ratio, hit rate, net PnL, max drawdown
+     - Applies costs (fees, spread, slippage)
+     - Net PnL after costs
+   - Validates against quality gates:
+     - Sharpe > 0.5
+     - Hit rate > 0.45
+     - Net PnL > 0
+     - Max drawdown < 20%
+     - Sample size > 100
 
-1. **Walk-Forward Validation**
-   - Uses purged walk-forward testing:
-     - Train window: 120 days
-     - Purge gap: 3-5 days (removes label overlap)
-     - Test window: 30 days
-   - Repeats across full history
-   - Purpose: Prevents data leakage, realistic performance estimate
+7. **Save Final Artifacts**
+   - `model.bin` - Trained model
+   - `config.json` - Model configuration
+   - `metrics.json` - Performance metrics
+   - `costs.json` - Cost model
+   - `features.json` - Feature recipe
+   - `sha256.txt` - Integrity hash
 
-2. **Calculate Performance Metrics**
-   - **Returns**: Total return, average return, annualized return
-   - **Risk-Adjusted**: Sharpe ratio, Sortino ratio, Calmar ratio
-   - **Trade Statistics**: Win rate, profit factor, average win/loss
-   - **Drawdown**: Max drawdown, average drawdown, recovery time
-   - **Costs**: Total fees, slippage, spread costs, cost share of profits
+8. **Upload to Storage**
+   - Uploads to Dropbox (or S3) as training completes
+   - Verifies upload success
+   - Logs upload events
 
-3. **Validate Against Thresholds**
-   - Checks if model meets minimum requirements:
-     - Sharpe ratio > threshold (typically 0.5-1.0)
-     - Win rate > threshold (typically 45-50%)
-     - Max drawdown < threshold (typically 10-20%)
-   - If passes: Model is approved ✅
-   - If fails: Model is rejected ❌
+9. **Update Resume Ledger**
+   - Marks symbol as completed/failed/skipped
+   - Records metrics, output path, error (if any)
+   - Purpose: Enable resumability
 
-4. **Store Performance Metrics**
-   - Saves to `model_performance` table in database
-   - Records: model_id, evaluation_date, sharpe_ratio, win_rate, etc.
-   - Purpose: Track model performance over time
+#### 6C. Handle Failures and Retries
+
+1. **Timeout Protection**
+   - Each coin has a timeout (default: 45 minutes)
+   - If timeout exceeded, marks as failed
+   - Retries up to 2 times with jittered backoff
+
+2. **Error Handling**
+   - Captures exceptions and error types
+   - Logs error details
+   - Sends Telegram alert (if configured)
+   - Marks symbol as failed in resume ledger
+
+3. **Resume on Interruption**
+   - If training is interrupted, resume ledger tracks progress
+   - On restart, skips completed symbols (unless `--force`)
+   - Resumes from checkpoints if available
+
+#### 6D. Generate Summary and Roster
+
+1. **Generate Summary**
+   - Creates `summary/YYYYMMDDZ/engine_summary.json`
+   - Contains: total_symbols, succeeded, failed, skipped, avg_train_minutes, median_train_minutes, total_wall_minutes, by_symbol metrics
+
+2. **Generate Roster**
+   - Creates `champions/roster.json`
+   - Ranks symbols by liquidity, cost, and recent net edge
+   - Fields: symbol, model_path, rank, spread_bps, fee_bps, avg_slip_bps, last_7d_net_bps, trade_ok
+   - Purpose: Hamilton uses this for trading decisions
+
+3. **Update Champion Pointers**
+   - Updates `champions/{SYMBOL}.json` for each coin
+   - Points to best model for each coin
+   - Purpose: Quick lookup of best model per coin
 
 ### What Gets Saved to Dropbox:
 
-**Models** (synced every 30 minutes):
+**Per-Coin Artifacts** (uploaded as training completes):
 ```
-/Runpodhuracan/YYYY-MM-DD/models/
-├── BTC-USDT_model.pkl              # Trained model for Bitcoin
-├── ETH-USDT_model.pkl              # Trained model for Ethereum
-├── SOL-USDT_model.pkl              # Trained model for Solana
-└── ... (one model file per coin)
+/Huracan/models/{SYMBOL}/YYYYMMDD_HHMMSSZ/
+├── model.bin                        # Trained model
+├── config.json                      # Model configuration
+├── metrics.json                     # Performance metrics
+├── costs.json                       # Cost model (fees, spread, slippage)
+├── features.json                    # Feature recipe
+├── sha256.txt                       # Integrity hash
+├── features.parquet                 # Feature data (partial)
+├── split_indices.json               # Train/test split (partial)
+└── training_log.json                # Training progress log (partial)
 ```
 
-**Model File Contents (.pkl):**
-- **Trained ML Model**: LightGBM/XGBoost/Random Forest object
-- **Feature Scalers**: Normalization parameters (if used)
-- **Feature Names**: List of feature names in correct order
-- **Model Parameters**: Hyperparameters used for training
+**Champion Pointers**:
+```
+/Huracan/champions/
+├── BTCUSDT.json                     # Champion pointer for BTC
+├── ETHUSDT.json                     # Champion pointer for ETH
+└── roster.json                      # Ranked roster for Hamilton
+```
+
+**Resume Ledger**:
+```
+/Huracan/runs/YYYYMMDDZ/
+└── status.json                      # Training status per symbol
+```
+
+**Summary**:
+```
+/Huracan/summary/YYYYMMDDZ/
+└── engine_summary.json              # Overall training statistics
+```
+
+**Model File Contents:**
+- **model.bin**: Trained ML model (XGBoost/LightGBM)
+- **config.json**: Model configuration, hyperparameters
+- **metrics.json**: Performance metrics (Sharpe, hit rate, net PnL, etc.)
+- **costs.json**: Cost model (fees, spread, slippage)
+- **features.json**: Feature recipe with hash
+- **sha256.txt**: Integrity hash for verification
 - **Purpose**: Hamilton (trading bot) loads these models to make real trading decisions
 
 **Model Metadata** (in `models/{SYMBOL}/metadata.json`):
