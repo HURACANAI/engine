@@ -32,3 +32,4 @@ echo "  python scripts/download_and_upload_candles.py --symbols BTC/USDT ETH/USD
 
 
 
+

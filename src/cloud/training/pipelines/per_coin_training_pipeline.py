@@ -426,7 +426,7 @@ class PerCoinTrainingPipeline:
         try:
             if model_type == "xgboost":
                 try:
-                    from xgboost import XGBRegressor
+                    from xgboost import XGBRegressor  # type: ignore[reportMissingImports]
                     model = XGBRegressor(objective='reg:squarederror', n_estimators=100, random_state=42, n_jobs=-1)
                     model.fit(X_train.values, y_train.values)
                 except ImportError:
