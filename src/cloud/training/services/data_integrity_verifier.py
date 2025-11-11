@@ -305,7 +305,7 @@ class DataIntegrityVerifier:
         # Repair NaN values (forward fill, then backward fill)
         if any(issue["type"] == "nan_values" for issue in verification_result.get("issues", [])):
             original_nan_count = repaired_data.isna().sum().sum()
-            repaired_data = repaired_data.fillna(method='ffill').fillna(method='bfill')
+            repaired_data = repaired_data.ffill().bfill()
             new_nan_count = repaired_data.isna().sum().sum()
             
             if new_nan_count < original_nan_count:

@@ -288,7 +288,7 @@ class PreprocessingPipeline:
                     X_eng[f"momentum_{period}"] = X_eng["close"].pct_change(periods=period)
         
         # Fill NaN values created by rolling windows
-        X_eng = X_eng.fillna(method="bfill").fillna(method="ffill").fillna(0)
+        X_eng = X_eng.bfill().ffill().fillna(0)
         
         return X_eng
     

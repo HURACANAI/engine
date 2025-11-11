@@ -257,7 +257,8 @@ class ModelIntrospection:
             ss_res = np.sum((y - predictions) ** 2)
             ss_tot = np.sum((y - np.mean(y)) ** 2)
             return 1 - (ss_res / (ss_tot + 1e-8))
-        except:
+        except Exception as e:
+            logger.warning("score_model_failed", error=str(e), error_type=type(e).__name__)
             return 0.0
     
     def _get_top_features(

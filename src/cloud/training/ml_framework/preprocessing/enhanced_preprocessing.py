@@ -106,7 +106,7 @@ class EnhancedPreprocessor:
         missing_strategy = self.config.get("missing_strategy", "forward_fill")
         
         if missing_strategy == "forward_fill":
-            df_clean = df_clean.fillna(method="ffill").fillna(method="bfill")
+            df_clean = df_clean.ffill().bfill()
         elif missing_strategy == "mean":
             numeric_cols = df_clean.select_dtypes(include=[np.number]).columns
             df_clean[numeric_cols] = df_clean[numeric_cols].fillna(df_clean[numeric_cols].mean())
@@ -262,7 +262,7 @@ class EnhancedPreprocessor:
             df_eng["bb_width"] = (df_eng["bb_upper"] - df_eng["bb_lower"]) / sma_20
         
         # Fill NaN values created by rolling operations
-        df_eng = df_eng.fillna(method="bfill").fillna(method="ffill").fillna(0)
+        df_eng = df_eng.bfill().ffill().fillna(0)
         
         logger.info("features_engineered", final_cols=len(df_eng.columns))
         return df_eng
@@ -300,7 +300,7 @@ class EnhancedPreprocessor:
                 df_norm[col] = (df_norm[col] - min_val) / (max_val - min_val + 1e-8)
         
         # Fill NaN values
-        df_norm = df_norm.fillna(method="bfill").fillna(method="ffill").fillna(0)
+        df_norm = df_norm.bfill().ffill().fillna(0)
         
         logger.info("rolling_window_normalization_complete")
         return df_norm
@@ -373,7 +373,7 @@ class EnhancedPreprocessor:
                 df_lagged[f"{col}_lag_{lag}"] = df_lagged[col].shift(lag)
         
         # Fill NaN values
-        df_lagged = df_lagged.fillna(method="bfill").fillna(method="ffill").fillna(0)
+        df_lagged = df_lagged.bfill().ffill().fillna(0)
         
         logger.info("lagged_features_created", num_new_features=len(columns) * len(lags))
         return df_lagged

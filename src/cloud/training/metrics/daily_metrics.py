@@ -43,7 +43,7 @@ class DailyMetrics:
     sharpe_windows: List[float] = field(default_factory=list)
     
     # Confidence metrics
-    brier_score: float
+    brier_score: float = 0.0
     brier_score_by_regime: Dict[str, float] = field(default_factory=dict)
     
     # Consensus metrics

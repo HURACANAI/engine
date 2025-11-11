@@ -132,13 +132,13 @@ class ReturnConverter:
             prices = prices.dropna()
             logger.debug("dropped_nan_values", dropped=original_length - len(prices))
         elif self.fill_method == 'forward':
-            # Forward fill
-            prices = prices.fillna(method='ffill')
+            # Forward fill (using .ffill() instead of deprecated fillna(method='ffill'))
+            prices = prices.ffill()
             df[price_column] = prices
             logger.debug("forward_filled_nan_values")
         elif self.fill_method == 'backward':
-            # Backward fill
-            prices = prices.fillna(method='bfill')
+            # Backward fill (using .bfill() instead of deprecated fillna(method='bfill'))
+            prices = prices.bfill()
             df[price_column] = prices
             logger.debug("backward_filled_nan_values")
         else:
@@ -187,26 +187,39 @@ class ReturnConverter:
     ) -> None:
         """
         Store returns in Brain Library.
-        
-        Note: Brain Library doesn't have a returns table yet, so we'll store
-        this as feature importance or model metrics for now. In a full implementation,
-        you'd add a returns table to Brain Library schema.
         """
-        # For now, we'll just log that we would store it
-        # In a full implementation, you'd add a returns table to Brain Library
-        logger.debug(
-            "returns_ready_for_storage",
-            symbol=symbol,
-            rows=len(df),
-            columns=['raw_returns', 'log_returns']
-        )
+        if not self.brain_library:
+            logger.debug("brain_library_not_available", message="Skipping returns storage")
+            return
         
-        # TODO: Add returns table to Brain Library schema
-        # Example:
-        # self.brain_library.store_returns(
-        #     symbol=symbol,
-        #     timestamps=df[timestamp_column],
-        #     raw_returns=df['raw_returns'],
-        #     log_returns=df['log_returns']
-        # )
+        try:
+            # Get price column if available
+            price_col = None
+            if 'close' in df.columns:
+                price_col = df['close']
+            elif 'adjusted_close' in df.columns:
+                price_col = df['adjusted_close']
+            
+            # Store returns
+            rows_stored = self.brain_library.store_returns(
+                symbol=symbol,
+                timestamps=df[timestamp_column],
+                raw_returns=df['raw_returns'],
+                log_returns=df['log_returns'],
+                prices=price_col
+            )
+            
+            logger.info(
+                "returns_stored_in_brain_library",
+                symbol=symbol,
+                rows=rows_stored,
+                timestamp_column=timestamp_column
+            )
+        except Exception as e:
+            logger.warning(
+                "returns_storage_failed",
+                symbol=symbol,
+                error=str(e),
+                error_type=type(e).__name__
+            )
 

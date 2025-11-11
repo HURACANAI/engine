@@ -113,9 +113,14 @@ class WorldModel:
         # Sort by timestamp
         if timestamp_column in df.columns:
             df = df.sort_values(timestamp_column)
+            if len(df) == 0:
+                raise ValueError(f"DataFrame is empty for symbol {symbol}")
             latest_timestamp = df[timestamp_column].iloc[-1]
         else:
             latest_timestamp = datetime.now()
+        
+        if len(df) == 0:
+            raise ValueError(f"DataFrame is empty for symbol {symbol}")
         
         # Extract last N days of features
         lookback_data = df.tail(self.lookback_days * 24).copy()  # Assuming hourly data
@@ -277,15 +282,23 @@ class WorldModel:
     
     def _classify_regime(self, data: pd.DataFrame) -> str:
         """Classify current market regime."""
-        if 'close' not in data.columns:
+        if 'close' not in data.columns or len(data) == 0:
             return "unknown"
         
         prices = data['close']
         returns = prices.pct_change().dropna()
         
+        if len(returns) == 0:
+            return "unknown"
+        
         # Simple regime classification
         volatility = returns.std()
-        trend = (prices.iloc[-1] - prices.iloc[0]) / prices.iloc[0]
+        
+        # Protect against division by zero
+        if prices.iloc[0] == 0 or abs(prices.iloc[0]) < 1e-8:
+            trend = 0.0
+        else:
+            trend = (prices.iloc[-1] - prices.iloc[0]) / prices.iloc[0]
         
         if abs(trend) > 0.05 and volatility < 0.02:
             return "trending"
@@ -309,11 +322,16 @@ class WorldModel:
     
     def _calculate_trend_strength(self, data: pd.DataFrame) -> float:
         """Calculate normalized trend strength (0-1)."""
-        if 'close' not in data.columns:
+        if 'close' not in data.columns or len(data) == 0:
             return 0.5
         
         prices = data['close']
-        trend = abs((prices.iloc[-1] - prices.iloc[0]) / prices.iloc[0])
+        
+        # Protect against division by zero
+        if prices.iloc[0] == 0 or abs(prices.iloc[0]) < 1e-8:
+            trend = 0.0
+        else:
+            trend = abs((prices.iloc[-1] - prices.iloc[0]) / prices.iloc[0])
         
         # Normalize to 0-1
         return min(1.0, max(0.0, trend * 10))
@@ -343,10 +361,15 @@ class WorldModel:
     
     def _calculate_price_momentum(self, data: pd.DataFrame) -> float:
         """Calculate price momentum."""
-        if 'close' not in data.columns:
+        if 'close' not in data.columns or len(data) == 0:
             return 0.0
         
         prices = data['close']
+        
+        # Protect against division by zero
+        if prices.iloc[0] == 0 or abs(prices.iloc[0]) < 1e-8:
+            return 0.0
+        
         return (prices.iloc[-1] - prices.iloc[0]) / prices.iloc[0]
     
     def _classify_volatility_regime(self, data: pd.DataFrame) -> float:

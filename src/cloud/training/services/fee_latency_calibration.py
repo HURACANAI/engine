@@ -144,6 +144,16 @@ class FeeLatencyCalibrator:
             expected_fee_bps: Expected fee (for comparison)
             expected_latency_ms: Expected latency (for comparison)
         """
+        # Validate inputs
+        if size_usd <= 0:
+            raise ValueError(f"size_usd must be positive, got {size_usd}")
+        if actual_fee_bps < 0:
+            raise ValueError(f"actual_fee_bps must be non-negative, got {actual_fee_bps}")
+        if actual_latency_ms < 0:
+            raise ValueError(f"actual_latency_ms must be non-negative, got {actual_latency_ms}")
+        if price <= 0:
+            raise ValueError(f"price must be positive, got {price}")
+        
         record = ExecutionRecord(
             exchange=exchange,
             symbol=symbol,

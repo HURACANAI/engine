@@ -160,10 +160,17 @@ class FeatureAutoencoder:
         else:
             X = features
         
+        # Validate input
+        if len(X.shape) != 2:
+            raise ValueError(f"Features must be 2D array, got shape {X.shape}")
+        
         if X.shape[1] != self.input_dim:
             raise ValueError(
                 f"Feature dimension {X.shape[1]} does not match input_dim {self.input_dim}"
             )
+        
+        if X.shape[0] == 0:
+            raise ValueError("Features array is empty")
         
         # Normalize features
         self.feature_mean = X.mean(axis=0)

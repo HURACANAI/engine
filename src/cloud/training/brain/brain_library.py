@@ -285,6 +285,30 @@ class BrainLibrary:
                     )
                 """)
                 
+                # Returns table (for storing raw and log returns)
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS returns (
+                        id SERIAL PRIMARY KEY,
+                        timestamp TIMESTAMP NOT NULL,
+                        symbol VARCHAR(20) NOT NULL,
+                        raw_returns DECIMAL(20, 10),
+                        log_returns DECIMAL(20, 10),
+                        price DECIMAL(20, 8),
+                        created_at TIMESTAMP DEFAULT NOW(),
+                        UNIQUE(timestamp, symbol)
+                    )
+                """)
+                
+                cur.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_returns_symbol 
+                    ON returns(symbol, timestamp DESC)
+                """)
+                
+                cur.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_returns_timestamp 
+                    ON returns(timestamp DESC)
+                """)
+                
                 conn.commit()
                 logger.info("brain_library_schema_initialized")
 
@@ -911,4 +935,84 @@ class BrainLibrary:
                     reason=reason,
                 )
                 return result[0] if result else 0
+
+    # Returns methods
+    def store_returns(
+        self,
+        symbol: str,
+        timestamps: list[datetime] | pd.Series,
+        raw_returns: list[float] | pd.Series | np.ndarray,
+        log_returns: list[float] | pd.Series | np.ndarray,
+        prices: Optional[list[float] | pd.Series | np.ndarray] = None,
+    ) -> int:
+        """
+        Store returns data in Brain Library.
+        
+        Args:
+            symbol: Trading symbol
+            timestamps: List of timestamps
+            raw_returns: Raw returns (percent change)
+            log_returns: Log returns
+            prices: Optional price values
+            
+        Returns:
+            Number of rows inserted
+        """
+        if len(timestamps) != len(raw_returns) or len(timestamps) != len(log_returns):
+            raise ValueError("timestamps, raw_returns, and log_returns must have same length")
+        
+        with self._get_connection() as conn:
+            with conn.cursor() as cur:
+                inserted = 0
+                for i, ts in enumerate(timestamps):
+                    raw_ret = float(raw_returns[i]) if not pd.isna(raw_returns[i]) else None
+                    log_ret = float(log_returns[i]) if not pd.isna(log_returns[i]) else None
+                    price = float(prices[i]) if prices is not None and i < len(prices) and not pd.isna(prices[i]) else None
+                    
+                    cur.execute("""
+                        INSERT INTO returns 
+                        (timestamp, symbol, raw_returns, log_returns, price)
+                        VALUES (%s, %s, %s, %s, %s)
+                        ON CONFLICT (timestamp, symbol) 
+                        DO UPDATE SET 
+                            raw_returns = EXCLUDED.raw_returns,
+                            log_returns = EXCLUDED.log_returns,
+                            price = EXCLUDED.price
+                    """, (ts, symbol, raw_ret, log_ret, price))
+                    inserted += 1
+                
+                conn.commit()
+                logger.info(
+                    "returns_stored",
+                    symbol=symbol,
+                    rows=inserted
+                )
+                return inserted
+
+    def get_returns(
+        self,
+        symbol: str,
+        start_time: datetime,
+        end_time: datetime,
+    ) -> pl.DataFrame:
+        """
+        Get returns data for a symbol in a time range.
+        
+        Args:
+            symbol: Trading symbol
+            start_time: Start timestamp
+            end_time: End timestamp
+            
+        Returns:
+            DataFrame with returns data
+        """
+        with self._get_connection() as conn:
+            query = """
+                SELECT timestamp, symbol, raw_returns, log_returns, price
+                FROM returns
+                WHERE symbol = %s AND timestamp >= %s AND timestamp <= %s
+                ORDER BY timestamp
+            """
+            df = pl.read_database(query, conn, parameters=(symbol, start_time, end_time))
+            return df
 

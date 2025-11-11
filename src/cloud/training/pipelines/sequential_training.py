@@ -83,7 +83,7 @@ class SequentialTrainingPipeline:
             processed = processed.sort_values('timestamp').reset_index(drop=True)
         
         # Remove NaN values (forward fill, then backward fill)
-        processed = processed.fillna(method='ffill').fillna(method='bfill')
+        processed = processed.ffill().bfill()
         
         # Remove any remaining NaN rows
         processed = processed.dropna()

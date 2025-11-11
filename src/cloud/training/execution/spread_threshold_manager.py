@@ -110,8 +110,9 @@ class SpreadThresholdManager:
         self.check_interval_seconds = check_interval_seconds
         self.max_order_age_seconds = max_order_age_seconds
         
-        # Order storage
+        # Order storage (with max size limit to prevent unbounded growth)
         self.orders: Dict[str, Order] = {}
+        self.max_orders: int = 10000  # Maximum orders to keep in memory
         
         # Spread snapshots
         self.spread_snapshots: Dict[str, SpreadSnapshot] = {}
@@ -175,6 +176,10 @@ class SpreadThresholdManager:
         )
         
         self.orders[order_id] = order
+        
+        # Cleanup old orders if we exceed max size
+        if len(self.orders) > self.max_orders:
+            self._cleanup_old_orders()
         
         logger.info(
             "order_placed",
@@ -374,6 +379,34 @@ class SpreadThresholdManager:
     def get_spread_snapshot(self, symbol: str) -> Optional[SpreadSnapshot]:
         """Get current spread snapshot for a symbol."""
         return self.spread_snapshots.get(symbol)
+    
+    def _cleanup_old_orders(self) -> None:
+        """Internal method to cleanup old orders when max size exceeded."""
+        # Remove oldest filled/cancelled orders first
+        cutoff = datetime.now() - timedelta(hours=24)
+        
+        to_remove = [
+            order_id for order_id, order in self.orders.items()
+            if order.status in [OrderStatus.FILLED, OrderStatus.CANCELLED]
+            and order.created_at < cutoff
+        ]
+        
+        # If still too many, remove oldest regardless of status
+        if len(self.orders) - len(to_remove) > self.max_orders:
+            remaining = [
+                (order_id, order.created_at)
+                for order_id, order in self.orders.items()
+                if order_id not in to_remove
+            ]
+            remaining.sort(key=lambda x: x[1])  # Sort by creation time
+            
+            excess = len(self.orders) - self.max_orders
+            to_remove.extend([order_id for order_id, _ in remaining[:excess]])
+        
+        for order_id in to_remove:
+            del self.orders[order_id]
+        
+        logger.debug("orders_cleaned_up", removed=len(to_remove), remaining=len(self.orders))
     
     def clear_old_orders(self, max_age_hours: int = 24) -> int:
         """Clear old filled/cancelled orders."""
