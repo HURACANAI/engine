@@ -1,24 +1,19 @@
 """
-Observability - Standard Event Schema.
+Observability system for metrics and health monitoring.
 """
 
-from .event_schema import (
-    EventLogger,
-    TradingDecisionEvent,
-    HealthCheckEvent,
-    TradeExecutionEvent,
-    PnLAttributionEvent,
-    EngineVoteEvent,
-    get_event_logger,
+from .metrics import (
+    MetricsCollector,
+    HealthChecker,
+    PerformanceMonitor,
+    MetricType,
+    MetricValue,
 )
 
 __all__ = [
-    "EventLogger",
-    "TradingDecisionEvent",
-    "HealthCheckEvent",
-    "TradeExecutionEvent",
-    "PnLAttributionEvent",
-    "EngineVoteEvent",
-    "get_event_logger",
+    "MetricsCollector",
+    "HealthChecker",
+    "PerformanceMonitor",
+    "MetricType",
+    "MetricValue",
 ]
-

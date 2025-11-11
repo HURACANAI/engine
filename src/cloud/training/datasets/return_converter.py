@@ -19,8 +19,8 @@ from datetime import datetime
 from typing import Optional, Dict, Any
 import numpy as np
 import pandas as pd
-import polars as pl
-import structlog
+import polars as pl  # type: ignore[reportMissingImports]
+import structlog  # type: ignore[reportMissingImports]
 
 from ..brain.brain_library import BrainLibrary
 

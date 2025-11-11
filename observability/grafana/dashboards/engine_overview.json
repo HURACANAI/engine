@@ -1,0 +1,141 @@
+{
+  "dashboard": {
+    "title": "Huracan Engine Overview",
+    "tags": ["huracan", "engine", "trading"],
+    "timezone": "utc",
+    "schemaVersion": 16,
+    "version": 1,
+    "panels": [
+      {
+        "id": 1,
+        "title": "Total PnL (USD)",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "total_pnl_usd",
+            "legendFormat": "Total PnL"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+      },
+      {
+        "id": 2,
+        "title": "PnL by Engine",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "engine_pnl_usd{engine=~\"$engine\"}",
+            "legendFormat": "{{engine}}"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+      },
+      {
+        "id": 3,
+        "title": "Engine Latency (p95)",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, engine_latency_ms_bucket)",
+            "legendFormat": "{{engine}} - {{operation}}"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+      },
+      {
+        "id": 4,
+        "title": "Error Rate by Engine",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "rate(engine_errors_total[5m])",
+            "legendFormat": "{{engine}} - {{error_type}}"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+      },
+      {
+        "id": 5,
+        "title": "Consensus Confidence by Regime",
+        "type": "heatmap",
+        "targets": [
+          {
+            "expr": "consensus_confidence",
+            "legendFormat": "{{regime}}"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16}
+      },
+      {
+        "id": 6,
+        "title": "Cost Breakdown by Venue",
+        "type": "piechart",
+        "targets": [
+          {
+            "expr": "cost_model_total_bps",
+            "legendFormat": "{{venue}}"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16}
+      },
+      {
+        "id": 7,
+        "title": "Training Jobs Active",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "training_jobs_active",
+            "legendFormat": "Active Jobs"
+          }
+        ],
+        "gridPos": {"h": 4, "w": 6, "x": 0, "y": 24}
+      },
+      {
+        "id": 8,
+        "title": "Training Jobs Completed",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "training_jobs_completed_total{status=\"success\"}",
+            "legendFormat": "Success"
+          },
+          {
+            "expr": "training_jobs_completed_total{status=\"failed\"}",
+            "legendFormat": "Failed"
+          }
+        ],
+        "gridPos": {"h": 4, "w": 6, "x": 6, "y": 24}
+      },
+      {
+        "id": 9,
+        "title": "System Health",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "system_health",
+            "legendFormat": "{{component}}"
+          }
+        ],
+        "gridPos": {"h": 4, "w": 12, "x": 12, "y": 24}
+      }
+    ],
+    "templating": {
+      "list": [
+        {
+          "name": "engine",
+          "type": "query",
+          "query": "label_values(engine_pnl_usd, engine)",
+          "current": {
+            "value": "All"
+          }
+        }
+      ]
+    },
+    "refresh": "30s",
+    "time": {
+      "from": "now-24h",
+      "to": "now"
+    }
+  }
+}
+

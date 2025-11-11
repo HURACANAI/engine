@@ -1,16 +1,21 @@
 """
-Formal Consensus Engine - Mathematically rigorous signal combination.
+Consensus module for training architecture.
 """
 
-from .formal_consensus import (
-    FormalConsensusEngine,
-    EngineVote,
+from .consensus_service import (
+    ConsensusService,
     ConsensusResult,
+    ConsensusLevel,
+    EngineVote,
+    ReliabilityTracker,
+    CorrelationCalculator,
 )
 
 __all__ = [
-    "FormalConsensusEngine",
-    "EngineVote",
+    "ConsensusService",
     "ConsensusResult",
+    "ConsensusLevel",
+    "EngineVote",
+    "ReliabilityTracker",
+    "CorrelationCalculator",
 ]
-

@@ -1,18 +1,17 @@
 """
-Hard Regime Gates - Strict engine enablement based on regime.
+Regime module for training architecture.
 """
 
-from .hard_gates import (
-    HardRegimeGates,
+from .regime_gate import (
+    RegimeGate,
+    RegimeGateConfig,
     RegimeType,
-    RegimeLeaderboard,
-    EngineRegimeApproval,
+    RegimePerformance,
 )
 
 __all__ = [
-    "HardRegimeGates",
+    "RegimeGate",
+    "RegimeGateConfig",
     "RegimeType",
-    "RegimeLeaderboard",
-    "EngineRegimeApproval",
+    "RegimePerformance",
 ]
-

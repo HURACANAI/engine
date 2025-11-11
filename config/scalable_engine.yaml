@@ -1,0 +1,165 @@
+# Scalable 400-Coin Engine Configuration
+
+engine:
+  # Maximum capacity (no hard limits, but configurable throttles)
+  max_coins: 400
+  active_coins: 20  # Start small, scale up via config
+  max_concurrent_trades: 500
+  
+  # Event loop configuration
+  coins_per_event_loop: 50
+  event_loop_timeout_seconds: 300
+
+training:
+  # Distributed training configuration
+  distributed:
+    backend: "ray"  # "ray", "dask", or "sequential"
+    num_workers: 8
+    gpus_per_worker: 1
+    max_concurrent_jobs: 16
+    retry_attempts: 3
+    timeout_seconds: 3600
+    ray_address: null  # Set to Ray cluster address if using remote cluster
+    dask_scheduler_address: null  # Set to Dask scheduler address if using remote cluster
+  
+  # Model versioning and storage
+  model_versioning:
+    storage_path: "/models/trained"
+    brain_library_dsn: "postgresql://haq:huracan123@localhost:5432/huracan"
+    daily_push_enabled: true
+    push_time_utc: "03:00"  # Push best models to Brain Library at 03:00 UTC
+  
+  # Walk-forward validation
+  walk_forward:
+    train_days: 20
+    test_days: 5
+    purge_days: 2
+    min_windows: 5
+    min_test_trades: 100
+  
+  # Shadow testing
+  shadow_testing:
+    enabled: true
+    min_duration_days: 14
+    min_trades: 100
+    promotion_criteria:
+      min_sharpe_improvement: 0.2
+      min_win_rate_improvement: 0.05
+      statistical_significance: 0.95
+
+coin_selection:
+  min_daily_volume_usd: 1000000
+  max_spread_bps: 8
+  min_age_days: 30
+  ranking_method: "liquidity_score"  # "liquidity_score", "volume", "spread"
+  update_frequency: "daily"  # "daily", "hourly", "realtime"
+  max_coins: null  # null = no limit, set to number to throttle
+
+consensus:
+  num_engines: 23
+  min_agreement_threshold: 0.6
+  reliability_decay_factor: 0.95
+  correlation_penalty_threshold: 0.8
+  adaptive_thresholds:
+    TREND: 0.5
+    RANGE: 0.55
+    PANIC: 0.65
+    ILLIQUID: 0.7
+    UNKNOWN: 0.6
+
+regime_gates:
+  enabled: true
+  leaderboard_refresh_days: 7
+  min_trades_for_approval: 20
+  min_sharpe_for_approval: 0.5
+  min_win_rate_for_approval: 0.45
+  enable_soft_gates: true  # Weight adjustment vs hard disable
+
+cost_model:
+  real_time_updates: true
+  update_interval_seconds: 60
+  spread_source: "websocket"  # "websocket", "api", "static"
+  fee_source: "api"  # "api", "static"
+  funding_source: "api"  # "api", "static"
+  min_edge_after_cost_bps: 3.0
+  slippage_participation_rate: 0.1  # 10% of volume
+  slippage_impact_factor: 0.5
+  
+  # Venue configurations
+  venues:
+    binance:
+      maker_fee_bps: 2.0
+      taker_fee_bps: 4.0
+      funding_rate_bps_per_8h: 1.0
+      avg_latency_ms: 50.0
+      min_spread_bps: 1.0
+    coinbase:
+      maker_fee_bps: 5.0
+      taker_fee_bps: 5.0
+      funding_rate_bps_per_8h: 1.0
+      avg_latency_ms: 80.0
+      min_spread_bps: 2.0
+
+risk:
+  preset: "balanced"  # "conservative", "balanced", "aggressive"
+  enforce_in_simulations: true
+  
+  presets:
+    conservative:
+      per_trade_risk_pct: 0.5
+      daily_loss_limit_pct: 1.5
+      max_leverage: 1.5
+      min_confidence: 0.65
+      max_position_size_pct: 10.0
+      max_daily_trades: 50
+    balanced:
+      per_trade_risk_pct: 1.0
+      daily_loss_limit_pct: 2.5
+      max_leverage: 2.0
+      min_confidence: 0.55
+      max_position_size_pct: 20.0
+      max_daily_trades: 100
+    aggressive:
+      per_trade_risk_pct: 1.5
+      daily_loss_limit_pct: 4.0
+      max_leverage: 3.0
+      min_confidence: 0.50
+      max_position_size_pct: 30.0
+      max_daily_trades: 200
+
+observability:
+  # Prometheus metrics
+  prometheus:
+    enabled: true
+    port: 9090
+    scrape_interval_seconds: 15
+  
+  # DecisionEvent logging
+  decision_events:
+    enabled: true
+    storage_path: "/logs/decision_events"
+    max_events_in_memory: 10000
+    flush_interval_seconds: 60
+  
+  # Grafana dashboards
+  grafana:
+    enabled: true
+    dashboard_path: "/dashboards"
+
+# Database configuration
+postgres:
+  dsn: "postgresql://haq:huracan123@localhost:5432/huracan"
+  pool_minconn: 2
+  pool_maxconn: 10
+
+# Notifications
+notifications:
+  telegram_enabled: true
+  telegram_webhook_url: "https://api.telegram.org/bot8229109041:AAFIcLRx3V50khoaEIG7WXeI1ITzy4s6hf0/sendMessage"
+  telegram_chat_id: "7914196017"
+
+# Dropbox sync
+dropbox:
+  enabled: true
+  access_token: "${DROPBOX_ACCESS_TOKEN}"
+
