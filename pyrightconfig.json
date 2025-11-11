@@ -9,9 +9,27 @@
     ".venv",
     "venv"
   ],
-  "reportMissingImports": "warning",
+  "reportMissingImports": "error",
   "reportMissingTypeStubs": false,
+  "reportUnusedImport": "warning",
+  "reportUnusedVariable": "warning",
+  "reportUntypedFunctionDecorator": "warning",
+  "reportUntypedBaseClass": "warning",
+  "reportUntypedClassDecorator": "warning",
+  "reportUnknownParameterType": "warning",
+  "reportUnknownArgumentType": "warning",
+  "reportUnknownMemberType": "warning",
+  "reportMissingParameterType": "warning",
+  "reportMissingTypeArgument": "warning",
+  "reportInvalidTypeForm": "error",
+  "reportCallInDefaultInitializer": "warning",
+  "reportUnnecessaryIsInstance": "warning",
+  "reportUnnecessaryCast": "warning",
+  "reportImplicitStringConcatenation": "warning",
+  "strictListInference": true,
+  "strictDictionaryInference": true,
+  "strictSetInference": true,
   "pythonVersion": "3.11",
-  "typeCheckingMode": "basic"
+  "typeCheckingMode": "standard"
 }
 

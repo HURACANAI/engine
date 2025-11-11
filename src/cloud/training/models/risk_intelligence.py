@@ -176,9 +176,9 @@ class TripleBarrierLabeler:
         )
 
         if label.hit_tp:
-            print("Hit TP in", label.bars_to_exit, "bars")
+            logger.info("Hit TP in", label.bars_to_exit, "bars")
         elif label.hit_sl:
-            print("Hit SL")
+            logger.info("Hit SL")
     """
 
     def __init__(

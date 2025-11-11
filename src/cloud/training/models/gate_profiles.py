@@ -49,8 +49,8 @@ Usage:
     )
 
     if decision.passes:
-        print(f"Passed {decision.gates_passed}/{decision.total_gates} gates")
-        print(f"Recommended book: {decision.recommended_book}")
+        logger.info(f"Passed {decision.gates_passed}/{decision.total_gates} gates")
+        logger.info(f"Recommended book: {decision.recommended_book}")
 """
 
 from dataclasses import dataclass
@@ -229,7 +229,7 @@ class ScalpGateProfile:
             direction=direction,
             confidence=features.get('engine_conf', 0.5),
         )
-        
+
         if sentiment_result.passed:
             gate_results['sentiment'] = GateResult.PASS
             gate_reasons['sentiment'] = sentiment_result.reason
@@ -454,7 +454,7 @@ class RunnerGateProfile:
             direction=direction,
             confidence=features.get('engine_conf', 0.5),
         )
-        
+
         if sentiment_result.passed:
             gate_results['sentiment'] = GateResult.PASS
             gate_reasons['sentiment'] = sentiment_result.reason

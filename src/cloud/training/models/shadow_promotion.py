@@ -61,10 +61,10 @@ Usage:
     can_promote, reason = promoter.check_promotion()
 
     if can_promote:
-        print(f"PROMOTE shadow to production: {reason}")
+        logger.info(f"PROMOTE shadow to production: {reason}")
         deploy_to_production()
     else:
-        print(f"NOT promoting: {reason}")
+        logger.info(f"NOT promoting: {reason}")
         continue_shadow_testing()
 """
 
@@ -423,29 +423,29 @@ def run_promotion_check_example():
     # Check promotion
     check = promoter.check_promotion()
 
-    print(f"\n{'='*60}")
-    print(f"PROMOTION CHECK RESULT")
-    print(f"{'='*60}")
-    print(f"Decision: {check.reason}")
-    print(f"\nMetrics:")
-    print(f"  Consecutive wins: {check.consecutive_wins} (need {promoter.criteria.min_consecutive_days})")
-    print(f"  Net improvement: {check.net_improvement_bps:.1f} bps (need {promoter.criteria.min_net_bps_improvement})")
-    print(f"  Expected Shortfall: {check.shadow_es95:.1f} bps (need {promoter.criteria.min_expected_shortfall_95})")
-    print(f"  P-value: {check.p_value:.3f} (need <{promoter.criteria.max_p_value})")
-    print(f"\nCriteria met:")
+    logger.info(f"\n{'='*60}")
+    logger.info(f"PROMOTION CHECK RESULT")
+    logger.info(f"{'='*60}")
+    logger.info(f"Decision: {check.reason}")
+    logger.info(f"\nMetrics:")
+    logger.info(f"  Consecutive wins: {check.consecutive_wins} (need {promoter.criteria.min_consecutive_days})")
+    logger.info(f"  Net improvement: {check.net_improvement_bps:.1f} bps (need {promoter.criteria.min_net_bps_improvement})")
+    logger.info(f"  Expected Shortfall: {check.shadow_es95:.1f} bps (need {promoter.criteria.min_expected_shortfall_95})")
+    logger.info(f"  P-value: {check.p_value:.3f} (need <{promoter.criteria.max_p_value})")
+    logger.info(f"\nCriteria met:")
     for criterion, met in check.criteria_met.items():
         status = "✓" if met else "✗"
-        print(f"  {status} {criterion}")
+        logger.info(f"  {status} {criterion}")
 
     # Get summary
     summary = promoter.get_performance_summary()
-    print(f"\n{'='*60}")
-    print(f"PERFORMANCE SUMMARY")
-    print(f"{'='*60}")
-    print(f"Shadow: {summary['shadow']['mean_bps']:.1f} bps/day (ES95={summary['shadow']['es_95']:.1f})")
-    print(f"Production: {summary['production']['mean_bps']:.1f} bps/day (ES95={summary['production']['es_95']:.1f})")
-    print(f"Improvement: {summary['comparison']['mean_improvement_bps']:.1f} bps/day")
-    print(f"Days better: {summary['comparison']['days_better']}/{summary['total_days']}")
+    logger.info(f"\n{'='*60}")
+    logger.info(f"PERFORMANCE SUMMARY")
+    logger.info(f"{'='*60}")
+    logger.info(f"Shadow: {summary['shadow']['mean_bps']:.1f} bps/day (ES95={summary['shadow']['es_95']:.1f})")
+    logger.info(f"Production: {summary['production']['mean_bps']:.1f} bps/day (ES95={summary['production']['es_95']:.1f})")
+    logger.info(f"Improvement: {summary['comparison']['mean_improvement_bps']:.1f} bps/day")
+    logger.info(f"Days better: {summary['comparison']['days_better']}/{summary['total_days']}")
 
 
 if __name__ == "__main__":

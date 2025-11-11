@@ -595,70 +595,70 @@ class ShadowDeployment:
 
     def print_report(self, report: ComparisonReport) -> None:
         """Print human-readable report."""
-        print("=" * 70)
-        print("SHADOW DEPLOYMENT REPORT")
-        print("=" * 70)
-        print(f"Phase: {report.phase.value}")
-        print(f"Days Elapsed: {report.days_elapsed:.1f}")
-        print()
+        logger.info("=" * 70)
+        logger.info("SHADOW DEPLOYMENT REPORT")
+        logger.info("=" * 70)
+        logger.info(f"Phase: {report.phase.value}")
+        logger.info(f"Days Elapsed: {report.days_elapsed:.1f}")
+        logger.info("output", message=)
 
-        print("PERFORMANCE COMPARISON")
-        print("-" * 70)
+        logger.info("PERFORMANCE COMPARISON")
+        logger.info("-" * 70)
         m = report.metrics
 
-        print(f"Win Rate:")
-        print(f"  Shadow: {m.shadow_win_rate:.1%}")
-        print(f"  Production: {m.production_win_rate:.1%}")
-        print(f"  Difference: {m.wr_difference:+.1%} {'✓' if m.wr_difference > 0 else '✗'}")
-        print()
+        logger.info(f"Win Rate:")
+        logger.info(f"  Shadow: {m.shadow_win_rate:.1%}")
+        logger.info(f"  Production: {m.production_win_rate:.1%}")
+        logger.info(f"  Difference: {m.wr_difference:+.1%} {'✓' if m.wr_difference > 0 else '✗'}")
+        logger.info("output", message=)
 
-        print(f"P&L:")
-        print(f"  Shadow: ${m.shadow_total_pnl:,.2f}")
-        print(f"  Production: ${m.production_total_pnl:,.2f}")
-        print(f"  Difference: {m.pnl_difference:+.1%} {'✓' if m.pnl_difference > 0 else '✗'}")
-        print()
+        logger.info(f"P&L:")
+        logger.info(f"  Shadow: ${m.shadow_total_pnl:,.2f}")
+        logger.info(f"  Production: ${m.production_total_pnl:,.2f}")
+        logger.info(f"  Difference: {m.pnl_difference:+.1%} {'✓' if m.pnl_difference > 0 else '✗'}")
+        logger.info("output", message=)
 
-        print(f"Volume:")
-        print(f"  Shadow Trades: {m.shadow_trades}")
-        print(f"  Production Trades: {m.production_trades}")
-        print()
+        logger.info(f"Volume:")
+        logger.info(f"  Shadow Trades: {m.shadow_trades}")
+        logger.info(f"  Production Trades: {m.production_trades}")
+        logger.info("output", message=)
 
-        print(f"Risk Metrics:")
-        print(f"  Shadow Sharpe: {m.shadow_sharpe:.2f}")
-        print(f"  Production Sharpe: {m.production_sharpe:.2f}")
-        print(f"  Shadow Max DD: {m.shadow_max_drawdown:.1%}")
-        print(f"  Production Max DD: {m.production_max_drawdown:.1%}")
-        print()
+        logger.info(f"Risk Metrics:")
+        logger.info(f"  Shadow Sharpe: {m.shadow_sharpe:.2f}")
+        logger.info(f"  Production Sharpe: {m.production_sharpe:.2f}")
+        logger.info(f"  Shadow Max DD: {m.shadow_max_drawdown:.1%}")
+        logger.info(f"  Production Max DD: {m.production_max_drawdown:.1%}")
+        logger.info("output", message=)
 
-        print(f"Statistical Significance:")
-        print(f"  p-value: {m.p_value:.4f}")
-        print(f"  Significant: {m.is_significant} (p < {self.significance_level})")
-        print()
+        logger.info(f"Statistical Significance:")
+        logger.info(f"  p-value: {m.p_value:.4f}")
+        logger.info(f"  Significant: {m.is_significant} (p < {self.significance_level})")
+        logger.info("output", message=)
 
-        print("SAFETY CHECKS")
-        print("-" * 70)
+        logger.info("SAFETY CHECKS")
+        logger.info("-" * 70)
         if m.passes_safety_checks:
-            print("✓ All safety checks passed")
+            logger.info("✓ All safety checks passed")
         else:
-            print("✗ Safety check failures:")
+            logger.info("✗ Safety check failures:")
             for failure in m.safety_failures:
-                print(f"  - {failure}")
-        print()
+                logger.info(f"  - {failure}")
+        logger.info("output", message=)
 
-        print("RECOMMENDATION")
-        print("-" * 70)
-        print(f"{report.recommendation}")
-        print()
+        logger.info("RECOMMENDATION")
+        logger.info("-" * 70)
+        logger.info(f"{report.recommendation}")
+        logger.info("output", message=)
 
 
 def run_shadow_deployment_example():
     """Example usage of shadow deployment."""
     from gate_calibration import generate_synthetic_trades
 
-    print("=" * 70)
-    print("SHADOW DEPLOYMENT SIMULATION")
-    print("=" * 70)
-    print()
+    logger.info("=" * 70)
+    logger.info("SHADOW DEPLOYMENT SIMULATION")
+    logger.info("=" * 70)
+    logger.info("output", message=)
 
     # Mock systems
     class MockProductionSystem:

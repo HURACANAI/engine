@@ -35,6 +35,7 @@ from .paths import (
     format_date_str,
     make_absolute_path,
 )
+from src.shared.exceptions import DropboxError, ContractError, SerializationError
 
 logger = structlog.get_logger(__name__)
 
@@ -83,28 +84,46 @@ class ContractWriter:
         try:
             # Write to temporary file
             with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-                f.write(manifest.to_json())
-                temp_path = f.name
-            
+                try:
+                    f.write(manifest.to_json())
+                    temp_path = f.name
+                except (TypeError, ValueError, AttributeError) as e:
+                    raise SerializationError(
+                        f"Failed to serialize manifest: {e}",
+                        context={"run_id": manifest.run_id}
+                    ) from e
+
             # Upload to Dropbox
-            success = self.dropbox_sync.upload_file(
-                local_path=temp_path,
-                remote_path=dropbox_path,
-                overwrite=True,
-            )
-            
-            # Clean up temp file
-            Path(temp_path).unlink()
-            
+            try:
+                success = self.dropbox_sync.upload_file(
+                    local_path=temp_path,
+                    remote_path=dropbox_path,
+                    overwrite=True,
+                )
+            except Exception as e:
+                raise DropboxError(
+                    f"Failed to upload manifest to Dropbox: {e}",
+                    context={"path": dropbox_path, "run_id": manifest.run_id}
+                ) from e
+            finally:
+                # Clean up temp file
+                try:
+                    Path(temp_path).unlink()
+                except OSError:
+                    pass  # Ignore cleanup errors
+
             if success:
                 logger.info("manifest_written", path=dropbox_path, run_id=manifest.run_id)
                 return dropbox_path
             else:
                 logger.error("manifest_write_failed", path=dropbox_path)
                 return None
-                
-        except Exception as e:
-            logger.error("manifest_write_exception", path=dropbox_path, error=str(e))
+
+        except (SerializationError, DropboxError) as e:
+            logger.error("manifest_write_exception", path=dropbox_path, error=str(e), error_type=type(e).__name__)
+            return None
+        except OSError as e:
+            logger.error("manifest_file_error", path=dropbox_path, error=str(e))
             return None
     
     def write_champion_pointer(

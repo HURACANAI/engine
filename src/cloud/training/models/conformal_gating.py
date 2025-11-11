@@ -47,9 +47,9 @@ Usage:
     )
 
     if result.passes_gate:
-        print(f"Trade: {result.lower_bound:.1f} to {result.upper_bound:.1f} bps")
+        logger.info(f"Trade: {result.lower_bound:.1f} to {result.upper_bound:.1f} bps")
     else:
-        print(f"Skip: Pessimistic case ({result.lower_bound:.1f}) too low")
+        logger.info(f"Skip: Pessimistic case ({result.lower_bound:.1f}) too low")
 """
 
 from dataclasses import dataclass
@@ -475,30 +475,30 @@ def run_conformal_example():
     # Make predictions
     test_predictions = [8.0, 12.0, 18.0, 25.0]
 
-    print("=" * 70)
-    print("CONFORMAL PREDICTION EXAMPLES")
-    print("=" * 70)
+    logger.info("=" * 70)
+    logger.info("CONFORMAL PREDICTION EXAMPLES")
+    logger.info("=" * 70)
 
     for pred in test_predictions:
         result = gate.predict_with_interval(pred)
 
-        print(f"\nPoint Prediction: {result.point_prediction:.1f} bps")
-        print(f"Interval: [{result.lower_bound:.1f}, {result.upper_bound:.1f}] bps")
-        print(f"Width: {result.interval_width:.1f} bps")
-        print(f"Coverage: {result.coverage_level:.0%}")
-        print(f"Passes Gate: {result.passes_gate}")
-        print(f"Reason: {result.reason}")
+        logger.info(f"\nPoint Prediction: {result.point_prediction:.1f} bps")
+        logger.info(f"Interval: [{result.lower_bound:.1f}, {result.upper_bound:.1f}] bps")
+        logger.info(f"Width: {result.interval_width:.1f} bps")
+        logger.info(f"Coverage: {result.coverage_level:.0%}")
+        logger.info(f"Passes Gate: {result.passes_gate}")
+        logger.info(f"Reason: {result.reason}")
 
     # Statistics
-    print(f"\n{'=' * 70}")
-    print("CALIBRATION STATISTICS")
-    print("=" * 70)
+    logger.info(f"\n{'=' * 70}")
+    logger.info("CALIBRATION STATISTICS")
+    logger.info("=" * 70)
     stats = gate.get_statistics()
-    print(f"Calibrated: {stats['calibrated']}")
-    print(f"Samples: {stats['samples']}")
-    print(f"Coverage Level: {stats['coverage_level']:.0%}")
-    print(f"Error Quantile: {stats['error_quantile']:.2f} bps")
-    print(f"Mean Error: {stats['mean_error']:.2f} bps")
+    logger.info(f"Calibrated: {stats['calibrated']}")
+    logger.info(f"Samples: {stats['samples']}")
+    logger.info(f"Coverage Level: {stats['coverage_level']:.0%}")
+    logger.info(f"Error Quantile: {stats['error_quantile']:.2f} bps")
+    logger.info(f"Mean Error: {stats['mean_error']:.2f} bps")
 
 
 if __name__ == "__main__":

@@ -6,11 +6,16 @@ Database tables: models, model_metrics, promotions, live_trades, daily_equity
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import datetime
+from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
 import structlog
+from sqlalchemy import create_engine, text
+from sqlalchemy.engine import Engine
+from sqlalchemy.exc import SQLAlchemyError
 
 logger = structlog.get_logger(__name__)
 
@@ -137,79 +142,224 @@ class DailyEquity:
 
 class DatabaseClient:
     """Database client for model registry and metrics."""
-    
+
     def __init__(self, connection_string: str):
         """Initialize database client.
-        
+
         Args:
-            connection_string: Database connection string
+            connection_string: Database connection string (e.g., "postgresql://user:pass@host:port/dbname")
         """
         self.connection_string = connection_string
-        # TODO: Initialize database connection
-        logger.info("database_client_initialized", connection_string=connection_string[:20] + "...")
+        try:
+            self._engine: Engine = create_engine(connection_string, future=True, pool_pre_ping=True)
+            logger.info("database_client_initialized", connection_string=connection_string[:20] + "...")
+        except SQLAlchemyError as e:
+            logger.error("database_connection_failed", error=str(e))
+            raise ConnectionError(f"Failed to connect to database: {e}") from e
     
     def save_model(self, model: ModelRecord) -> bool:
         """Save model record to database.
-        
+
         Args:
             model: Model record
-            
+
         Returns:
             True if successful
+
+        Raises:
+            RuntimeError: If database operation fails
         """
-        # TODO: Implement database save
-        logger.info("model_saved", model_id=model.model_id, kind=model.kind)
-        return True
+        statement = text(
+            """
+            INSERT INTO models (model_id, parent_id, kind, created_at, s3_path, features_used, params)
+            VALUES (:model_id, :parent_id, :kind, :created_at, :s3_path, :features_used::jsonb, :params::jsonb)
+            ON CONFLICT (model_id)
+            DO UPDATE SET
+                parent_id = EXCLUDED.parent_id,
+                kind = EXCLUDED.kind,
+                s3_path = EXCLUDED.s3_path,
+                features_used = EXCLUDED.features_used,
+                params = EXCLUDED.params
+            """
+        )
+        payload = {
+            "model_id": model.model_id,
+            "parent_id": model.parent_id,
+            "kind": model.kind,
+            "created_at": model.created_at,
+            "s3_path": model.s3_path,
+            "features_used": json.dumps(model.features_used),
+            "params": json.dumps(model.params),
+        }
+        try:
+            with self._engine.begin() as connection:
+                connection.execute(statement, payload)
+            logger.info("model_saved", model_id=model.model_id, kind=model.kind)
+            return True
+        except SQLAlchemyError as e:
+            logger.error("model_save_failed", model_id=model.model_id, error=str(e))
+            raise RuntimeError(f"Failed to save model {model.model_id}: {e}") from e
     
     def save_metrics(self, metrics: ModelMetrics) -> bool:
         """Save model metrics to database.
-        
+
         Args:
             metrics: Model metrics
-            
+
         Returns:
             True if successful
+
+        Raises:
+            RuntimeError: If database operation fails
         """
-        # TODO: Implement database save
-        logger.info("metrics_saved", model_id=metrics.model_id, sharpe=metrics.sharpe)
-        return True
+        statement = text(
+            """
+            INSERT INTO model_metrics (model_id, sharpe, hit_rate, drawdown, net_bps, window, cost_bps, promoted)
+            VALUES (:model_id, :sharpe, :hit_rate, :drawdown, :net_bps, :window, :cost_bps, :promoted)
+            ON CONFLICT (model_id, window)
+            DO UPDATE SET
+                sharpe = EXCLUDED.sharpe,
+                hit_rate = EXCLUDED.hit_rate,
+                drawdown = EXCLUDED.drawdown,
+                net_bps = EXCLUDED.net_bps,
+                cost_bps = EXCLUDED.cost_bps,
+                promoted = EXCLUDED.promoted
+            """
+        )
+        payload = {
+            "model_id": metrics.model_id,
+            "sharpe": metrics.sharpe,
+            "hit_rate": metrics.hit_rate,
+            "drawdown": metrics.drawdown,
+            "net_bps": metrics.net_bps,
+            "window": metrics.window,
+            "cost_bps": metrics.cost_bps,
+            "promoted": metrics.promoted,
+        }
+        try:
+            with self._engine.begin() as connection:
+                connection.execute(statement, payload)
+            logger.info("metrics_saved", model_id=metrics.model_id, sharpe=metrics.sharpe)
+            return True
+        except SQLAlchemyError as e:
+            logger.error("metrics_save_failed", model_id=metrics.model_id, error=str(e))
+            raise RuntimeError(f"Failed to save metrics for {metrics.model_id}: {e}") from e
     
     def save_promotion(self, promotion: Promotion) -> bool:
         """Save promotion record to database.
-        
+
         Args:
             promotion: Promotion record
-            
+
         Returns:
             True if successful
+
+        Raises:
+            RuntimeError: If database operation fails
         """
-        # TODO: Implement database save
-        logger.info("promotion_saved", from_model_id=promotion.from_model_id, to_model_id=promotion.to_model_id)
-        return True
+        statement = text(
+            """
+            INSERT INTO promotions (from_model_id, to_model_id, reason, at, snapshot)
+            VALUES (:from_model_id, :to_model_id, :reason, :at, :snapshot::jsonb)
+            """
+        )
+        payload = {
+            "from_model_id": promotion.from_model_id,
+            "to_model_id": promotion.to_model_id,
+            "reason": promotion.reason,
+            "at": promotion.at,
+            "snapshot": json.dumps(promotion.snapshot),
+        }
+        try:
+            with self._engine.begin() as connection:
+                connection.execute(statement, payload)
+            logger.info("promotion_saved", from_model_id=promotion.from_model_id, to_model_id=promotion.to_model_id)
+            return True
+        except SQLAlchemyError as e:
+            logger.error("promotion_save_failed", from_model_id=promotion.from_model_id, error=str(e))
+            raise RuntimeError(f"Failed to save promotion: {e}") from e
     
     def save_live_trade(self, trade: LiveTrade) -> bool:
         """Save live trade record to database.
-        
+
         Args:
             trade: Live trade record
-            
+
         Returns:
             True if successful
+
+        Raises:
+            RuntimeError: If database operation fails
         """
-        # TODO: Implement database save
-        logger.info("live_trade_saved", trade_id=trade.trade_id, symbol=trade.symbol)
-        return True
-    
+        statement = text(
+            """
+            INSERT INTO live_trades (trade_id, time, symbol, side, size, entry, exit, fees, net_pnl, model_id)
+            VALUES (:trade_id, :time, :symbol, :side, :size, :entry, :exit, :fees, :net_pnl, :model_id)
+            ON CONFLICT (trade_id)
+            DO UPDATE SET
+                exit = EXCLUDED.exit,
+                fees = EXCLUDED.fees,
+                net_pnl = EXCLUDED.net_pnl
+            """
+        )
+        payload = {
+            "trade_id": trade.trade_id,
+            "time": trade.time,
+            "symbol": trade.symbol,
+            "side": trade.side,
+            "size": trade.size,
+            "entry": trade.entry,
+            "exit": trade.exit,
+            "fees": trade.fees,
+            "net_pnl": trade.net_pnl,
+            "model_id": trade.model_id,
+        }
+        try:
+            with self._engine.begin() as connection:
+                connection.execute(statement, payload)
+            logger.info("live_trade_saved", trade_id=trade.trade_id, symbol=trade.symbol)
+            return True
+        except SQLAlchemyError as e:
+            logger.error("live_trade_save_failed", trade_id=trade.trade_id, error=str(e))
+            raise RuntimeError(f"Failed to save live trade {trade.trade_id}: {e}") from e
+
     def save_daily_equity(self, equity: DailyEquity) -> bool:
         """Save daily equity record to database.
-        
+
         Args:
             equity: Daily equity record
-            
+
         Returns:
             True if successful
+
+        Raises:
+            RuntimeError: If database operation fails
         """
-        # TODO: Implement database save
-        logger.info("daily_equity_saved", date=equity.date, nav=equity.nav)
-        return True
+        statement = text(
+            """
+            INSERT INTO daily_equity (date, nav, max_dd, turnover, fees_bps)
+            VALUES (:date, :nav, :max_dd, :turnover, :fees_bps)
+            ON CONFLICT (date)
+            DO UPDATE SET
+                nav = EXCLUDED.nav,
+                max_dd = EXCLUDED.max_dd,
+                turnover = EXCLUDED.turnover,
+                fees_bps = EXCLUDED.fees_bps
+            """
+        )
+        payload = {
+            "date": equity.date,
+            "nav": equity.nav,
+            "max_dd": equity.max_dd,
+            "turnover": equity.turnover,
+            "fees_bps": equity.fees_bps,
+        }
+        try:
+            with self._engine.begin() as connection:
+                connection.execute(statement, payload)
+            logger.info("daily_equity_saved", date=equity.date, nav=equity.nav)
+            return True
+        except SQLAlchemyError as e:
+            logger.error("daily_equity_save_failed", date=equity.date, error=str(e))
+            raise RuntimeError(f"Failed to save daily equity for {equity.date}: {e}") from e
 

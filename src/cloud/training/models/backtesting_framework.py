@@ -50,10 +50,10 @@ import numpy as np
 import pandas as pd
 import structlog
 
+logger = structlog.get_logger(__name__)
+
 from .dual_book_manager import DualBookManager, BookType
 from .trading_coordinator import TradingCoordinator
-
-logger = structlog.get_logger(__name__)
 
 
 class Direction(Enum):
@@ -441,14 +441,14 @@ class Backtester:
             BacktestResults
         """
         if verbose:
-            print("=" * 70)
-            print("DUAL-MODE BACKTEST")
-            print("=" * 70)
-            print(f"Initial Capital: ${self.initial_capital:,.0f}")
-            print(f"Samples: {len(historical_data)}")
-            print(f"Train: {int(len(historical_data) * self.train_ratio)}")
-            print(f"Test: {len(historical_data) - int(len(historical_data) * self.train_ratio)}")
-            print()
+            logger.info("=" * 70)
+            logger.info("DUAL-MODE BACKTEST")
+            logger.info("=" * 70)
+            logger.info("backtest_parameters",
+                       initial_capital=self.initial_capital,
+                       total_samples=len(historical_data),
+                       train_samples=int(len(historical_data) * self.train_ratio),
+                       test_samples=len(historical_data) - int(len(historical_data) * self.train_ratio))
 
         # Split into train/test
         split_idx = int(len(historical_data) * self.train_ratio)
@@ -456,15 +456,14 @@ class Backtester:
         test_data = historical_data.iloc[split_idx:]
 
         if verbose:
-            print("Phase 1: Training (calibrating gates)...")
+            logger.info("backtest_phase", phase=1, description="Training (calibrating gates)")
 
         # Calibrate on training data (if conformal enabled)
         if self.enable_conformal:
             self._calibrate_gates(train_data)
 
         if verbose:
-            print(f"Phase 2: Testing on {len(test_data)} out-of-sample trades...")
-            print()
+            logger.info("backtest_phase", phase=2, description="Testing", sample_count=len(test_data))
 
         # Run backtest on test data
         for idx, row in test_data.iterrows():
@@ -702,51 +701,40 @@ class Backtester:
         )
 
     def _print_results(self, results: BacktestResults) -> None:
-        """Print comprehensive results."""
-        print("=" * 70)
-        print("BACKTEST RESULTS")
-        print("=" * 70)
-        print()
+        """Print comprehensive results using structured logging."""
+        logger.info("=" * 70)
+        logger.info("BACKTEST RESULTS")
+        logger.info("=" * 70)
 
-        print("OVERALL PERFORMANCE")
-        print("-" * 70)
-        print(f"Total P&L: ${results.total_pnl_usd:,.2f}")
-        print(f"Total Return: {results.total_return_pct:+.2f}%")
-        print(f"Sharpe Ratio: {results.sharpe_ratio:.2f}")
-        print(f"Max Drawdown: {results.max_drawdown_pct:.2f}%")
-        print()
+        logger.info("overall_performance",
+                   total_pnl_usd=results.total_pnl_usd,
+                   total_return_pct=results.total_return_pct,
+                   sharpe_ratio=results.sharpe_ratio,
+                   max_drawdown_pct=results.max_drawdown_pct)
 
-        print("TRADE STATISTICS")
-        print("-" * 70)
-        print(f"Total Trades: {results.total_trades}")
-        print(f"Winners: {results.winning_trades} ({results.overall_win_rate:.1%})")
-        print(f"Losers: {results.losing_trades}")
-        print(f"Avg Trade P&L: ${results.avg_trade_pnl_usd:.2f}")
-        print(f"Avg Winner: ${results.avg_winner_usd:.2f}")
-        print(f"Avg Loser: ${results.avg_loser_usd:.2f}")
-        print(f"Win/Loss Ratio: {results.win_loss_ratio:.2f}")
-        print(f"Profit Factor: {results.profit_factor:.2f}")
-        print()
+        logger.info("trade_statistics",
+                   total_trades=results.total_trades,
+                   winning_trades=results.winning_trades,
+                   losing_trades=results.losing_trades,
+                   overall_win_rate=results.overall_win_rate,
+                   avg_trade_pnl_usd=results.avg_trade_pnl_usd,
+                   avg_winner_usd=results.avg_winner_usd,
+                   avg_loser_usd=results.avg_loser_usd,
+                   win_loss_ratio=results.win_loss_ratio,
+                   profit_factor=results.profit_factor)
 
-        print("MODE-SPECIFIC PERFORMANCE")
-        print("-" * 70)
-        print(f"SCALP MODE:")
-        print(f"  Trades: {results.scalp_trades}")
-        print(f"  Win Rate: {results.scalp_win_rate:.1%}")
-        print(f"  P&L: ${results.scalp_pnl_usd:,.2f}")
-        print()
-        print(f"RUNNER MODE:")
-        print(f"  Trades: {results.runner_trades}")
-        print(f"  Win Rate: {results.runner_win_rate:.1%}")
-        print(f"  P&L: ${results.runner_pnl_usd:,.2f}")
-        print()
+        logger.info("mode_specific_performance",
+                   scalp_trades=results.scalp_trades,
+                   scalp_win_rate=results.scalp_win_rate,
+                   scalp_pnl_usd=results.scalp_pnl_usd,
+                   runner_trades=results.runner_trades,
+                   runner_win_rate=results.runner_win_rate,
+                   runner_pnl_usd=results.runner_pnl_usd)
 
-        print("TIME-BASED METRICS")
-        print("-" * 70)
-        print(f"Total Days: {results.total_days:.1f}")
-        print(f"Trades/Day: {results.trades_per_day:.1f}")
-        print(f"P&L/Day: ${results.pnl_per_day_usd:.2f}")
-        print()
+        logger.info("time_based_metrics",
+                   total_days=results.total_days,
+                   trades_per_day=results.trades_per_day,
+                   pnl_per_day_usd=results.pnl_per_day_usd)
 
     def export_results(self, results: BacktestResults, path: str) -> None:
         """Export results to CSV."""
@@ -832,7 +820,7 @@ def run_synthetic_backtest():
 
     # Export
     backtester.export_results(results, 'backtest_results.csv')
-    print(f"\nResults exported to: backtest_results.csv")
+    logger.info("results_exported", path="backtest_results.csv")
 
 
 if __name__ == '__main__':

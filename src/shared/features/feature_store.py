@@ -334,26 +334,3 @@ class FeatureStore:
             except Exception as e:
                 logger.warning("feature_set_load_failed", error=str(e))
 
-
-# Global feature store instance
-_feature_store: Optional[FeatureStore] = None
-
-
-def get_feature_store(store_path: Optional[Path] = None) -> FeatureStore:
-    """Get or create global feature store instance"""
-    global _feature_store
-    if _feature_store is None:
-        _feature_store = FeatureStore(store_path=store_path)
-    return _feature_store
-
-
-def register_feature(
-    name: str,
-    description: str,
-    version: str = "1.0.0",
-    **kwargs
-) -> FeatureDefinition:
-    """Convenience function to register a feature"""
-    store = get_feature_store()
-    return store.register_feature(name, description, version, **kwargs)
-
