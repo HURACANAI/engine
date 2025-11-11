@@ -1,7 +1,7 @@
 """
 Order Book Module
 
-In-memory order books with replication support.
+In-memory order books with replication support and multi-exchange aggregation.
 """
 
 from .in_memory_orderbook import (
@@ -12,6 +12,12 @@ from .in_memory_orderbook import (
     OrderBookLevel,
     OrderBookSide,
 )
+from .multi_exchange_aggregator import (
+    MultiExchangeOrderbookAggregator,
+    AggregatedOrderBook,
+    AggregatedLevel,
+    ExchangeOrderBook,
+)
 
 __all__ = [
     "InMemoryOrderBook",
@@ -20,5 +26,9 @@ __all__ = [
     "OrderBookSnapshot",
     "OrderBookLevel",
     "OrderBookSide",
+    "MultiExchangeOrderbookAggregator",
+    "AggregatedOrderBook",
+    "AggregatedLevel",
+    "ExchangeOrderBook",
 ]
 

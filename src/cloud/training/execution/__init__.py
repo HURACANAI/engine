@@ -6,11 +6,21 @@ from .smart_order_router import (
     ExchangeLiquidity,
     RoutingDecision,
 )
+from .spread_threshold_manager import (
+    SpreadThresholdManager,
+    Order,
+    OrderStatus,
+    SpreadSnapshot,
+)
 
 __all__ = [
     "SmartOrderRouter",
     "RouteDecision",
     "ExchangeLiquidity",
     "RoutingDecision",
+    "SpreadThresholdManager",
+    "Order",
+    "OrderStatus",
+    "SpreadSnapshot",
 ]
 

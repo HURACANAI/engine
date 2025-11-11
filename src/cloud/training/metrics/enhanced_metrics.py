@@ -382,6 +382,61 @@ class EnhancedMetricsCalculator:
         calmar = annualized_return / max_drawdown
         return float(calmar)
     
+    def evaluate_sharpe(
+        self,
+        returns: List[float] | np.ndarray,
+        periods_per_year: Optional[int] = None
+    ) -> float:
+        """
+        Evaluate Sharpe ratio for returns.
+        
+        This is a convenience method that can be called from Engine.
+        Formula: sharpe = annualized_return / annualized_volatility
+        
+        Args:
+            returns: Array or list of returns
+            periods_per_year: Number of periods per year (default: uses trading_days_per_year)
+        
+        Returns:
+            Sharpe ratio
+        
+        Usage:
+            sharpe = calculator.evaluate_sharpe(returns)
+            # Council can use Sharpe for voting (e.g., only models with Sharpe > 1 qualify)
+        """
+        if isinstance(returns, list):
+            returns_array = np.array(returns)
+        else:
+            returns_array = returns
+        
+        if len(returns_array) == 0:
+            return 0.0
+        
+        # Calculate annualized return and volatility
+        if periods_per_year is None:
+            periods_per_year = self.trading_days_per_year
+        
+        mean_return = float(np.mean(returns_array))
+        annualized_return = mean_return * periods_per_year
+        
+        volatility = float(np.std(returns_array))
+        annualized_volatility = volatility * np.sqrt(periods_per_year)
+        
+        # Calculate Sharpe ratio
+        if annualized_volatility == 0:
+            return 0.0
+        
+        sharpe = (annualized_return - self.risk_free_rate) / annualized_volatility
+        
+        logger.info(
+            "sharpe_evaluated",
+            sharpe_ratio=float(sharpe),
+            annualized_return=annualized_return,
+            annualized_volatility=annualized_volatility
+        )
+        
+        return float(sharpe)
+    
     def _empty_metrics(self) -> PerformanceMetrics:
         """Return empty metrics"""
         return PerformanceMetrics(

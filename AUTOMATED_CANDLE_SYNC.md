@@ -238,3 +238,6 @@ python scripts/auto_sync_candles.py --days 365 --timeframe 1h
 ```
 
 
+
+
+
