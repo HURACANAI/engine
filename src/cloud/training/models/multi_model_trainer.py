@@ -188,10 +188,21 @@ class MultiModelTrainer:
         if regimes is not None and X_val is not None and y_val is not None:
             self._track_performance_by_regime(X_val, y_val, regimes)
         
+        # Get best model, handling None val_score values
+        best_model_name = None
+        if results:
+            # Filter out None val_score values when finding best model
+            valid_results = {k: v for k, v in results.items() if v.val_score is not None}
+            if valid_results:
+                best_model_name = max(valid_results.items(), key=lambda x: x[1].val_score)[0]
+            else:
+                # If no valid scores, use first model as fallback
+                best_model_name = list(results.keys())[0] if results else None
+        
         logger.info(
             "parallel_training_complete",
             num_models=len(results),
-            best_model=max(results.items(), key=lambda x: x[1].val_score)[0] if results else None,
+            best_model=best_model_name,
         )
         
         return results

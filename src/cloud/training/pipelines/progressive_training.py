@@ -18,7 +18,7 @@ import structlog
 
 from src.cloud.training.datasets.data_loader import CandleDataLoader, CandleQuery
 from src.cloud.training.pipelines.enhanced_rl_pipeline import EnhancedRLPipeline
-from src.exchanges.base import ExchangeClient
+from ..services.exchange import ExchangeClient
 
 logger = structlog.get_logger(__name__)
 

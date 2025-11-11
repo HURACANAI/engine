@@ -40,6 +40,10 @@ from .notifications import NotificationClient
 from .universe import UniverseSelector
 from ..memory.store import MemoryStore
 from ..pipelines.rl_training_pipeline import RLTrainingPipeline
+from ..pipelines.enhanced_rl_pipeline import EnhancedRLPipeline
+from ..pipelines.rl_training_pipeline_v2 import RLTrainingPipelineV2
+from ..pipelines.progressive_training import ProgressiveHistoricalTrainer, ProgressiveTrainingConfig
+from ..models.multi_model_integration import train_multi_model_ensemble, predict_with_ensemble, replace_single_model_training
 from .brain_integrated_training import BrainIntegratedTraining
 from .model_selector import ModelSelector
 from .data_collector import DataCollector
@@ -664,6 +668,76 @@ def _train_symbol(
         message="This may take several minutes depending on data size",
     )
     raw_frame = loader.load(query)
+    
+    # Verify raw data has valid close values
+    if "close" in raw_frame.columns:
+        raw_close_stats = raw_frame.select([
+            pl.col("close").min().alias("close_min"),
+            pl.col("close").max().alias("close_max"),
+            pl.col("close").null_count().alias("close_nan_count"),
+            (pl.col("close") == 0).sum().alias("close_zero_count"),
+            pl.col("close").count().alias("close_total_count"),
+        ]).to_dicts()[0]
+        
+        logger.info(
+            "raw_data_close_stats",
+            symbol=symbol,
+            close_min=raw_close_stats.get("close_min"),
+            close_max=raw_close_stats.get("close_max"),
+            close_nan_count=raw_close_stats.get("close_nan_count"),
+            close_zero_count=raw_close_stats.get("close_zero_count"),
+            close_total_count=raw_close_stats.get("close_total_count"),
+            message="Raw data close column statistics",
+        )
+        
+        if raw_close_stats.get("close_zero_count", 0) == raw_close_stats.get("close_total_count", 0):
+            logger.error(
+                "raw_data_close_all_zeros",
+                symbol=symbol,
+                message="Raw data close column has ALL zero values - data download issue",
+            )
+            empty_cost = CostBreakdown(fee_bps=0.0, spread_bps=0.0, slippage_bps=0.0)
+            return TrainingTaskResult(
+                symbol=symbol,
+                costs=empty_cost,
+                metrics={},
+                gate_results={},
+                published=False,
+                reason="raw_data_close_all_zeros",
+                artifacts=None,
+                model_id=str(uuid4()),
+                run_id=f"{symbol}-{run_date:%Y%m%d}",
+                pilot_contract=None,
+                mechanic_contract=None,
+                metrics_payload=None,
+                model_params={},
+                feature_metadata={},
+            )
+    else:
+        logger.error(
+            "raw_data_close_missing",
+            symbol=symbol,
+            available_columns=list(raw_frame.columns),
+            message="Close column missing from raw data",
+        )
+        empty_cost = CostBreakdown(fee_bps=0.0, spread_bps=0.0, slippage_bps=0.0)
+        return TrainingTaskResult(
+            symbol=symbol,
+            costs=empty_cost,
+            metrics={},
+            gate_results={},
+            published=False,
+            reason="raw_data_close_missing",
+            artifacts=None,
+            model_id=str(uuid4()),
+            run_id=f"{symbol}-{run_date:%Y%m%d}",
+            pilot_contract=None,
+            mechanic_contract=None,
+            metrics_payload=None,
+            model_params={},
+            feature_metadata={},
+        )
+    
     logger.info(
         "data_download_complete",
         symbol=symbol,
@@ -691,6 +765,55 @@ def _train_symbol(
 
     recipe = FeatureRecipe()
     feature_frame = recipe.build(raw_frame)
+    
+    # Verify close column is preserved after feature engineering
+    if "close" in feature_frame.columns:
+        feature_close_stats = feature_frame.select([
+            pl.col("close").min().alias("close_min"),
+            pl.col("close").max().alias("close_max"),
+            pl.col("close").null_count().alias("close_nan_count"),
+            (pl.col("close") == 0).sum().alias("close_zero_count"),
+            pl.col("close").count().alias("close_total_count"),
+        ]).to_dicts()[0]
+        
+        logger.info(
+            "feature_frame_close_stats",
+            symbol=symbol,
+            close_min=feature_close_stats.get("close_min"),
+            close_max=feature_close_stats.get("close_max"),
+            close_nan_count=feature_close_stats.get("close_nan_count"),
+            close_zero_count=feature_close_stats.get("close_zero_count"),
+            close_total_count=feature_close_stats.get("close_total_count"),
+            message="Feature frame close column statistics after FeatureRecipe.build()",
+        )
+        
+        # Compare with raw data
+        if (feature_close_stats.get("close_min") != raw_close_stats.get("close_min") or
+            feature_close_stats.get("close_max") != raw_close_stats.get("close_max")):
+            logger.warning(
+                "close_column_changed_during_feature_engineering",
+                symbol=symbol,
+                raw_min=raw_close_stats.get("close_min"),
+                raw_max=raw_close_stats.get("close_max"),
+                feature_min=feature_close_stats.get("close_min"),
+                feature_max=feature_close_stats.get("close_max"),
+                message="Close column values changed during feature engineering",
+            )
+    else:
+        logger.error(
+            "close_column_lost_in_feature_engineering",
+            symbol=symbol,
+            available_columns=sorted(feature_frame.columns),
+            message="Close column lost during feature engineering",
+        )
+    
+    logger.info(
+        "feature_engineering_complete",
+        symbol=symbol,
+        rows_after_features=len(feature_frame),
+        columns=len(feature_frame.columns),
+    )
+    
     volatility_series = feature_frame.select(pl.col("ret_1").abs().mean()).to_series()
     volatility_bps = float((volatility_series[0] if len(volatility_series) else 0.0) * 10_000)
     cost_model = CostModel(settings.costs)
@@ -703,14 +826,620 @@ def _train_symbol(
         volatility_bps=volatility_bps,
         adv_quote=adv_quote,
     )
-    label_builder = LabelBuilder(LabelingConfig(horizon_minutes=4))
-    labeled = label_builder.build(feature_frame, costs)
-    dataset = labeled.to_pandas()
-    dataset["ts"] = pd.to_datetime(dataset["ts"], utc=True)
+    
+    # Verify costs are valid
+    if not isinstance(costs.total_costs_bps, (int, float)) or costs.total_costs_bps < 0:
+        logger.error(
+            "invalid_costs",
+            symbol=symbol,
+            total_costs_bps=costs.total_costs_bps,
+            costs_type=type(costs.total_costs_bps),
+            message="Costs calculation produced invalid value",
+        )
+        raise ValueError(f"Invalid costs.total_costs_bps: {costs.total_costs_bps} (type: {type(costs.total_costs_bps)})")
+    
+    logger.debug(
+        "costs_calculated",
+        symbol=symbol,
+        total_costs_bps=costs.total_costs_bps,
+        fee_bps=costs.fee_bps,
+        spread_bps=costs.spread_bps,
+        slippage_bps=costs.slippage_bps,
+    )
+    
+    # Use V2 labeling (triple-barrier + meta-labeling) if enabled, otherwise basic labeling
+    advanced_config = settings.training.advanced
+    use_v2_labeling = advanced_config.use_triple_barrier or advanced_config.use_meta_labeling
+    
+    if use_v2_labeling:
+        logger.info(
+            "using_v2_labeling",
+            symbol=symbol,
+            use_triple_barrier=advanced_config.use_triple_barrier,
+            use_meta_labeling=advanced_config.use_meta_labeling,
+        )
+        
+        try:
+            from ...engine.labeling import TripleBarrierLabeler, MetaLabeler, ScalpLabelConfig
+            from ...engine.costs import CostEstimator
+            
+            # Create triple-barrier labeler
+            label_config = ScalpLabelConfig()  # Use scalp config for 4-minute horizon
+            cost_estimator = CostEstimator(
+                taker_fee_bps=taker_fee,
+                spread_bps=spread_bps,
+                slippage_bps=costs.slippage_bps,
+            )
+            triple_barrier_labeler = TripleBarrierLabeler(
+                config=label_config,
+                cost_estimator=cost_estimator,
+            )
+            
+            # Label using triple-barrier
+            labeled_trades = triple_barrier_labeler.label_dataframe(
+                df=feature_frame,
+                symbol=symbol,
+                max_labels=None,  # Label all possible trades
+            )
+            
+            logger.info(
+                "triple_barrier_labeling_complete",
+                symbol=symbol,
+                total_trades_labeled=len(labeled_trades),
+            )
+            
+            # Apply meta-labeling if enabled
+            if advanced_config.use_meta_labeling:
+                meta_labeler = MetaLabeler(
+                    cost_threshold_bps=advanced_config.meta_label_cost_threshold,
+                )
+                labeled_trades = meta_labeler.apply(labeled_trades)
+                
+                logger.info(
+                    "meta_labeling_complete",
+                    symbol=symbol,
+                    profitable_trades=sum(1 for t in labeled_trades if t.meta_label == 1),
+                    total_trades=len(labeled_trades),
+                )
+            
+            # Convert labeled trades to DataFrame format expected by training
+            if not labeled_trades:
+                logger.warning(
+                    "no_labeled_trades_from_v2_labeling",
+                    symbol=symbol,
+                    message="V2 labeling produced no trades",
+                )
+                dataset = pd.DataFrame()
+            else:
+                # Convert LabeledTrade objects to DataFrame
+                trade_data = []
+                for trade in labeled_trades:
+                    # Get the original row index for this trade
+                    # We'll need to match trade.entry_time to feature_frame timestamps
+                    trade_data.append({
+                        "net_edge_bps": trade.pnl_net_bps,
+                        "edge_confidence": 1.0 if trade.meta_label == 1 else 0.0,
+                        "trade_entry_time": trade.entry_time,
+                        "trade_exit_time": trade.exit_time,
+                        "trade_pnl_bps": trade.pnl_net_bps,
+                    })
+                
+                # For now, use basic labeling as fallback if V2 produces no trades
+                # This is a temporary workaround - V2 labeling needs more integration
+                logger.warning(
+                    "v2_labeling_integration_incomplete",
+                    symbol=symbol,
+                    message="V2 labeling not fully integrated with training pipeline, using basic labeling",
+                )
+                use_v2_labeling = False  # Fall back to basic labeling
+                
+        except Exception as e:
+            logger.warning(
+                "v2_labeling_failed_falling_back",
+                symbol=symbol,
+                error=str(e),
+                message="Falling back to basic labeling",
+            )
+            use_v2_labeling = False
+    
+    if not use_v2_labeling:
+        # Use basic labeling (original method)
+        logger.info("using_basic_labeling", symbol=symbol)
+        
+        # CRITICAL: Verify close column exists in feature_frame
+        # FeatureRecipe should preserve all original columns, but let's verify
+        if "close" not in feature_frame.columns:
+            # Try to find it with different casing
+            close_cols = [col for col in feature_frame.columns if col.lower() == "close"]
+            if close_cols:
+                logger.warning(
+                    "close_column_case_mismatch",
+                    symbol=symbol,
+                    found_column=close_cols[0],
+                    message=f"Found close column with different case: {close_cols[0]}, renaming to 'close'",
+                )
+                feature_frame = feature_frame.rename({close_cols[0]: "close"})
+            else:
+                logger.error(
+                    "close_column_missing_from_feature_frame",
+                    symbol=symbol,
+                    available_columns=sorted(feature_frame.columns),
+                    total_columns=len(feature_frame.columns),
+                    message="Close column missing from feature frame - FeatureRecipe may have dropped it",
+                )
+                # Check if raw_frame had close column
+                if "close" in raw_frame.columns:
+                    logger.error(
+                        "close_column_lost_during_feature_engineering",
+                        symbol=symbol,
+                        raw_frame_columns=sorted(raw_frame.columns),
+                        feature_frame_columns=sorted(feature_frame.columns),
+                        message="Close column was in raw_frame but lost during feature engineering",
+                    )
+                return TrainingTaskResult(
+                    symbol=symbol,
+                    costs=costs,
+                    metrics={},
+                    gate_results={},
+                    published=False,
+                    reason="close_column_missing",
+                    artifacts=None,
+                    model_id=str(uuid4()),
+                    run_id=f"{symbol}-{run_date:%Y%m%d}",
+                    pilot_contract=None,
+                    mechanic_contract=None,
+                    metrics_payload=None,
+                    model_params={},
+                    feature_metadata={},
+                )
+        
+        # Check close column for NaN/zero values BEFORE labeling
+        close_stats = feature_frame.select([
+            pl.col("close").min().alias("close_min"),
+            pl.col("close").max().alias("close_max"),
+            pl.col("close").null_count().alias("close_nan_count"),
+            (pl.col("close") == 0).sum().alias("close_zero_count"),
+            pl.col("close").count().alias("close_total_count"),
+        ])
+        close_stats_dict = close_stats.to_dicts()[0]
+        
+        logger.info(
+            "close_column_stats_before_labeling",
+            symbol=symbol,
+            close_min=close_stats_dict.get("close_min"),
+            close_max=close_stats_dict.get("close_max"),
+            close_nan_count=close_stats_dict.get("close_nan_count"),
+            close_zero_count=close_stats_dict.get("close_zero_count"),
+            close_total_count=close_stats_dict.get("close_total_count"),
+        )
+        
+        # If close column has issues, we can't proceed with labeling
+        if close_stats_dict.get("close_nan_count", 0) > 0:
+            logger.error(
+                "close_column_has_nan_values",
+                symbol=symbol,
+                nan_count=close_stats_dict.get("close_nan_count", 0),
+                total_count=close_stats_dict.get("close_total_count", 0),
+                message="Close column has NaN values - cannot compute labels",
+            )
+            return TrainingTaskResult(
+                symbol=symbol,
+                costs=costs,
+                metrics={},
+                gate_results={},
+                published=False,
+                reason="close_column_has_nan",
+                artifacts=None,
+                model_id=str(uuid4()),
+                run_id=f"{symbol}-{run_date:%Y%m%d}",
+                pilot_contract=None,
+                mechanic_contract=None,
+                metrics_payload=None,
+                model_params={},
+                feature_metadata={},
+            )
+        
+        if close_stats_dict.get("close_zero_count", 0) > 0:
+            logger.warning(
+                "close_column_has_zero_values",
+                symbol=symbol,
+                zero_count=close_stats_dict.get("close_zero_count", 0),
+                message="Close column has zero values - division by zero risk in labeling",
+            )
+        
+        try:
+            label_builder = LabelBuilder(LabelingConfig(horizon_minutes=4))
+            labeled = label_builder.build(feature_frame, costs)
+            
+            # Verify net_edge_bps was created correctly in Polars
+            if "net_edge_bps" not in labeled.columns:
+                raise ValueError("net_edge_bps column not found after labeling")
+            
+            # Check net_edge_bps in Polars BEFORE converting to pandas
+            net_edge_stats_polars = labeled.select([
+                pl.col("net_edge_bps").null_count().alias("nan_count"),
+                pl.col("net_edge_bps").count().alias("total_count"),
+                pl.col("net_edge_bps").min().alias("min"),
+                pl.col("net_edge_bps").max().alias("max"),
+                pl.col("net_edge_bps").mean().alias("mean"),
+            ])
+            net_edge_stats_dict = net_edge_stats_polars.to_dicts()[0]
+            
+            nan_count = net_edge_stats_dict.get("nan_count", 0)
+            valid_count = net_edge_stats_dict.get("total_count", 0) - nan_count
+            
+            logger.info(
+                "net_edge_bps_stats_polars",
+                symbol=symbol,
+                nan_count=nan_count,
+                valid_count=valid_count,
+                min_value=net_edge_stats_dict.get("min"),
+                max_value=net_edge_stats_dict.get("max"),
+                mean_value=net_edge_stats_dict.get("mean"),
+            )
+            
+            # If all values are NaN, this is a critical error
+            if valid_count == 0:
+                raise ValueError(
+                    f"All {net_edge_stats_dict.get('total_count', 0)} net_edge_bps values are NaN in Polars. "
+                    f"This indicates a problem with the labeling calculation."
+                )
+            
+            # Sample a few values to verify they're not all the same
+            sample_values = labeled.select(["ts", "close", "net_edge_bps"]).head(5)
+            logger.debug(
+                "net_edge_bps_sample_values",
+                symbol=symbol,
+                sample=sample_values.to_dicts(),
+            )
+            
+        except Exception as e:
+            logger.exception(
+                "labeling_failed",
+                symbol=symbol,
+                error=str(e),
+                error_type=type(e).__name__,
+                message="LabelBuilder.build() failed - check close column and data quality",
+            )
+            return TrainingTaskResult(
+                symbol=symbol,
+                costs=costs,
+                metrics={},
+                gate_results={},
+                published=False,
+                reason=f"labeling_failed: {str(e)}",
+                artifacts=None,
+                model_id=str(uuid4()),
+                run_id=f"{symbol}-{run_date:%Y%m%d}",
+                pilot_contract=None,
+                mechanic_contract=None,
+                metrics_payload=None,
+                model_params={},
+                feature_metadata={},
+            )
+        
+        logger.info(
+            "basic_labeling_complete",
+            symbol=symbol,
+            rows_before_labeling=len(feature_frame),
+            rows_after_labeling=len(labeled),
+            rows_dropped=len(feature_frame) - len(labeled),
+            columns_after_labeling=list(labeled.columns),
+        )
+        
+        # Convert to Pandas
+        # LabelBuilder already validated that net_edge_bps has valid values
+        # CRITICAL: Ensure ts column is properly converted to datetime
+        # Polars datetime columns should convert correctly, but verify
+        if "ts" in labeled.columns:
+            # Check ts column type in Polars before conversion
+            ts_dtype = labeled["ts"].dtype
+            logger.debug(
+                "ts_column_before_pandas_conversion",
+                symbol=symbol,
+                ts_dtype=str(ts_dtype),
+                ts_sample=labeled.select("ts").head(3).to_dicts(),
+            )
+        
+        dataset = labeled.to_pandas()
+        
+        # Verify conversion preserved the data
+        if "net_edge_bps" not in dataset.columns:
+            raise ValueError("net_edge_bps column missing after Polars to Pandas conversion")
+        
+        # CRITICAL: Verify and fix ts column if corrupted
+        if "ts" in dataset.columns:
+            # Check if ts is datetime type
+            if not pd.api.types.is_datetime64_any_dtype(dataset["ts"]):
+                logger.warning(
+                    "ts_column_not_datetime_after_conversion",
+                    symbol=symbol,
+                    ts_dtype=str(dataset["ts"].dtype),
+                    ts_sample=dataset["ts"].head(3).tolist(),
+                    message="ts column is not datetime after Polars to Pandas conversion - attempting fix",
+                )
+                # Try to convert to datetime
+                dataset["ts"] = pd.to_datetime(dataset["ts"], utc=True, errors="coerce")
+            
+            # Verify the dates are reasonable (not 1970)
+            ts_min = dataset["ts"].min()
+            ts_max = dataset["ts"].max()
+            if ts_min.year == 1970 or ts_max.year == 1970:
+                logger.error(
+                    "ts_column_corrupted_after_conversion",
+                    symbol=symbol,
+                    ts_min=ts_min.isoformat(),
+                    ts_max=ts_max.isoformat(),
+                    message="ts column shows 1970 dates after conversion - fixing from raw_frame",
+                )
+                # Fix: Get ts from raw_frame and align
+                # The labeled frame has fewer rows due to shift, so we need to drop the last rows from raw_ts
+                if "ts" in raw_frame.columns:
+                    logger.info("fixing_ts_from_raw_frame", symbol=symbol)
+                    # Convert raw_frame ts to pandas first to check if it's correct
+                    raw_ts_df = raw_frame.select(["ts"]).to_pandas()
+                    raw_ts_min = raw_ts_df["ts"].min()
+                    raw_ts_max = raw_ts_df["ts"].max()
+                    
+                    logger.info(
+                        "raw_frame_ts_check",
+                        symbol=symbol,
+                        raw_ts_min=raw_ts_min.isoformat() if hasattr(raw_ts_min, 'isoformat') else str(raw_ts_min),
+                        raw_ts_max=raw_ts_max.isoformat() if hasattr(raw_ts_max, 'isoformat') else str(raw_ts_max),
+                        raw_ts_rows=len(raw_ts_df),
+                        message="Checking raw_frame ts column",
+                    )
+                    
+                    # Check if raw_frame ts is also corrupted
+                    if raw_ts_min.year == 1970 or raw_ts_max.year == 1970:
+                        logger.error(
+                            "raw_frame_ts_also_corrupted",
+                            symbol=symbol,
+                            message="raw_frame ts column is also corrupted - cannot fix",
+                        )
+                    else:
+                        # LabelBuilder drops the last 'horizon' rows (4 rows for horizon_minutes=4)
+                        # So we need to drop the last 4 rows from raw_ts to match labeled frame
+                        horizon = 4  # From LabelingConfig(horizon_minutes=4)
+                        raw_ts_aligned = raw_ts_df.iloc[:-horizon].reset_index(drop=True)
+                        
+                        # Verify row counts match
+                        if len(raw_ts_aligned) == len(dataset):
+                            dataset["ts"] = raw_ts_aligned["ts"]
+                            logger.info(
+                                "ts_column_fixed_from_raw_frame",
+                                symbol=symbol,
+                                ts_min=dataset["ts"].min().isoformat(),
+                                ts_max=dataset["ts"].max().isoformat(),
+                                ts_range_days=(dataset["ts"].max() - dataset["ts"].min()).total_seconds() / 86400.0,
+                            )
+                        else:
+                            logger.error(
+                                "ts_fix_failed_row_count_mismatch",
+                                symbol=symbol,
+                                raw_ts_rows=len(raw_ts_aligned),
+                                dataset_rows=len(dataset),
+                                message="Cannot fix ts column - row count mismatch",
+                            )
+                else:
+                    logger.error(
+                        "raw_frame_ts_missing",
+                        symbol=symbol,
+                        message="Cannot fix ts column - raw_frame does not have ts column",
+                    )
+            else:
+                logger.debug(
+                    "ts_column_converted_correctly",
+                    symbol=symbol,
+                    ts_min=ts_min.isoformat(),
+                    ts_max=ts_max.isoformat(),
+                    ts_range_days=(ts_max - ts_min).total_seconds() / 86400.0,
+                )
+        
+        # Quick sanity check - should match Polars stats
+        net_edge_pandas_valid = dataset["net_edge_bps"].notna().sum()
+        if net_edge_pandas_valid != valid_count:
+            logger.warning(
+                "pandas_conversion_value_mismatch",
+                symbol=symbol,
+                polars_valid_count=valid_count,
+                pandas_valid_count=net_edge_pandas_valid,
+                message="Value count mismatch between Polars and Pandas - investigating",
+            )
+        
+        logger.debug(
+            "pandas_conversion_complete",
+            symbol=symbol,
+            net_edge_valid_count=net_edge_pandas_valid,
+            total_rows=len(dataset),
+        )
+        
+        # Check if ts column exists
+        if "ts" not in dataset.columns:
+            # Try to find timestamp column
+            ts_cols = [col for col in dataset.columns if "ts" in col.lower() or "time" in col.lower()]
+            if ts_cols:
+                logger.warning(
+                    "ts_column_not_found_using_alternative",
+                    symbol=symbol,
+                    found_columns=ts_cols,
+                    using_column=ts_cols[0],
+                )
+                dataset = dataset.rename(columns={ts_cols[0]: "ts"})
+            else:
+                logger.error(
+                    "no_timestamp_column_found",
+                    symbol=symbol,
+                    available_columns=list(dataset.columns),
+                    message="Cannot find timestamp column in labeled dataset",
+                )
+                dataset = pd.DataFrame()  # Empty dataset
+    else:
+        # V2 labeling path (if we implement full integration)
+        dataset = pd.DataFrame()
+    
+    if dataset.empty:
+        logger.error(
+            "labeling_produced_empty_dataset",
+            symbol=symbol,
+            original_rows=len(raw_frame),
+            feature_rows=len(feature_frame),
+            labeled_rows=len(labeled) if not use_v2_labeling and 'labeled' in locals() else 0,
+            message="Labeling produced empty dataset - check labeling configuration and data quality",
+        )
+        return TrainingTaskResult(
+            symbol=symbol,
+            costs=costs,
+            metrics={},
+            gate_results={},
+            published=False,
+            reason="insufficient_labeled_data",
+            artifacts=None,
+            model_id=str(uuid4()),
+            run_id=f"{symbol}-{run_date:%Y%m%d}",
+            pilot_contract=None,
+            mechanic_contract=None,
+            metrics_payload=None,
+            model_params={},
+            feature_metadata={},
+        )
+    
+    # Ensure ts column exists and is datetime
+    if "ts" in dataset.columns:
+        dataset["ts"] = pd.to_datetime(dataset["ts"], utc=True)
+    else:
+        logger.error(
+            "ts_column_missing_after_labeling",
+            symbol=symbol,
+            available_columns=list(dataset.columns),
+            message="Timestamp column missing after labeling",
+        )
+        return TrainingTaskResult(
+            symbol=symbol,
+            costs=costs,
+            metrics={},
+            gate_results={},
+            published=False,
+            reason="insufficient_labeled_data",
+            artifacts=None,
+            model_id=str(uuid4()),
+            run_id=f"{symbol}-{run_date:%Y%m%d}",
+            pilot_contract=None,
+            mechanic_contract=None,
+            metrics_payload=None,
+            model_params={},
+            feature_metadata={},
+        )
+    
+    # Check net_edge_bps column BEFORE replacing inf
+    if "net_edge_bps" in dataset.columns:
+        net_edge_before_replace = dataset["net_edge_bps"].copy()
+        net_edge_nan_before = net_edge_before_replace.isna().sum()
+        net_edge_inf_before = np.isinf(net_edge_before_replace).sum()
+        net_edge_valid_before = net_edge_before_replace.notna().sum() - net_edge_inf_before
+        
+        logger.info(
+            "net_edge_bps_before_cleanup",
+            symbol=symbol,
+            net_edge_nan_count=net_edge_nan_before,
+            net_edge_inf_count=net_edge_inf_before,
+            net_edge_valid_count=net_edge_valid_before,
+            net_edge_min=float(net_edge_before_replace.replace([np.inf, -np.inf], np.nan).min()) if net_edge_valid_before > 0 else None,
+            net_edge_max=float(net_edge_before_replace.replace([np.inf, -np.inf], np.nan).max()) if net_edge_valid_before > 0 else None,
+        )
+    
+    # Replace inf values with NaN before dropna
+    rows_before_dropna = len(dataset)
     dataset.replace([np.inf, -np.inf], np.nan, inplace=True)
-    dataset.dropna(inplace=True)
+    
+    # Check net_edge_bps column AFTER replacing inf
+    if "net_edge_bps" in dataset.columns:
+        net_edge_stats = {
+            "net_edge_nan_count": dataset["net_edge_bps"].isna().sum(),
+            "net_edge_valid_count": dataset["net_edge_bps"].notna().sum(),
+        }
+        if net_edge_stats["net_edge_valid_count"] > 0:
+            net_edge_stats["net_edge_min"] = float(dataset["net_edge_bps"].min())
+            net_edge_stats["net_edge_max"] = float(dataset["net_edge_bps"].max())
+        logger.info(
+            "net_edge_bps_after_cleanup",
+            symbol=symbol,
+            **net_edge_stats,
+        )
+    else:
+        logger.error(
+            "net_edge_bps_column_missing",
+            symbol=symbol,
+            available_columns=list(dataset.columns),
+        )
+        return TrainingTaskResult(
+            symbol=symbol,
+            costs=costs,
+            metrics={},
+            gate_results={},
+            published=False,
+            reason="insufficient_labeled_data",
+            artifacts=None,
+            model_id=str(uuid4()),
+            run_id=f"{symbol}-{run_date:%Y%m%d}",
+            pilot_contract=None,
+            mechanic_contract=None,
+            metrics_payload=None,
+            model_params={},
+            feature_metadata={},
+        )
+    
+    # Check ts column
+    if "ts" in dataset.columns:
+        ts_nan_count = dataset["ts"].isna().sum()
+        logger.info(
+            "ts_column_diagnostic",
+            symbol=symbol,
+            ts_nan_count=ts_nan_count,
+            ts_valid_count=dataset["ts"].notna().sum(),
+        )
+    else:
+        logger.error(
+            "ts_column_missing_before_dropna",
+            symbol=symbol,
+            available_columns=list(dataset.columns),
+        )
+    
+    # Only drop rows where critical columns are NaN
+    critical_cols = ["ts", "net_edge_bps"]
+    rows_with_ts_nan = dataset["ts"].isna().sum() if "ts" in dataset.columns else 0
+    rows_with_net_edge_nan = dataset["net_edge_bps"].isna().sum() if "net_edge_bps" in dataset.columns else len(dataset)
+    
+    logger.info(
+        "before_dropna_diagnostic",
+        symbol=symbol,
+        rows_before_dropna=rows_before_dropna,
+        rows_with_ts_nan=rows_with_ts_nan,
+        rows_with_net_edge_nan=rows_with_net_edge_nan,
+    )
+    
+    dataset = dataset.dropna(subset=critical_cols)
+    rows_after_dropna = len(dataset)
+    
+    logger.info(
+        "data_cleaning_complete",
+        symbol=symbol,
+        rows_before_dropna=rows_before_dropna,
+        rows_after_dropna=rows_after_dropna,
+        rows_removed_by_dropna=rows_before_dropna - rows_after_dropna,
+    )
+    
     dataset.sort_values("ts", inplace=True)
     if dataset.empty:
+        logger.error(
+            "dataset_empty_after_processing",
+            symbol=symbol,
+            original_rows=len(raw_frame),
+            feature_rows=len(feature_frame),
+            rows_after_labeling=rows_before_dropna,
+            rows_after_dropna=rows_after_dropna,
+            message="Dataset is empty after all processing steps",
+        )
         return TrainingTaskResult(
             symbol=symbol,
             costs=costs,
@@ -748,22 +1477,69 @@ def _train_symbol(
             feature_metadata={},
         )
 
+    # Use configurable training settings
+    model_config = settings.training.model_training
     hyperparams = {
         "objective": "regression",
-        "learning_rate": 0.05,
-        "n_estimators": 300,
-        "max_depth": 6,
-        "subsample": 0.8,
-        "colsample_bytree": 0.8,
-        "min_child_samples": 32,
-        "random_state": 42,
-        "n_jobs": -1,
+        "learning_rate": model_config.learning_rate,
+        "n_estimators": model_config.n_estimators,
+        "max_depth": model_config.max_depth,
+        "subsample": model_config.subsample,
+        "colsample_bytree": model_config.colsample_bytree,
+        "min_child_samples": model_config.min_child_samples,
+        "random_state": model_config.random_state,
+        "n_jobs": model_config.n_jobs,
+        "verbose": model_config.verbose,
     }
 
     ts_series = dataset["ts"]
+    
+    # Diagnostic: Check timestamp range before walk-forward splits
+    ts_min = ts_series.min()
+    ts_max = ts_series.max()
+    ts_range_days = (ts_max - ts_min).total_seconds() / 86400.0
+    
+    logger.info(
+        "timestamp_range_for_walk_forward",
+        symbol=symbol,
+        ts_min=ts_min.isoformat() if hasattr(ts_min, 'isoformat') else str(ts_min),
+        ts_max=ts_max.isoformat() if hasattr(ts_max, 'isoformat') else str(ts_max),
+        ts_range_days=ts_range_days,
+        train_days=settings.training.walk_forward.train_days,
+        test_days=settings.training.walk_forward.test_days,
+        min_splits_possible=int((ts_range_days - settings.training.walk_forward.train_days) / settings.training.walk_forward.test_days) if ts_range_days > settings.training.walk_forward.train_days else 0,
+        message="Timestamp range for walk-forward validation",
+    )
+    
     splits = _walk_forward_masks(ts_series, settings.training.walk_forward.train_days, settings.training.walk_forward.test_days)
     cost_threshold = cost_model.recommended_edge_threshold(costs)
     oos_trades: List[pd.DataFrame] = []
+    
+    logger.info(
+        "model_training_config",
+        symbol=symbol,
+        n_estimators=model_config.n_estimators,
+        learning_rate=model_config.learning_rate,
+        max_depth=model_config.max_depth,
+        early_stopping_rounds=model_config.early_stopping_rounds,
+        total_splits=len(splits),
+        total_samples=len(dataset),
+        message="Starting intensive model training with configured hyperparameters",
+    )
+    
+    # If no splits were created, log detailed diagnostics
+    if len(splits) == 0:
+        logger.error(
+            "no_walk_forward_splits_created",
+            symbol=symbol,
+            ts_min=ts_min.isoformat() if hasattr(ts_min, 'isoformat') else str(ts_min),
+            ts_max=ts_max.isoformat() if hasattr(ts_max, 'isoformat') else str(ts_max),
+            ts_range_days=ts_range_days,
+            train_days=settings.training.walk_forward.train_days,
+            test_days=settings.training.walk_forward.test_days,
+            required_range_days=settings.training.walk_forward.train_days + settings.training.walk_forward.test_days,
+            message="No walk-forward splits created - check timestamp range and walk-forward settings",
+        )
     
     # Initialize Brain Library integration (if database is available)
     brain_training = None
@@ -777,24 +1553,161 @@ def _train_symbol(
         logger.warning("brain_library_initialization_failed", symbol=symbol, error=str(e))
         # Continue without Brain Library if initialization fails
     
-    for train_mask, test_mask in splits:
+    # Check if we should use multi-model ensemble
+    advanced_config = settings.training.advanced
+    use_ensemble = advanced_config.use_multi_model_ensemble
+    
+    total_training_start_time = time_module.time()
+    ensemble_trainers = []  # Store ensemble trainers for final model
+    
+    for split_idx, (train_mask, test_mask) in enumerate(splits):
+        split_start_time = time_module.time()
         X_train = dataset.loc[train_mask, feature_cols]
         y_train = dataset.loc[train_mask, "net_edge_bps"]
+        
         if len(y_train) < 100:
+            logger.warning(
+                "skipping_split_insufficient_data",
+                symbol=symbol,
+                split_idx=split_idx,
+                train_samples=len(y_train),
+                min_required=100,
+            )
             continue
-        model = LGBMRegressor(**hyperparams)
-        model.fit(X_train, y_train)
-        X_test = dataset.loc[test_mask, feature_cols]
+        
+        # Create validation set from training data (20% for early stopping)
+        train_size = int(0.8 * len(X_train))
+        X_train_split = X_train.iloc[:train_size]
+        y_train_split = y_train.iloc[:train_size]
+        X_val_split = X_train.iloc[train_size:]
+        y_val_split = y_train.iloc[train_size:]
+        
+        logger.info(
+            "training_split_start",
+            symbol=symbol,
+            split_idx=split_idx + 1,
+            total_splits=len(splits),
+            train_samples=len(X_train_split),
+            val_samples=len(X_val_split),
+            test_samples=test_mask.sum(),
+            use_ensemble=use_ensemble,
+            ensemble_method=advanced_config.ensemble_method if use_ensemble else "single_model",
+        )
+        
+        # Use multi-model ensemble if enabled, otherwise single LightGBM
+        if use_ensemble:
+            logger.info(
+                "training_multi_model_ensemble",
+                symbol=symbol,
+                split_idx=split_idx + 1,
+                techniques=advanced_config.ensemble_techniques,
+                ensemble_method=advanced_config.ensemble_method,
+            )
+            
+            # Train ensemble
+            ensemble_trainer, ensemble_results = train_multi_model_ensemble(
+                X_train=X_train_split,
+                y_train=y_train_split,
+                X_val=X_val_split,
+                y_val=y_val_split,
+                regimes=None,  # Could add regime detection here
+                techniques=advanced_config.ensemble_techniques,
+                ensemble_method=advanced_config.ensemble_method,
+                is_classification=False,
+            )
+            
+            ensemble_trainers.append(ensemble_trainer)
+            
+            # Get best model for predictions (or use ensemble)
+            X_test = dataset.loc[test_mask, feature_cols]
+            if X_test.empty:
+                continue
+            
+            # Use ensemble prediction
+            ensemble_result = ensemble_trainer.predict_ensemble(X_test, regime=None)
+            predictions = ensemble_result.prediction
+            confidence = ensemble_result.confidence * np.ones(len(predictions))  # Use ensemble confidence
+            
+            logger.info(
+                "ensemble_training_complete",
+                symbol=symbol,
+                split_idx=split_idx + 1,
+                num_models=len(ensemble_results),
+                ensemble_confidence=ensemble_result.confidence,
+                model_contributions=ensemble_result.model_contributions,
+            )
+        else:
+            # Train single LightGBM model with early stopping
+            import lightgbm as lgb  # type: ignore[reportMissingImports]
+            model = LGBMRegressor(**hyperparams)
+            
+            callbacks = []
+            if model_config.early_stopping_rounds > 0:
+                callbacks.append(lgb.early_stopping(stopping_rounds=model_config.early_stopping_rounds, verbose=False))
+            callbacks.append(lgb.log_evaluation(period=0))  # Disable verbose logging
+            
+            model.fit(
+                X_train_split,
+                y_train_split,
+                eval_set=[(X_val_split, y_val_split)],
+                callbacks=callbacks if callbacks else None,
+            )
+            
+            # Log early stopping info if it was triggered
+            if hasattr(model, 'best_iteration_') and model.best_iteration_ is not None:
+                actual_iterations = model.best_iteration_ + 1
+                logger.info(
+                    "early_stopping_triggered",
+                    symbol=symbol,
+                    split_idx=split_idx + 1,
+                    best_iteration=model.best_iteration_,
+                    actual_iterations=actual_iterations,
+                    total_iterations=model_config.n_estimators,
+                    stopped_early=True,
+                )
+            else:
+                logger.info(
+                    "training_completed_all_iterations",
+                    symbol=symbol,
+                    split_idx=split_idx + 1,
+                    total_iterations=model_config.n_estimators,
+                    stopped_early=False,
+                )
+            
+            X_test = dataset.loc[test_mask, feature_cols]
+            if X_test.empty:
+                continue
+            predictions = model.predict(X_test)
+            confidence = dataset.loc[test_mask, "edge_confidence"].to_numpy()
+        
+        split_training_time = time_module.time() - split_start_time
+        
         y_test = dataset.loc[test_mask, "net_edge_bps"].to_numpy()
-        confidence = dataset.loc[test_mask, "edge_confidence"].to_numpy()
         timestamps = dataset.loc[test_mask, "ts"].to_numpy()
-        if X_test.empty:
-            continue
-        predictions = model.predict(X_test)
         
         trades = _simulate_trades(predictions, y_test, confidence, timestamps, cost_threshold)
         if not trades.empty:
             oos_trades.append(trades)
+        
+        logger.info(
+            "training_split_complete",
+            symbol=symbol,
+            split_idx=split_idx + 1,
+            training_time_seconds=split_training_time,
+            test_trades=len(trades),
+            use_ensemble=use_ensemble,
+            message=f"Split {split_idx + 1}/{len(splits)} training completed",
+        )
+    
+    total_training_time = time_module.time() - total_training_start_time
+    logger.info(
+        "all_splits_training_complete",
+        symbol=symbol,
+        total_splits=len(splits),
+        total_training_time_seconds=total_training_time,
+        total_training_time_minutes=total_training_time / 60.0,
+        message=f"All walk-forward splits trained in {total_training_time:.2f} seconds ({total_training_time / 60.0:.2f} minutes)",
+    )
 
     combined_trades = pd.concat(oos_trades, ignore_index=True) if oos_trades else pd.DataFrame(columns=["timestamp", "pnl_bps", "prediction_bps", "confidence", "equity_curve"])  # type: ignore[call-overload]
     metrics = _compute_metrics(combined_trades, costs.total_costs_bps, len(dataset))
@@ -802,9 +1715,47 @@ def _train_symbol(
     # Brain Library integration: Store final model metrics after all splits
     if brain_training:
         try:
-            # Train final model on all data
-            final_model = LGBMRegressor(**hyperparams)
-            final_model.fit(dataset[feature_cols], dataset["net_edge_bps"])
+            logger.info("training_final_model_for_brain_integration", symbol=symbol)
+            final_model_start_time = time_module.time()
+            
+            # Train final model on all data - use ensemble if enabled
+            if use_ensemble:
+                # Train ensemble for brain integration
+                brain_ensemble_trainer, brain_ensemble_results = train_multi_model_ensemble(
+                    X_train=dataset[feature_cols],
+                    y_train=dataset["net_edge_bps"],
+                    X_val=None,
+                    y_val=None,
+                    regimes=None,
+                    techniques=advanced_config.ensemble_techniques,
+                    ensemble_method=advanced_config.ensemble_method,
+                    is_classification=False,
+                )
+                # For brain integration, use the best single model from ensemble
+                # (Brain integration may not support ensemble directly)
+                best_model_name = brain_ensemble_trainer.get_best_model()
+                if best_model_name and best_model_name in brain_ensemble_trainer.models:
+                    final_model = brain_ensemble_trainer.models[best_model_name]
+                    model_type = "lightgbm" if "lightgbm" in best_model_name.lower() else "xgboost" if "xgboost" in best_model_name.lower() else "random_forest"
+                else:
+                    # Fallback to first model
+                    final_model = list(brain_ensemble_trainer.models.values())[0]
+                    model_type = "lightgbm"
+            else:
+                # Train single LightGBM model
+                final_model = LGBMRegressor(**hyperparams)
+                final_model.fit(dataset[feature_cols], dataset["net_edge_bps"])
+                model_type = "lightgbm"
+            
+            final_model_training_time = time_module.time() - final_model_start_time
+            logger.info(
+                "final_model_training_complete",
+                symbol=symbol,
+                training_time_seconds=final_model_training_time,
+                total_samples=len(dataset),
+                use_ensemble=use_ensemble,
+                model_type=model_type,
+            )
             
             # Use last test split for evaluation
             if splits:
@@ -821,7 +1772,7 @@ def _train_symbol(
                         y_test=final_y_test,
                         feature_names=feature_cols,
                         base_model=final_model,
-                        model_type="lightgbm",
+                        model_type=model_type,
                     )
                     logger.info("brain_integration_final_complete", symbol=symbol, status=brain_result.get("status"))
         except Exception as e:
@@ -918,10 +1869,75 @@ def _train_symbol(
     failed = [name for name, passed in gate_results.items() if not passed]
     reason = "all_pass" if published else "gate_failure:" + ",".join(failed)
 
-    final_model = LGBMRegressor(**hyperparams)
-    final_model.fit(dataset[feature_cols], dataset["net_edge_bps"])
-    model_bytes = pickle.dumps(final_model)
-    feature_importances = final_model.feature_importances_.tolist()
+    logger.info("training_final_production_model", symbol=symbol)
+    final_production_start_time = time_module.time()
+    
+    # Train final model on all data for production use
+    # Use ensemble if enabled, otherwise single model
+    if use_ensemble:
+        logger.info(
+            "training_final_ensemble_model",
+            symbol=symbol,
+            techniques=advanced_config.ensemble_techniques,
+            ensemble_method=advanced_config.ensemble_method,
+        )
+        
+        # Train final ensemble on all data
+        final_ensemble_trainer, final_ensemble_results = train_multi_model_ensemble(
+            X_train=dataset[feature_cols],
+            y_train=dataset["net_edge_bps"],
+            X_val=None,  # Use all data for final model
+            y_val=None,
+            regimes=None,
+            techniques=advanced_config.ensemble_techniques,
+            ensemble_method=advanced_config.ensemble_method,
+            is_classification=False,
+        )
+        
+        # For serialization, we'll pickle the ensemble trainer
+        # In production, use the ensemble trainer for predictions
+        model_bytes = pickle.dumps(final_ensemble_trainer)
+        
+        # Get feature importances from best model or average
+        feature_importances = []
+        if final_ensemble_trainer.models:
+            # Average feature importances across all models
+            all_importances = []
+            for model_name, model in final_ensemble_trainer.models.items():
+                if hasattr(model, 'feature_importances_'):
+                    all_importances.append(model.feature_importances_)
+            
+            if all_importances:
+                feature_importances = np.mean(all_importances, axis=0).tolist()
+            else:
+                feature_importances = [0.0] * len(feature_cols)
+        else:
+            feature_importances = [0.0] * len(feature_cols)
+        
+        logger.info(
+            "final_ensemble_model_training_complete",
+            symbol=symbol,
+            num_models=len(final_ensemble_results),
+            ensemble_method=advanced_config.ensemble_method,
+        )
+    else:
+        # Train single LightGBM model
+        final_model = LGBMRegressor(**hyperparams)
+        final_model.fit(dataset[feature_cols], dataset["net_edge_bps"])
+        
+        model_bytes = pickle.dumps(final_model)
+        feature_importances = final_model.feature_importances_.tolist()
+    
+    final_production_training_time = time_module.time() - final_production_start_time
+    logger.info(
+        "final_production_model_training_complete",
+        symbol=symbol,
+        training_time_seconds=final_production_training_time,
+        training_time_minutes=final_production_training_time / 60.0,
+        total_samples=len(dataset),
+        use_ensemble=use_ensemble,
+        message=f"Final production model trained in {final_production_training_time:.2f} seconds",
+    )
 
     validation_window = f"{dataset['ts'].min().date()} to {dataset['ts'].max().date()}"
     run_id = f"{mode}-{symbol}-{run_date:%Y%m%d}"
@@ -1021,7 +2037,7 @@ def _train_symbol(
         "feature_importances": feature_importances,
         "hyperparameters": hyperparams,
         "training_window_days": settings.training.window_days,
-        "walk_forward": asdict(settings.training.walk_forward),
+        "walk_forward": settings.training.walk_forward.model_dump() if hasattr(settings.training.walk_forward, 'model_dump') else settings.training.walk_forward.dict() if hasattr(settings.training.walk_forward, 'dict') else {"train_days": settings.training.walk_forward.train_days, "test_days": settings.training.walk_forward.test_days, "min_trades": settings.training.walk_forward.min_trades},
     }
 
     bundle = None
@@ -1040,7 +2056,7 @@ def _train_symbol(
 
     # Run RL training if enabled and database configured
     if dsn and settings.training.rl_agent.enabled:
-        rl_metrics = _run_rl_training_for_symbol(
+        rl_metrics = _run_advanced_rl_training_for_symbol(
             symbol=symbol,
             settings=settings,
             exchange=exchange,
@@ -1070,15 +2086,16 @@ def _train_symbol(
     )
 
 
-def _run_rl_training_for_symbol(
+def _run_advanced_rl_training_for_symbol(
     symbol: str,
     settings: EngineSettings,
     exchange: ExchangeClient,
     dsn: str,
     lookback_days: int = 365,
 ) -> Optional[Dict[str, Any]]:
-    """Run RL training for a single symbol if enabled.
+    """Run advanced RL training for a single symbol if enabled.
 
+    Uses enhanced RL pipeline or V2 pipeline based on settings.
     This executes shadow trading on historical data to learn patterns.
     Returns metrics dict if successful, None if skipped/failed.
     """
@@ -1090,24 +2107,76 @@ def _run_rl_training_for_symbol(
         logger.info("rl_training_skipped", symbol=symbol, reason="shadow_trading_disabled")
         return None
 
+    advanced_config = settings.training.advanced
+    
+    # Determine which RL pipeline to use
+    use_v2 = advanced_config.use_rl_v2_pipeline
+    use_enhanced = advanced_config.use_enhanced_rl
+    
     logger.info(
-        "===== STARTING RL TRAINING =====",
+        "===== STARTING ADVANCED RL TRAINING =====",
         symbol=symbol,
         lookback_days=lookback_days,
         operation="RL_SHADOW_TRADING",
+        n_epochs=settings.training.rl_agent.n_epochs,
+        epochs_per_update=settings.training.rl_agent.epochs_per_update,
+        batch_size=settings.training.rl_agent.batch_size,
+        use_v2_pipeline=use_v2,
+        use_enhanced_pipeline=use_enhanced,
+        enable_advanced_rewards=advanced_config.enable_advanced_rewards,
+        enable_higher_order_features=advanced_config.enable_higher_order_features,
+        enable_granger_causality=advanced_config.enable_granger_causality,
+        enable_regime_prediction=advanced_config.enable_regime_prediction,
+        use_triple_barrier=advanced_config.use_triple_barrier,
+        use_meta_labeling=advanced_config.use_meta_labeling,
+        message="RL training will process historical data and learn trading patterns",
     )
 
+    rl_training_start_time = time_module.time()
+    
     try:
-        # Initialize RL pipeline
-        rl_pipeline = RLTrainingPipeline(settings=settings, dsn=dsn)
+        # Initialize appropriate RL pipeline
+        if use_v2:
+            # Use V2 pipeline (triple-barrier, meta-labeling, recency weighting)
+            logger.info("using_rl_v2_pipeline", symbol=symbol)
+            rl_pipeline = RLTrainingPipelineV2(
+                settings=settings,
+                dsn=dsn,
+                use_v2_pipeline=True,
+                trading_mode='scalp',  # Could be configurable
+            )
+        elif use_enhanced:
+            # Use enhanced RL pipeline (Phase 1 improvements)
+            logger.info("using_enhanced_rl_pipeline", symbol=symbol)
+            rl_pipeline = EnhancedRLPipeline(
+                settings=settings,
+                dsn=dsn,
+                enable_advanced_rewards=advanced_config.enable_advanced_rewards,
+                enable_higher_order_features=advanced_config.enable_higher_order_features,
+                enable_granger_causality=advanced_config.enable_granger_causality,
+                enable_regime_prediction=advanced_config.enable_regime_prediction,
+            )
+        else:
+            # Use basic RL pipeline
+            logger.info("using_basic_rl_pipeline", symbol=symbol)
+            rl_pipeline = RLTrainingPipeline(settings=settings, dsn=dsn)
 
         # Run shadow trading and learning on historical data
+        logger.info(
+            "rl_training_executing",
+            symbol=symbol,
+            pipeline_type="V2" if use_v2 else ("Enhanced" if use_enhanced else "Basic"),
+            message="RL pipeline is now training on historical data - this may take several minutes",
+        )
+        
         metrics = rl_pipeline.train_on_symbol(
             symbol=symbol,
             exchange_client=exchange,
             lookback_days=lookback_days,
         )
 
+        rl_training_time = time_module.time() - rl_training_start_time
+        
         logger.info(
             "===== RL TRAINING COMPLETE =====",
             symbol=symbol,
@@ -1116,6 +2185,10 @@ def _run_rl_training_for_symbol(
             win_rate=metrics.get("win_rate", 0.0),
             avg_profit_gbp=metrics.get("avg_profit_gbp", 0.0),
             patterns_learned=metrics.get("patterns_learned", 0),
+            training_time_seconds=rl_training_time,
+            training_time_minutes=rl_training_time / 60.0,
+            pipeline_type="V2" if use_v2 else ("Enhanced" if use_enhanced else "Basic"),
+            message=f"RL training completed in {rl_training_time:.2f} seconds ({rl_training_time / 60.0:.2f} minutes)",
         )
 
         return metrics
@@ -1126,5 +2199,6 @@ def _run_rl_training_for_symbol(
             symbol=symbol,
             error=str(exc),
             error_type=type(exc).__name__,
+            pipeline_type="V2" if use_v2 else ("Enhanced" if use_enhanced else "Basic"),
         )
         return None

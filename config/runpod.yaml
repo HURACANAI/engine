@@ -6,7 +6,7 @@ scheduler:
   timezone: "UTC"
 
 universe:
-  target_size: 20  # Start with 20 coins, scale up later
+  target_size: 3  # Top 3 coins for testing (BTC, ETH, SOL typically)
   liquidity_threshold_adv_gbp: 10000000
   max_spread_bps: 8
 
@@ -16,6 +16,36 @@ training:
     train_days: 20
     test_days: 5
     min_trades: 300
+  model_training:
+    n_estimators: 2000  # Increased from 300 for proper intensive training
+    learning_rate: 0.01  # Lower learning rate for better learning
+    max_depth: 8  # Increased depth for more complex patterns
+    subsample: 0.8
+    colsample_bytree: 0.8
+    min_child_samples: 32
+    early_stopping_rounds: 100  # Enable early stopping
+    verbose: -1  # Suppress verbose output
+    n_jobs: -1  # Use all CPU cores
+    random_state: 42
+  advanced:
+    use_multi_model_ensemble: true  # Use ensemble of multiple models
+    ensemble_techniques: ["xgboost", "random_forest", "lightgbm"]
+    ensemble_method: "weighted_voting"  # "weighted_voting", "stacking", "dynamic"
+    use_progressive_training: false  # Disable for now (takes very long)
+    progressive_initial_epoch_days: 730  # 2 years for first epoch
+    progressive_subsequent_epoch_days: 365  # 1 year for subsequent epochs
+    progressive_max_epochs: null  # null = train until inception
+    use_enhanced_rl: true  # Use enhanced RL pipeline with Phase 1 features
+    use_rl_v2_pipeline: true  # Use V2 pipeline (triple-barrier, meta-labeling)
+    enable_advanced_rewards: true  # Advanced reward shaping
+    enable_higher_order_features: true  # Higher-order feature engineering
+    enable_granger_causality: true  # Granger causality for cross-asset timing
+    enable_regime_prediction: true  # Regime transition prediction
+    use_meta_labeling: true  # Meta-labeling for profitable trades
+    meta_label_cost_threshold: 0.0  # Cost threshold for meta-labeling
+    use_triple_barrier: true  # Triple-barrier labeling (no lookahead bias)
+    use_recency_weighting: true  # Weight recent data higher
+    use_v2_data_quality: true  # V2 data quality pipeline
   rl_agent:
     enabled: true
     learning_rate: 0.0003
@@ -23,6 +53,7 @@ training:
     clip_epsilon: 0.2
     entropy_coef: 0.01
     n_epochs: 10
+    epochs_per_update: 10  # More epochs per update for better learning
     batch_size: 128  # Increased for GPU
     state_dim: 80
     device: "cuda"  # Use GPU on RunPod

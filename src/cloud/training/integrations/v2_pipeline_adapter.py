@@ -15,7 +15,8 @@ from typing import List, Optional
 import polars as pl
 import structlog
 
-from ...engine.data_quality import DataSanityPipeline, format_sanity_report
+from ...engine.data_quality import DataSanityPipeline
+from ...engine.data_quality.sanity_pipeline import format_sanity_report
 from ...engine.labeling import (
     TripleBarrierLabeler,
     MetaLabeler,

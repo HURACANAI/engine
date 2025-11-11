@@ -74,7 +74,34 @@ class CandleDataLoader:
         if use_cache and cache_path.exists():
             try:
                 frame = pl.read_parquet(cache_path)
-                return self._quality.validate(frame, query=query)
+                
+                # CRITICAL: Check if cached data has corrupted timestamps (1970 dates)
+                # If so, re-download to fix the issue
+                if "ts" in frame.columns and len(frame) > 0:
+                    ts_min = frame["ts"].min()
+                    ts_max = frame["ts"].max()
+                    # Check if dates are reasonable (after 2020)
+                    if ts_min.year < 2020 or ts_max.year < 2020:
+                        logger.warning(
+                            "cached_data_has_corrupted_timestamps",
+                            cache_path=str(cache_path),
+                            ts_min=ts_min.isoformat(),
+                            ts_max=ts_max.isoformat(),
+                            message="Cached data has corrupted timestamps (1970 dates) - re-downloading to fix",
+                        )
+                        # Delete corrupted cache and re-download
+                        try:
+                            cache_path.unlink()
+                            logger.info("corrupted_cache_deleted", cache_path=str(cache_path))
+                        except Exception as del_error:
+                            logger.warning("cache_delete_failed", error=str(del_error))
+                        # Fall through to download fresh data
+                    else:
+                        # Cached data is valid
+                        return self._quality.validate(frame, query=query)
+                else:
+                    # No ts column or empty frame - validate and return
+                    return self._quality.validate(frame, query=query)
             except Exception as e:
                 # If cache read fails, fall back to download
                 logger.warning("cache_read_failed", path=str(cache_path), error=str(e))
@@ -199,6 +226,7 @@ class CandleDataLoader:
             )
         
         # Fix polars warning by explicitly specifying row orientation
+        # Exchange returns timestamps in milliseconds since Unix epoch
         frame = pl.DataFrame(
             rows,
             schema=[
@@ -211,9 +239,32 @@ class CandleDataLoader:
             ],
             orient="row",  # Explicitly specify row orientation to avoid warning
         ).with_columns(
-            (pl.col("timestamp") / 1000).cast(pl.Datetime(time_unit="ms", time_zone="UTC")).alias("ts")
+            # CRITICAL FIX: Exchange timestamps are in milliseconds, so use time_unit="ms" directly
+            # Do NOT divide by 1000 - that was causing 1970 dates (interpreting seconds as milliseconds)
+            pl.col("timestamp").cast(pl.Datetime(time_unit="ms", time_zone="UTC")).alias("ts")
         )
         frame = frame.sort("ts")
+        
+        # Validate timestamp conversion - dates should be reasonable (not 1970)
+        if len(frame) > 0:
+            ts_min = frame["ts"].min()
+            ts_max = frame["ts"].max()
+            # Check if dates are reasonable (after 2020, before 2030)
+            if ts_min.year < 2020 or ts_max.year > 2030:
+                logger.error(
+                    "timestamp_conversion_error",
+                    ts_min=ts_min.isoformat(),
+                    ts_max=ts_max.isoformat(),
+                    message=f"Timestamp conversion produced invalid dates. Min: {ts_min}, Max: {ts_max}",
+                )
+                # Try alternative conversion: maybe timestamps are in seconds?
+                # But first log the actual timestamp values for debugging
+                sample_timestamps = frame.select("timestamp").head(5)["timestamp"].to_list()
+                logger.debug(
+                    "timestamp_debug",
+                    sample_raw_timestamps=sample_timestamps,
+                    message="Sample raw timestamp values from exchange",
+                )
 
         # Only validate if not skipping and quality suite is available
         if not skip_validation and self._quality is not None:

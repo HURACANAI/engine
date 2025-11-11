@@ -30,6 +30,20 @@ class WalkForwardSettings(BaseModel):
     min_trades: int = 300
 
 
+class ModelTrainingSettings(BaseModel):
+    """LightGBM model training hyperparameters."""
+    n_estimators: int = 2000  # Increased from 300 for proper training
+    learning_rate: float = 0.01  # Lower learning rate for better learning
+    max_depth: int = 8  # Increased depth for more complex patterns
+    subsample: float = 0.8
+    colsample_bytree: float = 0.8
+    min_child_samples: int = 32
+    early_stopping_rounds: int = 100  # Enable early stopping
+    verbose: int = -1  # Suppress verbose output
+    n_jobs: int = -1  # Use all CPU cores
+    random_state: int = 42
+
+
 class RLAgentSettings(BaseModel):
     enabled: bool = True
     learning_rate: float = 0.0003
@@ -173,9 +187,37 @@ class PerCoinTrainingSettings(BaseModel):
     promotion_rules: PerCoinPromotionRulesSettings = Field(default_factory=PerCoinPromotionRulesSettings)
 
 
+class AdvancedTrainingSettings(BaseModel):
+    """Advanced training features configuration."""
+    use_multi_model_ensemble: bool = True  # Use ensemble of multiple models
+    ensemble_techniques: List[str] = Field(default_factory=lambda: ["xgboost", "random_forest", "lightgbm"])
+    ensemble_method: str = "weighted_voting"  # "weighted_voting", "stacking", "dynamic"
+    
+    use_progressive_training: bool = True  # Train on full coin history
+    progressive_initial_epoch_days: int = 730  # 2 years for first epoch
+    progressive_subsequent_epoch_days: int = 365  # 1 year for subsequent epochs
+    progressive_max_epochs: Optional[int] = None  # None = train until inception
+    
+    use_enhanced_rl: bool = True  # Use enhanced RL pipeline with Phase 1 features
+    use_rl_v2_pipeline: bool = True  # Use V2 pipeline (triple-barrier, meta-labeling)
+    enable_advanced_rewards: bool = True  # Advanced reward shaping
+    enable_higher_order_features: bool = True  # Higher-order feature engineering
+    enable_granger_causality: bool = True  # Granger causality for cross-asset timing
+    enable_regime_prediction: bool = True  # Regime transition prediction
+    
+    use_meta_labeling: bool = True  # Meta-labeling for profitable trades
+    meta_label_cost_threshold: float = 0.0  # Cost threshold for meta-labeling
+    use_triple_barrier: bool = True  # Triple-barrier labeling (no lookahead bias)
+    use_recency_weighting: bool = True  # Weight recent data higher
+    
+    use_v2_data_quality: bool = True  # V2 data quality pipeline
+
+
 class TrainingSettings(BaseModel):
     window_days: int = 150
     walk_forward: WalkForwardSettings = Field(default_factory=WalkForwardSettings)
+    model_training: ModelTrainingSettings = Field(default_factory=ModelTrainingSettings)
+    advanced: AdvancedTrainingSettings = Field(default_factory=AdvancedTrainingSettings)
     rl_agent: RLAgentSettings = Field(default_factory=RLAgentSettings)
     shadow_trading: ShadowTradingSettings = Field(default_factory=ShadowTradingSettings)
     memory: MemorySettings = Field(default_factory=MemorySettings)

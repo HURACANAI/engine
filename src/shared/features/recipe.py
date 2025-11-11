@@ -672,6 +672,16 @@ class FeatureRecipe:
         if "ts" not in frame.columns:
             raise ValueError("Expected timestamp column 'ts'")
         ordered = frame.sort("ts")
+        
+        # CRITICAL: Preserve original OHLCV columns at the very start
+        # These are actual market data and must NEVER be modified or filled with 0.0
+        critical_columns = {"close", "ts", "open", "high", "low", "volume"}
+        original_critical = {}
+        for col in critical_columns:
+            if col in ordered.columns:
+                # Store a copy of the original column
+                original_critical[col] = ordered.select(pl.col(col))
+        
         base = ordered.with_columns(
             [
                 pl.col("close").pct_change(n).alias(f"ret_{n}") for n in self.momentum_windows
@@ -930,7 +940,39 @@ class FeatureRecipe:
         # Drop intermediate column
         feature_frame = feature_frame.drop("typical_price_volume")
 
-        filled = feature_frame.fill_null(strategy="forward").fill_null(strategy="backward").fill_nan(0.0)
+        # CRITICAL: Restore original OHLCV columns from the very beginning
+        # These columns contain actual market data and should NEVER be modified
+        # Get list of feature columns (everything except critical columns)
+        feature_cols = [col for col in feature_frame.columns if col not in critical_columns]
+        
+        if feature_cols:
+            # Select only feature columns for filling
+            feature_data = feature_frame.select(feature_cols)
+            # Fill nulls and NaNs in feature columns only
+            filled_features = feature_data.fill_null(strategy="forward").fill_null(strategy="backward").fill_nan(0.0)
+            
+            # Reconstruct the full dataframe with ORIGINAL critical columns and filled features
+            # Start with original critical columns (preserved from the very beginning)
+            result_parts = []
+            for col in critical_columns:
+                if col in original_critical:
+                    result_parts.append(original_critical[col])
+            
+            # Add filled feature columns
+            result_parts.append(filled_features)
+            
+            # Concatenate horizontally to combine original OHLCV with filled features
+            filled = pl.concat(result_parts, how="horizontal")
+        else:
+            # No feature columns, just return the original critical columns
+            result_parts = [original_critical[col] for col in critical_columns if col in original_critical]
+            if len(result_parts) > 1:
+                filled = pl.concat(result_parts, how="horizontal")
+            elif len(result_parts) == 1:
+                filled = result_parts[0]
+            else:
+                filled = feature_frame
+        
         return filled
 
     def build_with_market_context(

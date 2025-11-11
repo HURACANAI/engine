@@ -1,9 +1,10 @@
 """Dropbox sync service for automatic cloud backup of logs, models, and training data."""
 
+# pyright: reportUnknownMemberType=false, reportUnknownArgumentType=false
+# These warnings are expected due to dynamic typing in structlog and Dropbox SDK
+
 from __future__ import annotations
 
-import hashlib
-import json
 import threading
 import time
 from datetime import datetime, timezone
@@ -22,7 +23,7 @@ except ImportError:
     ApiError = Exception  # type: ignore[assignment]
     AuthError = Exception  # type: ignore[assignment]
 
-logger = structlog.get_logger(__name__)
+logger = structlog.get_logger(__name__)  # type: ignore[reportUnknownMemberType]
 
 
 class DropboxSync:
@@ -101,8 +102,8 @@ class DropboxSync:
             )
             raise ValueError(
                 f"Dropbox token is too short ({len(self._access_token)} characters). "
-                f"Valid tokens are typically 1000+ characters. "
-                f"Please ensure you copied the entire token from Dropbox App Console."
+                + f"Valid tokens are typically 1000+ characters. "
+                + f"Please ensure you copied the entire token from Dropbox App Console."
             )
         elif len(self._access_token) < 500:
             logger.warning(
@@ -270,8 +271,6 @@ class DropboxSync:
             try:
                 existing = self._dbx.files_get_metadata(remote_path)
                 if isinstance(existing, dropbox.files.FileMetadata):  # type: ignore[misc]
-                    # Compare hashes to see if file is identical
-                    local_hash = hashlib.sha256(file_data).hexdigest()
                     # Dropbox content_hash is base64 encoded, we need to compare properly
                     # For now, if file exists and overwrite=True, we'll overwrite it
                     # If overwrite=False and file exists, skip
@@ -1073,7 +1072,7 @@ class DropboxSync:
                         # Download file if it doesn't exist locally or is older
                         if not local_path.exists() or local_path.stat().st_mtime < entry.server_modified.timestamp():
                             try:
-                                metadata, response = self._dbx.files_download(entry.path_display)
+                                _metadata, response = self._dbx.files_download(entry.path_display)
                                 with open(local_path, "wb") as f:
                                     f.write(response.content)
                                 count += 1
@@ -1109,7 +1108,7 @@ class DropboxSync:
                             
                             if not local_path.exists() or local_path.stat().st_mtime < entry.server_modified.timestamp():
                                 try:
-                                    metadata, response = self._dbx.files_download(entry.path_display)
+                                    _metadata, response = self._dbx.files_download(entry.path_display)
                                     with open(local_path, "wb") as f:
                                         f.write(response.content)
                                     count += 1
