@@ -85,7 +85,7 @@ class ModelRegistry:
                 params = EXCLUDED.params,
                 features = EXCLUDED.features,
                 notes = EXCLUDED.notes
-        """
+            """
         # Clean params and features before JSON serialization
         cleaned_params = clean_for_json(params)
         cleaned_features = clean_for_json(features)
@@ -166,17 +166,17 @@ class ModelRegistry:
                 slippage_bps = EXCLUDED.slippage_bps,
                 total_costs_bps = EXCLUDED.total_costs_bps,
                 validation_window = EXCLUDED.validation_window
-        """
+            """
         payload = {"model_id": model_id, **cleaned_metrics}
         self._execute_raw_sql(sql, payload)
 
     def log_publish(self, *, model_id: str, symbol: str, published: bool, reason: str, at: datetime) -> None:
         # Use raw SQL string to avoid SQLAlchemy's text() compilation
-        # Cast integer to boolean in SQL to handle PostgreSQL boolean type
+        # Pass boolean as Python bool - psycopg2 handles conversion to PostgreSQL boolean
         # This bypasses the boolean evaluation error in SQLAlchemy 2.0.44
         sql = """
             INSERT INTO publish_log (model_id, symbol, published, reason, at)
-            VALUES (:model_id, :symbol, :published::boolean, :reason, :at)
+            VALUES (:model_id, :symbol, :published, :reason, :at)
             ON CONFLICT (model_id)
             DO UPDATE SET
                 published = EXCLUDED.published,
@@ -187,7 +187,7 @@ class ModelRegistry:
         payload = {
             "model_id": model_id,
             "symbol": symbol,
-            "published": 1 if bool(published) else 0,  # Convert boolean to integer
+            "published": bool(published),  # Pass as Python bool - psycopg2 handles it
             "reason": reason,
             "at": at,
         }
@@ -219,8 +219,9 @@ class ModelRegistry:
                     else:
                         cleaned_payload[key] = val_float
                 elif isinstance(value, (np.bool_, bool)):
-                    # Convert boolean to integer (0/1) - PostgreSQL will handle conversion
-                    cleaned_payload[key] = 1 if bool(value) else 0
+                    # Keep as Python bool - psycopg2 will handle conversion to PostgreSQL boolean
+                    # This works correctly with exec_driver_sql
+                    cleaned_payload[key] = bool(value)
                 elif isinstance(value, np.ndarray):
                     # Convert arrays to lists (for JSON columns)
                     cleaned_payload[key] = value.tolist()
@@ -240,40 +241,42 @@ class ModelRegistry:
                         cleaned_payload[key] = str(value)
             
             # Convert named parameters (:param) to psycopg2 style (%s) with proper ordering
-            # Pattern: :param_name (but not ::type which is a SQL cast)
-            # Match :param_name but exclude :: which is a SQL cast operator (not a parameter)
-            # Approach: find all :word patterns, skip those that are part of :: casts
+            # Pattern: :param_name (including those with ::type casts)
+            # We want to replace :param::type with %s (removing the cast, psycopg2 handles types)
             param_pattern = r':([a-zA-Z_][a-zA-Z0-9_]*)'
             all_matches = list(re.finditer(param_pattern, sql))
             param_names = []
-            processed_positions = set()  # Track positions we've already processed (to skip cast types)
+            cast_ranges = []  # Track ranges of SQL casts to remove them
+            processed_positions = set()  # Track positions already processed (to skip cast types)
             
             for match in all_matches:
                 param_name = match.group(1)
                 start_pos = match.start()
                 end_pos = match.end()
                 
-                # Skip if we've already processed this position (part of a cast)
+                # Skip if this position is already processed (part of a cast type name)
                 if start_pos in processed_positions:
                     continue
                 
-                # Check if followed by : (which would be ::, a SQL cast)
-                if end_pos < len(sql) and sql[end_pos] == ':':
-                    # This is :param::type - skip the parameter and mark cast type positions
-                    # Find where the cast type ends (next space, comma, paren, etc.)
-                    cast_start = end_pos + 1  # After ::
+                # Check if followed by :: (SQL cast operator)
+                if end_pos < len(sql) and sql[end_pos:end_pos+2] == '::':
+                    # This is :param::type - we want to replace :param with %s and remove ::type
+                    # Find where the cast type ends (space, comma, paren, etc.)
+                    cast_start = end_pos + 2  # After ::
                     cast_end = cast_start
                     while cast_end < len(sql) and (sql[cast_end].isalnum() or sql[cast_end] == '_'):
                         cast_end += 1
-                    # Mark the cast type positions (including the : before it and the type name)
-                    # This prevents the regex from matching :boolean as a parameter
-                    for pos in range(end_pos, cast_end):  # From first : to end of cast type
+                    # Mark the cast range for removal (::type part)
+                    cast_ranges.append((end_pos, cast_end))  # Range to remove: ::jsonb
+                    # Mark cast type positions as processed (so :jsonb doesn't get matched as a parameter)
+                    # The entire cast (::type) is from end_pos to cast_end
+                    for pos in range(end_pos, cast_end):
                         processed_positions.add(pos)
-                    # Skip this parameter (it's part of a cast expression)
-                    continue
-                
-                # Valid parameter (not part of a cast)
-                param_names.append(param_name)
+                    # Still add the parameter - we want to replace :params with %s
+                    param_names.append(param_name)
+                else:
+                    # Regular parameter (no cast)
+                    param_names.append(param_name)
             
             # Build parameter list in order of appearance in SQL
             param_list = []
@@ -284,24 +287,18 @@ class ModelRegistry:
                     seen_params.add(param_name)
             
             # Replace named parameters with %s placeholders (psycopg2 style)
-            # Handle parameter replacement carefully to preserve SQL casts (e.g., ::boolean)
+            # First, remove SQL casts (::jsonb, ::boolean) - psycopg2 handles type conversion
             sql_psycopg = sql
+            # Remove casts in reverse order to preserve positions
+            for cast_start, cast_end in sorted(cast_ranges, reverse=True):
+                sql_psycopg = sql_psycopg[:cast_start] + sql_psycopg[cast_end:]
+            
+            # Now replace parameter placeholders with %s
             for param_name in param_names:
                 if param_name in cleaned_payload:
-                    # Replace parameter placeholder, but be careful with SQL casts
-                    # If parameter has a cast (e.g., :published::boolean), replace the parameter name only
-                    # Pattern: :param_name or :param_name::type
+                    # Replace :param_name with %s
                     pattern = f':{param_name}'
-                    if f'{pattern}::boolean' in sql_psycopg:
-                        # Parameter has boolean cast - replace parameter but keep cast
-                        sql_psycopg = sql_psycopg.replace(pattern, '%s', 1)
-                        # For boolean columns, convert integer to boolean in SQL
-                        # PostgreSQL will cast %s::boolean correctly when we pass integer
-                        # But we need to ensure the cast is in the right place
-                        pass  # Cast is already in SQL, just replace parameter
-                    else:
-                        # No cast, simple replacement
-                        sql_psycopg = sql_psycopg.replace(pattern, '%s', 1)
+                    sql_psycopg = sql_psycopg.replace(pattern, '%s', 1)
             
             # Execute using exec_driver_sql to bypass SQLAlchemy's statement compilation
             # This directly uses the database driver (psycopg2) without SQLAlchemy's validation
