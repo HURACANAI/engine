@@ -70,18 +70,34 @@ class CandleDataLoader:
         self._on_data_saved = on_data_saved
 
     def load(self, query: CandleQuery, use_cache: bool = True) -> pl.DataFrame:
+        """Load data from cache (Dropbox/local) or download from exchange.
+        
+        Steps:
+        1. Check if data exists in cache (Dropbox/local)
+        2. If cached, check date range and determine missing data
+        3. Download missing data from exchange (top-up)
+        4. Merge cached data with new data
+        5. Update cache and upload to Dropbox
+        """
         cache_path = self._cache_path(query)
+        cached_data = None
+        cache_source = None
+        
+        # Step 1: Check if data exists in cache
         if use_cache and cache_path.exists():
             try:
-                frame = pl.read_parquet(cache_path)
+                print(f"📦 [{query.symbol}] Checking local cache: {cache_path.name}")
+                cached_data = pl.read_parquet(cache_path)
+                cache_source = "local"
                 
                 # CRITICAL: Check if cached data has corrupted timestamps (1970 dates)
-                # If so, re-download to fix the issue
-                if "ts" in frame.columns and len(frame) > 0:
-                    ts_min = frame["ts"].min()
-                    ts_max = frame["ts"].max()
+                if "ts" in cached_data.columns and len(cached_data) > 0:
+                    ts_min = cached_data["ts"].min()
+                    ts_max = cached_data["ts"].max()
+                    
                     # Check if dates are reasonable (after 2020)
                     if ts_min.year < 2020 or ts_max.year < 2020:
+                        print(f"⚠️  [{query.symbol}] Cache has corrupted timestamps (1970 dates) - re-downloading")
                         logger.warning(
                             "cached_data_has_corrupted_timestamps",
                             cache_path=str(cache_path),
@@ -93,56 +109,134 @@ class CandleDataLoader:
                         try:
                             cache_path.unlink()
                             logger.info("corrupted_cache_deleted", cache_path=str(cache_path))
+                            cached_data = None
+                            cache_source = None
                         except Exception as del_error:
                             logger.warning("cache_delete_failed", error=str(del_error))
-                        # Fall through to download fresh data
                     else:
-                        # Cached data is valid
-                        return self._quality.validate(frame, query=query)
+                        # Cached data is valid - check date range
+                        cache_start = ts_min
+                        cache_end = ts_max
+                        requested_start = query.start_at
+                        requested_end = query.end_at
+                        
+                        print(f"✅ [{query.symbol}] Found cached data: {cache_start.date()} to {cache_end.date()} ({len(cached_data):,} rows)")
+                        print(f"📅 [{query.symbol}] Requested range: {requested_start.date()} to {requested_end.date()}")
+                        
+                        # Check if we need to download missing data
+                        needs_topup = False
+                        topup_start = requested_start
+                        topup_end = requested_end
+                        
+                        if cache_start > requested_start:
+                            needs_topup = True
+                            topup_end = cache_start - timedelta(minutes=1)
+                            print(f"⬇️  [{query.symbol}] Need to download earlier data: {requested_start.date()} to {topup_end.date()}")
+                        
+                        if cache_end < requested_end:
+                            needs_topup = True
+                            topup_start = max(cache_end + timedelta(minutes=1), requested_start)
+                            print(f"⬇️  [{query.symbol}] Need to download newer data: {topup_start.date()} to {requested_end.date()}")
+                        
+                        if not needs_topup:
+                            # Cache has all requested data
+                            print(f"✅ [{query.symbol}] Cache has all requested data - using cached data")
+                            validated = self._quality.validate(cached_data, query=query)
+                            return validated
+                        
+                        # We need to top-up from exchange
+                        print(f"🔄 [{query.symbol}] Top-up needed: Downloading missing data from {self._exchange.exchange_id}")
+                        
+                        # Download missing data
+                        topup_query = CandleQuery(
+                            symbol=query.symbol,
+                            timeframe=query.timeframe,
+                            start_at=topup_start,
+                            end_at=topup_end,
+                        )
+                        topup_data = self._download(topup_query, skip_validation=True)
+                        
+                        if len(topup_data) > 0:
+                            print(f"✅ [{query.symbol}] Downloaded {len(topup_data):,} new rows from {self._exchange.exchange_id}")
+                            
+                            # Merge cached data with new data
+                            if cache_start > requested_start:
+                                # New data comes before cached data
+                                merged = pl.concat([topup_data, cached_data])
+                            else:
+                                # New data comes after cached data
+                                merged = pl.concat([cached_data, topup_data])
+                            
+                            # Remove duplicates and sort
+                            merged = merged.unique(subset=["ts"], keep="first").sort("ts")
+                            
+                            print(f"✅ [{query.symbol}] Merged data: {len(merged):,} total rows ({len(cached_data):,} cached + {len(topup_data):,} new)")
+                            
+                            # Update cache
+                            try:
+                                merged.write_parquet(cache_path)
+                                import os
+                                os.utime(cache_path, None)
+                                print(f"💾 [{query.symbol}] Updated cache: {cache_path.name}")
+                                
+                                # Trigger Dropbox upload
+                                if self._on_data_saved:
+                                    try:
+                                        self._on_data_saved(cache_path)
+                                        print(f"☁️  [{query.symbol}] Uploaded to Dropbox: {cache_path.name}")
+                                    except Exception as callback_error:
+                                        print(f"⚠️  [{query.symbol}] Dropbox upload failed: {callback_error}")
+                                        logger.warning("on_data_saved_callback_failed", error=str(callback_error))
+                                
+                                return self._quality.validate(merged, query=query)
+                            except Exception as e:
+                                print(f"❌ [{query.symbol}] Failed to update cache: {e}")
+                                logger.warning("cache_write_failed", path=str(cache_path), error=str(e))
+                        else:
+                            # Top-up failed, use cached data
+                            print(f"⚠️  [{query.symbol}] Top-up failed - using cached data only")
+                            return self._quality.validate(cached_data, query=query)
                 else:
-                    # No ts column or empty frame - validate and return
-                    return self._quality.validate(frame, query=query)
+                    # No ts column or empty frame
+                    print(f"⚠️  [{query.symbol}] Cache has no timestamp column - re-downloading")
+                    cached_data = None
+                    cache_source = None
             except Exception as e:
                 # If cache read fails, fall back to download
+                print(f"⚠️  [{query.symbol}] Cache read failed: {e} - downloading from exchange")
                 logger.warning("cache_read_failed", path=str(cache_path), error=str(e))
+                cached_data = None
+                cache_source = None
         
-        frame = self._download(query)
-        if len(frame) > 0:  # Only write if we got data
-            try:
-                frame.write_parquet(cache_path)
+        # Step 2: No cache or cache invalid - download from exchange
+        if cached_data is None:
+            print(f"⬇️  [{query.symbol}] Downloading from {self._exchange.exchange_id}: {query.start_at.date()} to {query.end_at.date()}")
+            frame = self._download(query)
+            
+            if len(frame) > 0:
+                print(f"✅ [{query.symbol}] Downloaded {len(frame):,} rows from {self._exchange.exchange_id}")
                 
-                # Update file modification time to ensure it's detected as "recent" by sync
-                import os
-                os.utime(cache_path, None)  # Update to current time
-                
-                logger.info(
-                    "coin_data_cached",
-                    symbol=query.symbol,
-                    cache_path=str(cache_path),
-                    rows=len(frame),
-                    message="Coin data saved" + (" - uploading to Dropbox immediately" if self._on_data_saved else " - will be synced to Dropbox within 5 minutes"),
-                )
-                
-                # Trigger callback if provided (e.g., immediate Dropbox upload)
-                if self._on_data_saved:
-                    try:
-                        self._on_data_saved(cache_path)
-                        logger.info(
-                            "coin_data_callback_triggered",
-                            symbol=query.symbol,
-                            cache_path=str(cache_path),
-                            message="Immediate upload callback executed",
-                        )
-                    except Exception as callback_error:
-                        # Callback errors are non-fatal - don't break data loading
-                        logger.warning(
-                            "on_data_saved_callback_failed",
-                            cache_path=str(cache_path),
-                            error=str(callback_error),
-                            message="Callback failed, data will be synced by background sync",
-                        )
-            except Exception as e:
-                logger.warning("cache_write_failed", path=str(cache_path), error=str(e))
+                # Save to cache
+                try:
+                    frame.write_parquet(cache_path)
+                    import os
+                    os.utime(cache_path, None)
+                    print(f"💾 [{query.symbol}] Saved to cache: {cache_path.name}")
+                    
+                    # Trigger Dropbox upload
+                    if self._on_data_saved:
+                        try:
+                            self._on_data_saved(cache_path)
+                            print(f"☁️  [{query.symbol}] Uploaded to Dropbox: {cache_path.name}")
+                        except Exception as callback_error:
+                            print(f"⚠️  [{query.symbol}] Dropbox upload failed: {callback_error}")
+                            logger.warning("on_data_saved_callback_failed", error=str(callback_error))
+                except Exception as e:
+                    print(f"❌ [{query.symbol}] Failed to save cache: {e}")
+                    logger.warning("cache_write_failed", path=str(cache_path), error=str(e))
+            else:
+                print(f"⚠️  [{query.symbol}] No data downloaded from {self._exchange.exchange_id}")
+        
         return frame
 
     def _download(self, query: CandleQuery, skip_validation: bool = False) -> pl.DataFrame:
@@ -198,11 +292,21 @@ class CandleDataLoader:
         # Binance supports up to 1000 candles per request, which is already max
         # Add small delay between batches to respect rate limits
         import time
+        batch_count = 0
+        start_ms = since_ms  # Track start for progress calculation
+        
         while since_ms < end_ms:
             batch = exchange_client.fetch_ohlcv(query.symbol, query.timeframe, since=since_ms, limit=1_000)
             if not batch or len(batch) == 0:
                 break
             rows.extend(batch)
+            batch_count += 1
+            
+            # Progress update every 10 batches
+            if batch_count % 10 == 0:
+                progress_pct = min(100, int((since_ms - start_ms) / (end_ms - start_ms) * 100)) if (end_ms - start_ms) > 0 else 0
+                print(f"  ⬇️  [{query.symbol}] Downloading... {batch_count} batches, {len(rows):,} rows ({progress_pct}%)", end='\r')
+            
             # Safely get last timestamp
             last_ts = batch[-1][0] if len(batch) > 0 else None
             if last_ts is None or last_ts == since_ms:
@@ -211,6 +315,8 @@ class CandleDataLoader:
             # Small delay between batches to avoid rate limits (50ms)
             # Binance allows 40 requests/second, so 50ms = ~20 requests/second is safe
             time.sleep(0.05)
+        
+        print(f"  ✅ [{query.symbol}] Download complete: {batch_count} batches, {len(rows):,} rows")
         if not rows:
             # Return empty DataFrame with correct schema
             return pl.DataFrame(

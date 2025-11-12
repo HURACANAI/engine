@@ -28,6 +28,15 @@ import ray  # type: ignore[reportMissingImports]
 import structlog  # type: ignore[reportMissingImports]
 from lightgbm import LGBMRegressor  # type: ignore[reportMissingImports]
 
+try:
+    from tqdm import tqdm
+    HAS_TQDM = True
+except ImportError:
+    HAS_TQDM = False
+    # Create a dummy tqdm if not available
+    def tqdm(iterable=None, **kwargs):
+        return iterable if iterable is not None else range(kwargs.get('total', 0))
+
 from ..config.settings import EngineSettings
 from ..datasets.data_loader import CandleDataLoader, CandleQuery
 from ..datasets.quality_checks import DataQualitySuite
@@ -496,42 +505,76 @@ class TrainingOrchestrator:
         )
         s3_uri = ""
         if result.published and result.artifacts:
-            s3_uri = self._artifact_publisher.publish(self._run_date, result.symbol, result.artifacts)
-            result.artifacts_path = s3_uri
+            print(f"☁️  [{result.symbol}] Publishing artifacts to S3/Dropbox...")
+            try:
+                s3_uri = self._artifact_publisher.publish(self._run_date, result.symbol, result.artifacts)
+                result.artifacts_path = s3_uri
+                print(f"✅ [{result.symbol}] Artifacts published: {s3_uri}")
+                print(f"☁️  [{result.symbol}] Model uploaded to Dropbox: {len(result.artifacts.files)} files")
+                logger.info("artifacts_published", symbol=result.symbol, s3_uri=s3_uri, file_count=len(result.artifacts.files))
+            except Exception as e:
+                print(f"❌ [{result.symbol}] Failed to publish artifacts: {e}")
+                logger.error("artifact_publish_failed", symbol=result.symbol, error=str(e), error_type=type(e).__name__)
+        
+        # Registry operations - wrap in try/except so they don't fail the whole pipeline
         kind = "baseline" if result.published else "candidate"
-        self._registry.upsert_model(
-            model_id=result.model_id,
-            symbol=result.symbol,
-            kind=kind,
-            created_at=datetime.now(tz=timezone.utc),
-            s3_path=s3_uri,
-            params=result.model_params,
-            features=result.feature_metadata,
-            notes=result.reason,
-        )
+        try:
+            print(f"💾 [{result.symbol}] Registering model in database...")
+            self._registry.upsert_model(
+                model_id=result.model_id,
+                symbol=result.symbol,
+                kind=kind,
+                created_at=datetime.now(tz=timezone.utc),
+                s3_path=s3_uri,
+                params=result.model_params,
+                features=result.feature_metadata,
+                notes=result.reason,
+            )
+            print(f"✅ [{result.symbol}] Model registered in database")
+            logger.info("model_registered", symbol=result.symbol, model_id=result.model_id, kind=kind)
+        except Exception as e:
+            print(f"⚠️  [{result.symbol}] Failed to register model in database: {e}")
+            logger.error("model_registration_failed", symbol=result.symbol, error=str(e), error_type=type(e).__name__)
+            # Continue - don't fail the whole pipeline
+        
         if result.metrics_payload:
-            payload = {
-                "sharpe": result.metrics_payload.sharpe,
-                "profit_factor": result.metrics_payload.profit_factor,
-                "hit_rate": result.metrics_payload.hit_rate_pct / 100.0,
-                "max_dd_bps": result.metrics_payload.max_drawdown_bps,
-                "pnl_bps": result.metrics_payload.pnl_bps,
-                "trades_oos": result.metrics_payload.trades,
-                "turnover": result.metrics_payload.turnover_pct,
-                "fee_bps": result.metrics_payload.costs.get("fee_bps", 0.0),
-                "spread_bps": result.metrics_payload.costs.get("spread_bps", 0.0),
-                "slippage_bps": result.metrics_payload.costs.get("slippage_bps", 0.0),
-                "total_costs_bps": result.metrics_payload.costs.get("total_costs_bps", 0.0),
-                "validation_window": result.metrics_payload.validation_window,
-            }
-            self._registry.upsert_metrics(model_id=result.model_id, metrics=payload)
-        self._registry.log_publish(
-            model_id=result.model_id,
-            symbol=result.symbol,
-            published=result.published,
-            reason=result.reason,
-            at=datetime.now(tz=timezone.utc),
-        )
+            try:
+                payload = {
+                    "sharpe": result.metrics_payload.sharpe,
+                    "profit_factor": result.metrics_payload.profit_factor,
+                    "hit_rate": result.metrics_payload.hit_rate_pct / 100.0,
+                    "max_dd_bps": result.metrics_payload.max_drawdown_bps,
+                    "pnl_bps": result.metrics_payload.pnl_bps,
+                    "trades_oos": result.metrics_payload.trades,
+                    "turnover": result.metrics_payload.turnover_pct,
+                    "fee_bps": result.metrics_payload.costs.get("fee_bps", 0.0),
+                    "spread_bps": result.metrics_payload.costs.get("spread_bps", 0.0),
+                    "slippage_bps": result.metrics_payload.costs.get("slippage_bps", 0.0),
+                    "total_costs_bps": result.metrics_payload.costs.get("total_costs_bps", 0.0),
+                    "validation_window": result.metrics_payload.validation_window,
+                }
+                self._registry.upsert_metrics(model_id=result.model_id, metrics=payload)
+                print(f"✅ [{result.symbol}] Metrics saved to database")
+                logger.info("metrics_saved", symbol=result.symbol, model_id=result.model_id)
+            except Exception as e:
+                print(f"⚠️  [{result.symbol}] Failed to save metrics to database: {e}")
+                logger.error("metrics_save_failed", symbol=result.symbol, error=str(e), error_type=type(e).__name__)
+                # Continue - don't fail the whole pipeline
+        
+        try:
+            self._registry.log_publish(
+                model_id=result.model_id,
+                symbol=result.symbol,
+                published=result.published,
+                reason=result.reason,
+                at=datetime.now(tz=timezone.utc),
+            )
+            print(f"✅ [{result.symbol}] Publish log saved to database")
+            logger.info("publish_log_saved", symbol=result.symbol, model_id=result.model_id, published=result.published)
+        except Exception as e:
+            print(f"⚠️  [{result.symbol}] Failed to save publish log to database: {e}")
+            logger.error("publish_log_save_failed", symbol=result.symbol, error=str(e), error_type=type(e).__name__)
+            # Continue - don't fail the whole pipeline
         if result.published:
             self._notifier.send_success(result, run_date=self._run_date)
         else:
@@ -620,17 +663,57 @@ def _train_symbol(
     mode: str,
     dsn: Optional[str] = None,
 ) -> TrainingTaskResult:
+    """Train a symbol with comprehensive logging."""
+    
+    def _print_status(message: str, sym: str = "", level: str = "INFO") -> None:
+        """Print human-readable status message."""
+        prefix = {
+            "INFO": "✅",
+            "WARN": "⚠️ ",
+            "ERROR": "❌",
+            "PROGRESS": "🔄",
+            "SUCCESS": "✨",
+        }.get(level, "ℹ️ ")
+        
+        symbol_str = f"[{sym}] " if sym else ""
+        print(f"{prefix} {symbol_str}{message}")
+    
     logger.info(
         "training_task_started",
         symbol=symbol,
         exchange_id=exchange_id,
         message="Ray task started - beginning data download",
     )
+    print(f"\n{'='*80}")
+    print(f"🚀 [{symbol}] STARTING TRAINING PIPELINE")
+    print(f"{'='*80}")
+    print(f"  Symbol:           {symbol}")
+    print(f"  Exchange:         {exchange_id}")
+    print(f"  Run Date:         {run_date_str}")
+    print(f"  Mode:             {mode}")
+    print(f"{'='*80}\n")
+    
+    _print_status(f"Starting training for {symbol}", sym=symbol, level="INFO")
+    _print_status(f"Exchange: {exchange_id}", sym=symbol, level="INFO")
     settings = EngineSettings.model_validate(raw_settings)
     run_date = date.fromisoformat(run_date_str)
     credentials = settings.exchange.credentials.get(exchange_id, {})
     exchange = ExchangeClient(exchange_id, credentials=credentials, sandbox=settings.exchange.sandbox)
     quality_suite = DataQualitySuite()
+    
+    # CRITICAL: Define advanced_config early so it's available throughout the function
+    # Get advanced config with safe fallback
+    try:
+        advanced_config = settings.training.advanced
+        use_ensemble = advanced_config.use_multi_model_ensemble if advanced_config else False
+        ensemble_techniques = advanced_config.ensemble_techniques if advanced_config else ["lightgbm"]
+        ensemble_method = advanced_config.ensemble_method if advanced_config else "weighted_voting"
+    except (AttributeError, KeyError) as e:
+        logger.warning("advanced_config_not_available", symbol=symbol, error=str(e), message="Using default single model training")
+        advanced_config = None
+        use_ensemble = False
+        ensemble_techniques = ["lightgbm"]
+        ensemble_method = "single_model"
     
     # Multi-exchange fallback support
     # Get credentials for all exchanges for fallback
@@ -763,8 +846,10 @@ def _train_symbol(
             feature_metadata={},
         )
 
+    _print_status("Building features (75+ technical indicators)...", sym=symbol, level="PROGRESS")
     recipe = FeatureRecipe()
     feature_frame = recipe.build(raw_frame)
+    _print_status(f"Feature engineering complete: {len(feature_frame.columns)} features created", sym=symbol, level="SUCCESS")
     
     # Verify close column is preserved after feature engineering
     if "close" in feature_frame.columns:
@@ -848,10 +933,16 @@ def _train_symbol(
     )
     
     # Use V2 labeling (triple-barrier + meta-labeling) if enabled, otherwise basic labeling
-    advanced_config = settings.training.advanced
-    use_v2_labeling = advanced_config.use_triple_barrier or advanced_config.use_meta_labeling
+    # Note: advanced_config is already defined at the beginning of the function
+    if advanced_config:
+        try:
+            use_v2_labeling = advanced_config.use_triple_barrier or advanced_config.use_meta_labeling
+        except (AttributeError, TypeError):
+            use_v2_labeling = False
+    else:
+        use_v2_labeling = False
     
-    if use_v2_labeling:
+    if use_v2_labeling and advanced_config:
         logger.info(
             "using_v2_labeling",
             symbol=symbol,
@@ -889,7 +980,7 @@ def _train_symbol(
             )
             
             # Apply meta-labeling if enabled
-            if advanced_config.use_meta_labeling:
+            if advanced_config and advanced_config.use_meta_labeling:
                 meta_labeler = MetaLabeler(
                     cost_threshold_bps=advanced_config.meta_label_cost_threshold,
                 )
@@ -1126,6 +1217,7 @@ def _train_symbol(
             rows_dropped=len(feature_frame) - len(labeled),
             columns_after_labeling=list(labeled.columns),
         )
+        _print_status(f"Labeling complete: {len(labeled):,} labeled samples (dropped {len(feature_frame) - len(labeled)} rows)", sym=symbol, level="SUCCESS")
         
         # Convert to Pandas
         # LabelBuilder already validated that net_edge_bps has valid values
@@ -1479,6 +1571,7 @@ def _train_symbol(
 
     # Use configurable training settings
     model_config = settings.training.model_training
+    
     hyperparams = {
         "objective": "regression",
         "learning_rate": model_config.learning_rate,
@@ -1515,6 +1608,18 @@ def _train_symbol(
     cost_threshold = cost_model.recommended_edge_threshold(costs)
     oos_trades: List[pd.DataFrame] = []
     
+    # Initialize Brain Library integration (if database is available)
+    brain_training = None
+    try:
+        if dsn:
+            from ..brain.brain_library import BrainLibrary
+            brain_library = BrainLibrary(dsn=dsn, use_pool=True)
+            brain_training = BrainIntegratedTraining(brain_library, settings)
+            logger.info("brain_library_integration_enabled", symbol=symbol)
+    except Exception as e:
+        logger.warning("brain_library_initialization_failed", symbol=symbol, error=str(e))
+        # Continue without Brain Library if initialization fails
+    
     logger.info(
         "model_training_config",
         symbol=symbol,
@@ -1526,6 +1631,13 @@ def _train_symbol(
         total_samples=len(dataset),
         message="Starting intensive model training with configured hyperparameters",
     )
+    
+    # Print training configuration
+    model_type = "Multi-Model Ensemble" if use_ensemble else "LightGBM"
+    ensemble_info = f" ({', '.join(ensemble_techniques)})" if use_ensemble and ensemble_techniques else ""
+    _print_status(f"Starting {model_type}{ensemble_info} training", sym=symbol, level="INFO")
+    _print_status(f"Configuration: {model_config.n_estimators} estimators, LR={model_config.learning_rate}, Depth={model_config.max_depth}", sym=symbol, level="INFO")
+    _print_status(f"Walk-forward validation: {len(splits)} splits ({settings.training.walk_forward.train_days} train / {settings.training.walk_forward.test_days} test days)", sym=symbol, level="INFO")
     
     # If no splits were created, log detailed diagnostics
     if len(splits) == 0:
@@ -1541,26 +1653,22 @@ def _train_symbol(
             message="No walk-forward splits created - check timestamp range and walk-forward settings",
         )
     
-    # Initialize Brain Library integration (if database is available)
-    brain_training = None
-    try:
-        if dsn:
-            from ..brain.brain_library import BrainLibrary
-            brain_library = BrainLibrary(dsn=dsn, use_pool=True)
-            brain_training = BrainIntegratedTraining(brain_library, settings)
-            logger.info("brain_library_integration_enabled", symbol=symbol)
-    except Exception as e:
-        logger.warning("brain_library_initialization_failed", symbol=symbol, error=str(e))
-        # Continue without Brain Library if initialization fails
-    
-    # Check if we should use multi-model ensemble
-    advanced_config = settings.training.advanced
-    use_ensemble = advanced_config.use_multi_model_ensemble
-    
     total_training_start_time = time_module.time()
     ensemble_trainers = []  # Store ensemble trainers for final model
     
-    for split_idx, (train_mask, test_mask) in enumerate(splits):
+    # Create progress bar for walk-forward splits
+    split_iterator = enumerate(splits)
+    if HAS_TQDM:
+        split_iterator = tqdm(
+            enumerate(splits),
+            total=len(splits),
+            desc=f"[{symbol}] Training splits",
+            unit="split",
+            ncols=100,
+            bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]'
+        )
+    
+    for split_idx, (train_mask, test_mask) in split_iterator:
         split_start_time = time_module.time()
         X_train = dataset.loc[train_mask, feature_cols]
         y_train = dataset.loc[train_mask, "net_edge_bps"]
@@ -1591,8 +1699,12 @@ def _train_symbol(
             val_samples=len(X_val_split),
             test_samples=test_mask.sum(),
             use_ensemble=use_ensemble,
-            ensemble_method=advanced_config.ensemble_method if use_ensemble else "single_model",
+            ensemble_method=ensemble_method if use_ensemble else "single_model",
         )
+        
+        # Print split progress
+        progress_pct = ((split_idx + 1) / len(splits)) * 100
+        _print_status(f"Split {split_idx + 1}/{len(splits)} ({progress_pct:.1f}%): Training on {len(X_train_split):,} samples, validating on {len(X_val_split):,}", sym=symbol, level="PROGRESS")
         
         # Use multi-model ensemble if enabled, otherwise single LightGBM
         if use_ensemble:
@@ -1600,9 +1712,10 @@ def _train_symbol(
                 "training_multi_model_ensemble",
                 symbol=symbol,
                 split_idx=split_idx + 1,
-                techniques=advanced_config.ensemble_techniques,
-                ensemble_method=advanced_config.ensemble_method,
+                techniques=ensemble_techniques,
+                ensemble_method=ensemble_method,
             )
+            _print_status(f"Training ensemble: {', '.join(ensemble_techniques)}", sym=symbol, level="PROGRESS")
             
             # Train ensemble
             ensemble_trainer, ensemble_results = train_multi_model_ensemble(
@@ -1611,8 +1724,8 @@ def _train_symbol(
                 X_val=X_val_split,
                 y_val=y_val_split,
                 regimes=None,  # Could add regime detection here
-                techniques=advanced_config.ensemble_techniques,
-                ensemble_method=advanced_config.ensemble_method,
+                techniques=ensemble_techniques,
+                ensemble_method=ensemble_method,
                 is_classification=False,
             )
             
@@ -1636,8 +1749,13 @@ def _train_symbol(
                 ensemble_confidence=ensemble_result.confidence,
                 model_contributions=ensemble_result.model_contributions,
             )
+            
+            # Find best model
+            best_model = max(ensemble_results.items(), key=lambda x: x[1].val_score if x[1].val_score is not None else -999)[0] if ensemble_results else "unknown"
+            _print_status(f"Ensemble trained: {len(ensemble_results)} models, best={best_model}, confidence={ensemble_result.confidence:.3f}", sym=symbol, level="SUCCESS")
         else:
             # Train single LightGBM model with early stopping
+            _print_status("Training LightGBM model...", sym=symbol, level="PROGRESS")
             import lightgbm as lgb  # type: ignore[reportMissingImports]
             model = LGBMRegressor(**hyperparams)
             
@@ -1665,6 +1783,7 @@ def _train_symbol(
                     total_iterations=model_config.n_estimators,
                     stopped_early=True,
                 )
+                _print_status(f"LightGBM trained: {actual_iterations}/{model_config.n_estimators} iterations (early stopped)", sym=symbol, level="SUCCESS")
             else:
                 logger.info(
                     "training_completed_all_iterations",
@@ -1673,6 +1792,7 @@ def _train_symbol(
                     total_iterations=model_config.n_estimators,
                     stopped_early=False,
                 )
+                _print_status(f"LightGBM trained: {model_config.n_estimators} iterations (full training)", sym=symbol, level="SUCCESS")
             
             X_test = dataset.loc[test_mask, feature_cols]
             if X_test.empty:
@@ -1698,6 +1818,14 @@ def _train_symbol(
             use_ensemble=use_ensemble,
             message=f"Split {split_idx + 1}/{len(splits)} training completed",
         )
+        
+        # Print split completion with metrics
+        if not trades.empty:
+            avg_pnl = trades["pnl_bps"].mean()
+            win_rate = (trades["pnl_bps"] > 0).mean() * 100
+            _print_status(f"Split {split_idx + 1}/{len(splits)} complete: {len(trades)} trades, Avg PnL={avg_pnl:.2f} bps, Win Rate={win_rate:.1f}% ({split_training_time:.1f}s)", sym=symbol, level="SUCCESS")
+        else:
+            _print_status(f"Split {split_idx + 1}/{len(splits)} complete: 0 trades generated ({split_training_time:.1f}s)", sym=symbol, level="WARN")
     
     total_training_time = time_module.time() - total_training_start_time
     logger.info(
@@ -1710,7 +1838,24 @@ def _train_symbol(
     )
 
     combined_trades = pd.concat(oos_trades, ignore_index=True) if oos_trades else pd.DataFrame(columns=["timestamp", "pnl_bps", "prediction_bps", "confidence", "equity_curve"])  # type: ignore[call-overload]
+    
+    # Print trade summary
+    total_trades = len(combined_trades) if not combined_trades.empty else 0
+    _print_status(f"Walk-forward training complete: {len(splits)} splits, {total_trades:,} total trades, {total_training_time/60:.1f} minutes", sym=symbol, level="SUCCESS")
+    
+    if not combined_trades.empty:
+        winning_trades = (combined_trades["pnl_bps"] > 0).sum()
+        losing_trades = (combined_trades["pnl_bps"] <= 0).sum()
+        total_pnl = combined_trades["pnl_bps"].sum()
+        avg_pnl = combined_trades["pnl_bps"].mean()
+        _print_status(f"Trade Summary: {total_trades:,} trades ({winning_trades:,} wins, {losing_trades:,} losses), Total PnL={total_pnl:.2f} bps, Avg={avg_pnl:.2f} bps", sym=symbol, level="INFO")
+    else:
+        _print_status("WARNING: No trades generated during walk-forward validation", sym=symbol, level="WARN")
+    
     metrics = _compute_metrics(combined_trades, costs.total_costs_bps, len(dataset))
+    
+    # Print key metrics
+    _print_status(f"Model Performance: Sharpe={metrics.get('sharpe', 0):.2f}, Hit Rate={metrics.get('hit_rate', 0)*100:.1f}%, PnL={metrics.get('pnl_bps', 0):.2f} bps", sym=symbol, level="INFO")
     
     # Brain Library integration: Store final model metrics after all splits
     if brain_training:
@@ -1727,8 +1872,8 @@ def _train_symbol(
                     X_val=None,
                     y_val=None,
                     regimes=None,
-                    techniques=advanced_config.ensemble_techniques,
-                    ensemble_method=advanced_config.ensemble_method,
+                    techniques=ensemble_techniques,
+                    ensemble_method=ensemble_method,
                     is_classification=False,
                 )
                 # For brain integration, use the best single model from ensemble
@@ -1868,8 +2013,25 @@ def _train_symbol(
     published = all(gate_results.values())
     failed = [name for name, passed in gate_results.items() if not passed]
     reason = "all_pass" if published else "gate_failure:" + ",".join(failed)
+    
+    # Print gate results
+    print(f"\n{'='*80}")
+    print(f"📊 [{symbol}] GATE RESULTS")
+    print(f"{'='*80}")
+    print(f"  Sharpe Ratio:      {metrics['sharpe']:.2f} {'✅ PASS' if gate_results['sharpe_pass'] else '❌ FAIL'} (threshold: 0.7)")
+    print(f"  Profit Factor:     {metrics['profit_factor']:.2f} {'✅ PASS' if gate_results['profit_factor_pass'] else '❌ FAIL'} (threshold: 1.1)")
+    print(f"  Hit Rate:          {metrics['hit_rate']*100:.1f}% {'✅ PASS' if gate_results['hit_rate_pass'] else '❌ FAIL'} (threshold: {max(median_hit - 0.01, 0.0)*100:.1f}%)")
+    print(f"  Max Drawdown:      {metrics['max_dd_bps']:.2f} bps {'✅ PASS' if gate_results['max_dd_pass'] else '❌ FAIL'} (threshold: {1.2 * median_dd:.2f} bps)")
+    print(f"  Trades:            {metrics['trades_oos']:,} {'✅ PASS' if gate_results['trades_pass'] else '❌ FAIL'} (threshold: {settings.training.walk_forward.min_trades:,})")
+    print(f"{'='*80}")
+    if published:
+        print(f"✅ [{symbol}] ALL GATES PASSED - Model will be published")
+    else:
+        print(f"❌ [{symbol}] GATE FAILURE - Model rejected: {', '.join(failed)}")
+    print(f"{'='*80}\n")
 
     logger.info("training_final_production_model", symbol=symbol)
+    _print_status("Training final production model on all data...", sym=symbol, level="PROGRESS")
     final_production_start_time = time_module.time()
     
     # Train final model on all data for production use
@@ -1878,8 +2040,8 @@ def _train_symbol(
         logger.info(
             "training_final_ensemble_model",
             symbol=symbol,
-            techniques=advanced_config.ensemble_techniques,
-            ensemble_method=advanced_config.ensemble_method,
+            techniques=ensemble_techniques,
+            ensemble_method=ensemble_method,
         )
         
         # Train final ensemble on all data
@@ -1889,8 +2051,8 @@ def _train_symbol(
             X_val=None,  # Use all data for final model
             y_val=None,
             regimes=None,
-            techniques=advanced_config.ensemble_techniques,
-            ensemble_method=advanced_config.ensemble_method,
+            techniques=ensemble_techniques,
+            ensemble_method=ensemble_method,
             is_classification=False,
         )
         
@@ -1918,8 +2080,9 @@ def _train_symbol(
             "final_ensemble_model_training_complete",
             symbol=symbol,
             num_models=len(final_ensemble_results),
-            ensemble_method=advanced_config.ensemble_method,
+            ensemble_method=ensemble_method,
         )
+        _print_status(f"Final ensemble model trained: {len(final_ensemble_results)} models", sym=symbol, level="SUCCESS")
     else:
         # Train single LightGBM model
         final_model = LGBMRegressor(**hyperparams)
@@ -2029,33 +2192,85 @@ def _train_symbol(
         "metrics": metrics,
     }
 
+    # Clean hyperparameters: remove NaN values and convert numpy types to native Python types
+    def clean_for_json(obj: Any) -> Any:
+        """Recursively clean object for JSON serialization."""
+        import numpy as np
+        if isinstance(obj, dict):
+            return {k: clean_for_json(v) for k, v in obj.items() if not (isinstance(v, float) and (np.isnan(v) or np.isinf(v)))}
+        elif isinstance(obj, (list, tuple)):
+            return [clean_for_json(item) for item in obj if not (isinstance(item, float) and (np.isnan(item) or np.isinf(item)))]
+        elif isinstance(obj, (np.integer, np.int64, np.int32, np.int16, np.int8)):
+            return int(obj)
+        elif isinstance(obj, (np.floating, np.float64, np.float32, np.float16)):
+            val = float(obj)
+            # Replace NaN and Inf with None
+            if np.isnan(val) or np.isinf(val):
+                return None
+            return val
+        elif isinstance(obj, (np.bool_, bool)):
+            return bool(obj)
+        elif isinstance(obj, np.ndarray):
+            return [clean_for_json(item) for item in obj.tolist()]
+        elif obj is None:
+            return None
+        else:
+            # Try to serialize, if it fails return string representation
+            try:
+                json.dumps(obj)
+                return obj
+            except (TypeError, ValueError):
+                return str(obj)
+    
+    cleaned_hyperparams = clean_for_json(hyperparams)
+    cleaned_feature_importances = clean_for_json(feature_importances) if feature_importances else []
+    
     config_payload = {
         "run_id": run_id,
         "symbol": symbol,
         "mode": mode,
         "feature_columns": feature_cols,
-        "feature_importances": feature_importances,
-        "hyperparameters": hyperparams,
+        "feature_importances": cleaned_feature_importances,
+        "hyperparameters": cleaned_hyperparams,
         "training_window_days": settings.training.window_days,
         "walk_forward": settings.training.walk_forward.model_dump() if hasattr(settings.training.walk_forward, 'model_dump') else settings.training.walk_forward.dict() if hasattr(settings.training.walk_forward, 'dict') else {"train_days": settings.training.walk_forward.train_days, "test_days": settings.training.walk_forward.test_days, "min_trades": settings.training.walk_forward.min_trades},
     }
 
     bundle = None
     if published:
+        _print_status("Creating model artifacts...", sym=symbol, level="PROGRESS")
+        # Ensure all payloads are JSON-serializable
+        try:
+            config_json = json.dumps(config_payload, separators=(",", ":"), allow_nan=False)
+        except (ValueError, TypeError) as e:
+            logger.error("config_json_serialization_failed", error=str(e), message="Falling back to cleaned config")
+            # Remove any remaining problematic values
+            config_payload_clean = clean_for_json(config_payload)
+            config_json = json.dumps(config_payload_clean, separators=(",", ":"), allow_nan=False)
+        
+        try:
+            report_json = json.dumps(report_summary, separators=(",", ":"), allow_nan=False)
+        except (ValueError, TypeError) as e:
+            logger.error("report_json_serialization_failed", error=str(e), message="Falling back to cleaned report")
+            report_summary_clean = clean_for_json(report_summary)
+            report_json = json.dumps(report_summary_clean, separators=(",", ":"), allow_nan=False)
+        
         bundle = ArtifactBundle(
             files={
                 "model.bin": model_bytes,
-                "config.json": json.dumps(config_payload, separators=(",", ":")).encode("utf-8"),
+                "config.json": config_json.encode("utf-8"),
                 "metrics.json": metrics_payload.to_json().encode("utf-8"),
                 "pilot_contract.json": pilot_contract.to_json().encode("utf-8"),
                 "mechanic_contract.json": mechanic_contract.to_json().encode("utf-8"),
-                "report_summary.json": json.dumps(report_summary, separators=(",", ":")).encode("utf-8"),
+                "report_summary.json": report_json.encode("utf-8"),
                 "report.png": report_png,
             }
         )
+        _print_status(f"Artifacts created: {len(bundle.files)} files (model.bin, config.json, metrics.json, contracts, report)", sym=symbol, level="SUCCESS")
 
     # Run RL training if enabled and database configured
     if dsn and settings.training.rl_agent.enabled:
+        _print_status("Starting RL (Reinforcement Learning) training...", sym=symbol, level="PROGRESS")
         rl_metrics = _run_advanced_rl_training_for_symbol(
             symbol=symbol,
             settings=settings,
@@ -2064,9 +2279,27 @@ def _train_symbol(
             lookback_days=settings.training.window_days,
         )
         if rl_metrics:
+            _print_status(f"RL training complete: {rl_metrics.get('episodes', 0)} episodes trained", sym=symbol, level="SUCCESS")
             logger.info("rl_training_completed_for_symbol", symbol=symbol, rl_metrics=rl_metrics)
         else:
+            _print_status("RL training skipped or failed", sym=symbol, level="WARN")
             logger.warning("rl_training_did_not_complete", symbol=symbol)
+    
+    # Final summary
+    print(f"\n{'='*80}")
+    print(f"📊 [{symbol}] TRAINING SUMMARY")
+    print(f"{'='*80}")
+    print(f"  Status:           {'✅ PUBLISHED' if published else '❌ REJECTED'}")
+    print(f"  Reason:           {reason}")
+    print(f"  Total Trades:     {metrics['trades_oos']:,}")
+    print(f"  Sharpe Ratio:     {metrics['sharpe']:.2f}")
+    print(f"  Hit Rate:         {metrics['hit_rate']*100:.1f}%")
+    print(f"  Profit Factor:    {metrics['profit_factor']:.2f}")
+    print(f"  PnL (bps):        {metrics['pnl_bps']:.2f}")
+    print(f"  Max Drawdown:     {metrics['max_dd_bps']:.2f} bps")
+    if published:
+        print(f"  Artifacts:        {len(bundle.files) if bundle else 0} files ready for upload")
+    print(f"{'='*80}\n")
 
     return TrainingTaskResult(
         symbol=symbol,
@@ -2107,11 +2340,28 @@ def _run_advanced_rl_training_for_symbol(
         logger.info("rl_training_skipped", symbol=symbol, reason="shadow_trading_disabled")
         return None
 
-    advanced_config = settings.training.advanced
-    
-    # Determine which RL pipeline to use
-    use_v2 = advanced_config.use_rl_v2_pipeline
-    use_enhanced = advanced_config.use_enhanced_rl
+    # Get advanced config with safe fallback
+    try:
+        advanced_config = settings.training.advanced
+        use_v2 = advanced_config.use_rl_v2_pipeline if advanced_config else False
+        use_enhanced = advanced_config.use_enhanced_rl if advanced_config else False
+        enable_advanced_rewards = advanced_config.enable_advanced_rewards if advanced_config else False
+        enable_higher_order_features = advanced_config.enable_higher_order_features if advanced_config else False
+        enable_granger_causality = advanced_config.enable_granger_causality if advanced_config else False
+        enable_regime_prediction = advanced_config.enable_regime_prediction if advanced_config else False
+        use_triple_barrier = advanced_config.use_triple_barrier if advanced_config else False
+        use_meta_labeling = advanced_config.use_meta_labeling if advanced_config else False
+    except (AttributeError, KeyError) as e:
+        logger.warning("advanced_config_not_available_for_rl", symbol=symbol, error=str(e), message="Using default RL pipeline")
+        advanced_config = None
+        use_v2 = False
+        use_enhanced = False
+        enable_advanced_rewards = False
+        enable_higher_order_features = False
+        enable_granger_causality = False
+        enable_regime_prediction = False
+        use_triple_barrier = False
+        use_meta_labeling = False
     
     logger.info(
         "===== STARTING ADVANCED RL TRAINING =====",
@@ -2123,12 +2373,12 @@ def _run_advanced_rl_training_for_symbol(
         batch_size=settings.training.rl_agent.batch_size,
         use_v2_pipeline=use_v2,
         use_enhanced_pipeline=use_enhanced,
-        enable_advanced_rewards=advanced_config.enable_advanced_rewards,
-        enable_higher_order_features=advanced_config.enable_higher_order_features,
-        enable_granger_causality=advanced_config.enable_granger_causality,
-        enable_regime_prediction=advanced_config.enable_regime_prediction,
-        use_triple_barrier=advanced_config.use_triple_barrier,
-        use_meta_labeling=advanced_config.use_meta_labeling,
+        enable_advanced_rewards=enable_advanced_rewards,
+        enable_higher_order_features=enable_higher_order_features,
+        enable_granger_causality=enable_granger_causality,
+        enable_regime_prediction=enable_regime_prediction,
+        use_triple_barrier=use_triple_barrier,
+        use_meta_labeling=use_meta_labeling,
         message="RL training will process historical data and learn trading patterns",
     )
 
@@ -2151,10 +2401,10 @@ def _run_advanced_rl_training_for_symbol(
             rl_pipeline = EnhancedRLPipeline(
                 settings=settings,
                 dsn=dsn,
-                enable_advanced_rewards=advanced_config.enable_advanced_rewards,
-                enable_higher_order_features=advanced_config.enable_higher_order_features,
-                enable_granger_causality=advanced_config.enable_granger_causality,
-                enable_regime_prediction=advanced_config.enable_regime_prediction,
+                enable_advanced_rewards=enable_advanced_rewards,
+                enable_higher_order_features=enable_higher_order_features,
+                enable_granger_causality=enable_granger_causality,
+                enable_regime_prediction=enable_regime_prediction,
             )
         else:
             # Use basic RL pipeline

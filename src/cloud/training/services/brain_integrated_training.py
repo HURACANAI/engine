@@ -254,10 +254,43 @@ class BrainIntegratedTraining:
         )
 
     def _extract_hyperparameters(self, model: Any) -> Dict[str, Any]:
-        """Extract hyperparameters from model."""
+        """Extract hyperparameters from model, cleaning NaN values for JSON serialization."""
+        import numpy as np
+        
+        def clean_for_json(obj: Any) -> Any:
+            """Recursively clean object for JSON serialization."""
+            if isinstance(obj, dict):
+                return {k: clean_for_json(v) for k, v in obj.items() if not (isinstance(v, float) and (np.isnan(v) or np.isinf(v)))}
+            elif isinstance(obj, (list, tuple)):
+                return [clean_for_json(item) for item in obj if not (isinstance(item, float) and (np.isnan(item) or np.isinf(item)))]
+            elif isinstance(obj, (np.integer, np.int64, np.int32, np.int16, np.int8)):
+                return int(obj)
+            elif isinstance(obj, (np.floating, np.float64, np.float32, np.float16)):
+                val = float(obj)
+                # Replace NaN and Inf with None
+                if np.isnan(val) or np.isinf(val):
+                    return None
+                return val
+            elif isinstance(obj, (np.bool_, bool)):
+                return bool(obj)
+            elif isinstance(obj, np.ndarray):
+                return [clean_for_json(item) for item in obj.tolist()]
+            elif obj is None:
+                return None
+            else:
+                # Try to serialize, if it fails return string representation
+                try:
+                    import json
+                    json.dumps(obj, allow_nan=False)
+                    return obj
+                except (TypeError, ValueError):
+                    return str(obj)
+        
         try:
             if hasattr(model, 'get_params'):
-                return model.get_params()
+                params = model.get_params()
+                # Clean NaN values from hyperparameters
+                return clean_for_json(params)
             elif hasattr(model, '__dict__'):
                 # Extract relevant attributes
                 params = {}
@@ -266,11 +299,11 @@ class BrainIntegratedTraining:
                         try:
                             # Try to serialize
                             import json
-                            json.dumps(value)
-                            params[key] = value
+                            json.dumps(value, allow_nan=False)
+                            params[key] = clean_for_json(value)
                         except (TypeError, ValueError):
                             params[key] = str(value)
-                return params
+                return clean_for_json(params)
             else:
                 return {}
         except Exception as e:

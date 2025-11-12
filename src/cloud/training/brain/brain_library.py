@@ -637,6 +637,40 @@ class BrainLibrary:
     ) -> None:
         """Register a model in the registry."""
         import json
+        import numpy as np
+        
+        def clean_for_json(obj: Any) -> Any:
+            """Recursively clean object for JSON serialization."""
+            if isinstance(obj, dict):
+                return {k: clean_for_json(v) for k, v in obj.items() if not (isinstance(v, float) and (np.isnan(v) or np.isinf(v)))}
+            elif isinstance(obj, (list, tuple)):
+                return [clean_for_json(item) for item in obj if not (isinstance(item, float) and (np.isnan(item) or np.isinf(item)))]
+            elif isinstance(obj, (np.integer, np.int64, np.int32, np.int16, np.int8)):
+                return int(obj)
+            elif isinstance(obj, (np.floating, np.float64, np.float32, np.float16)):
+                val = float(obj)
+                # Replace NaN and Inf with None
+                if np.isnan(val) or np.isinf(val):
+                    return None
+                return val
+            elif isinstance(obj, (np.bool_, bool)):
+                return bool(obj)
+            elif isinstance(obj, np.ndarray):
+                return [clean_for_json(item) for item in obj.tolist()]
+            elif obj is None:
+                return None
+            else:
+                # Try to serialize, if it fails return string representation
+                try:
+                    json.dumps(obj, allow_nan=False)
+                    return obj
+                except (TypeError, ValueError):
+                    return str(obj)
+        
+        # Clean hyperparameters before JSON serialization
+        cleaned_hyperparameters = clean_for_json(hyperparameters)
+        cleaned_feature_set = clean_for_json(feature_set)
+        
         with self._get_connection() as conn:
             with conn.cursor() as cur:
                 # Deactivate previous versions
@@ -669,9 +703,9 @@ class BrainLibrary:
                     model_type,
                     version,
                     composite_score,
-                    json.dumps(hyperparameters),
+                    json.dumps(cleaned_hyperparameters, allow_nan=False),
                     dataset_id,
-                    json.dumps(feature_set),
+                    json.dumps(cleaned_feature_set, allow_nan=False),
                     datetime.now().date(),
                 ))
                 conn.commit()
@@ -854,6 +888,42 @@ class BrainLibrary:
     ) -> int:
         """Store model manifest for versioning."""
         import json
+        import numpy as np
+        
+        def clean_for_json(obj: Any) -> Any:
+            """Recursively clean object for JSON serialization."""
+            if isinstance(obj, dict):
+                return {k: clean_for_json(v) for k, v in obj.items() if not (isinstance(v, float) and (np.isnan(v) or np.isinf(v)))}
+            elif isinstance(obj, (list, tuple)):
+                return [clean_for_json(item) for item in obj if not (isinstance(item, float) and (np.isnan(item) or np.isinf(item)))]
+            elif isinstance(obj, (np.integer, np.int64, np.int32, np.int16, np.int8)):
+                return int(obj)
+            elif isinstance(obj, (np.floating, np.float64, np.float32, np.float16)):
+                val = float(obj)
+                # Replace NaN and Inf with None
+                if np.isnan(val) or np.isinf(val):
+                    return None
+                return val
+            elif isinstance(obj, (np.bool_, bool)):
+                return bool(obj)
+            elif isinstance(obj, np.ndarray):
+                return [clean_for_json(item) for item in obj.tolist()]
+            elif obj is None:
+                return None
+            else:
+                # Try to serialize, if it fails return string representation
+                try:
+                    json.dumps(obj, allow_nan=False)
+                    return obj
+                except (TypeError, ValueError):
+                    return str(obj)
+        
+        # Clean all data before JSON serialization
+        cleaned_hyperparameters = clean_for_json(hyperparameters)
+        cleaned_feature_set = clean_for_json(feature_set)
+        cleaned_training_metrics = clean_for_json(training_metrics) if training_metrics else None
+        cleaned_validation_metrics = clean_for_json(validation_metrics) if validation_metrics else None
+        
         with self._get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute("""
@@ -874,11 +944,11 @@ class BrainLibrary:
                     model_id,
                     version,
                     symbol,
-                    json.dumps(hyperparameters),
+                    json.dumps(cleaned_hyperparameters, allow_nan=False),
                     dataset_id,
-                    json.dumps(feature_set),
-                    json.dumps(training_metrics) if training_metrics else None,
-                    json.dumps(validation_metrics) if validation_metrics else None,
+                    json.dumps(cleaned_feature_set, allow_nan=False),
+                    json.dumps(cleaned_training_metrics, allow_nan=False) if cleaned_training_metrics else None,
+                    json.dumps(cleaned_validation_metrics, allow_nan=False) if cleaned_validation_metrics else None,
                 ))
                 result = cur.fetchone()
                 conn.commit()

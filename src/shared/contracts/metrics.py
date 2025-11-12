@@ -27,14 +27,18 @@ class MetricsPayload:
         """Convert to JSON, handling numpy types and ensuring all values are JSON-serializable."""
         def convert_to_json_serializable(obj: Any) -> Any:
             """Recursively convert numpy types and other non-serializable types to JSON-serializable types."""
-            if isinstance(obj, (np.integer, np.int64, np.int32)):
+            if isinstance(obj, (np.integer, np.int64, np.int32, np.int16, np.int8)):
                 return int(obj)
-            elif isinstance(obj, (np.floating, np.float64, np.float32)):
-                return float(obj)
+            elif isinstance(obj, (np.floating, np.float64, np.float32, np.float16)):
+                val = float(obj)
+                # Replace NaN and Inf with None (JSON doesn't support NaN/Inf)
+                if np.isnan(val) or np.isinf(val):
+                    return None
+                return val
             elif isinstance(obj, (np.bool_, bool)):
                 return bool(obj)
             elif isinstance(obj, np.ndarray):
-                return obj.tolist()
+                return [convert_to_json_serializable(item) for item in obj.tolist()]
             elif isinstance(obj, dict):
                 return {key: convert_to_json_serializable(value) for key, value in obj.items()}
             elif isinstance(obj, (list, tuple)):
@@ -44,7 +48,7 @@ class MetricsPayload:
             else:
                 # For other types, try to convert to string if not already serializable
                 try:
-                    json.dumps(obj)
+                    json.dumps(obj, allow_nan=False)
                     return obj
                 except (TypeError, ValueError):
                     return str(obj)
@@ -52,4 +56,4 @@ class MetricsPayload:
         data = asdict(self)
         # Convert all numpy types to native Python types
         serializable_data = convert_to_json_serializable(data)
-        return json.dumps(serializable_data, separators=(",", ":"))
+        return json.dumps(serializable_data, separators=(",", ":"), allow_nan=False)

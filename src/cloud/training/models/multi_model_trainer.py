@@ -305,12 +305,24 @@ class MultiModelTrainer:
             # Early stopping for XGBoost/LightGBM
             if X_val_final is not None and y_val is not None:
                 if technique == 'xgboost':
-                    model.fit(
-                        X_train_final, y_train,
-                        eval_set=[(X_val_final, y_val)],
-                        early_stopping_rounds=50,
-                        verbose=False,
-                    )
+                    # XGBoost 3.0+ requires early_stopping_rounds in constructor
+                    # Set it on the model before fitting
+                    try:
+                        model.set_params(early_stopping_rounds=50)
+                        model.fit(
+                            X_train_final, y_train,
+                            eval_set=[(X_val_final, y_val)],
+                            verbose=False,
+                        )
+                    except (AttributeError, TypeError, ValueError) as e:
+                        # If setting early_stopping_rounds fails, try without it
+                        logger.warning("xgboost_early_stopping_failed", error=str(e), message="Training XGBoost without early stopping")
+                        try:
+                            # Reset early_stopping_rounds to None
+                            model.set_params(early_stopping_rounds=None)
+                        except:
+                            pass
+                        model.fit(X_train_final, y_train, verbose=False)
                 elif technique == 'lightgbm':
                     model.fit(
                         X_train_final, y_train,
@@ -318,6 +330,12 @@ class MultiModelTrainer:
                         callbacks=[lgb.early_stopping(50), lgb.log_evaluation(0)],
                     )
             else:
+                if technique == 'xgboost':
+                    # Ensure early_stopping_rounds is None when no validation data
+                    try:
+                        model.set_params(early_stopping_rounds=None)
+                    except:
+                        pass
                 model.fit(X_train_final, y_train)
         else:
             model.fit(X_train_final, y_train)
@@ -359,6 +377,8 @@ class MultiModelTrainer:
         if technique == 'xgboost':
             if not HAS_XGBOOST:
                 raise ImportError("XGBoost not available")
+            # XGBoost 3.0+ requires early_stopping_rounds in constructor
+            # We'll set it to None initially and update it during training if validation data is available
             if self.is_classification:
                 return xgb.XGBClassifier(
                     n_estimators=1000,  # Large number for early stopping
@@ -367,6 +387,7 @@ class MultiModelTrainer:
                     random_state=42,
                     n_jobs=self.n_jobs,
                     eval_metric='logloss',
+                    early_stopping_rounds=None,  # Will be set during fit if validation data available
                 )
             else:
                 return xgb.XGBRegressor(
@@ -376,6 +397,7 @@ class MultiModelTrainer:
                     random_state=42,
                     n_jobs=self.n_jobs,
                     eval_metric='rmse',
+                    early_stopping_rounds=None,  # Will be set during fit if validation data available
                 )
         
         elif technique == 'random_forest':
