@@ -45,12 +45,15 @@ class ShadowTradeResult:
     entry_idx: int
     entry_timestamp: datetime
     entry_price: float
+    position_size_gbp: float
+    direction: str
     exit_idx: int
     exit_timestamp: datetime
     exit_price: float
     exit_reason: str
     hold_duration_minutes: int
     gross_profit_bps: float
+    pnl_bps: float
     net_profit_gbp: float
     is_winner: bool
 
@@ -65,9 +68,11 @@ class ShadowTradeResult:
     market_regime: str
     costs: CostBreakdown
 
+    max_unrealized_profit_bps: float = 0.0
+    max_unrealized_drawdown_bps: float = 0.0
     # NEW: Confidence scoring
     regime_confidence: float = 0.5  # Confidence in regime detection
-    trade_confidence: float = 0.5  # Overall confidence in trade decision
+    model_confidence: float = 0.5  # Overall confidence in trade decision
     decision_reason: str = ""  # Human-readable explanation
 
 
@@ -79,7 +84,7 @@ class BacktestConfig:
     stop_loss_bps: float = 15.0
     take_profit_bps: float = 20.0
     lookback_for_optimal_exit: int = 60  # Minutes to look ahead for best exit
-    min_confidence_threshold: float = 0.52  # Minimum model confidence to enter
+    min_confidence_threshold: float = 0.20  # Lowered to allow initial trades
 
 
 class ShadowTrader:
@@ -335,6 +340,7 @@ class ShadowTrader:
             "entry_idx": current_idx,
             "entry_timestamp": entry_timestamp,
             "entry_price": entry_price,
+            "direction": "long",
             "entry_features": dict(current_row),
             "position_size_gbp": position_size_gbp,
             "entry_volatility_bps": float(current_row.get("realized_sigma_30", 0.0)) * 10000,
@@ -567,11 +573,11 @@ class ShadowTrader:
         # Get confidence info from position
         confidence_result = position.get("confidence_result")
         if confidence_result:
-            trade_confidence = confidence_result.confidence
+            model_confidence = confidence_result.confidence
             decision_reason = confidence_result.reason
         else:
             # Fallback for legacy positions without confidence
-            trade_confidence = 0.5
+            model_confidence = 0.5
             decision_reason = "No confidence calculation available"
 
         hold_duration_minutes = int((exit_timestamp - position["entry_timestamp"]).total_seconds() / 60)
@@ -580,22 +586,26 @@ class ShadowTrader:
             entry_idx=position["entry_idx"],
             entry_timestamp=position["entry_timestamp"],
             entry_price=entry_price,
+            position_size_gbp=position["position_size_gbp"],
+            direction=position.get("direction", "long"),
             exit_idx=exit_idx,
             exit_timestamp=exit_timestamp,
             exit_price=exit_price,
             exit_reason=exit_reason,
             hold_duration_minutes=hold_duration_minutes,
             gross_profit_bps=gross_profit_bps,
+            pnl_bps=net_profit_bps,
             net_profit_gbp=net_profit_gbp,
             is_winner=is_winner,
             best_exit_price=best_exit_price,
             best_exit_idx=best_exit_idx,
             missed_profit_gbp=max(0, missed_profit_gbp),
+            max_unrealized_profit_bps=optimal_profit_bps,
             entry_features=position["entry_features"],
             entry_embedding=entry_embedding,
             market_regime=regime_str,
             regime_confidence=regime_conf,
-            trade_confidence=trade_confidence,
+            model_confidence=model_confidence,
             decision_reason=decision_reason,
             costs=costs,
         )

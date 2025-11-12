@@ -71,18 +71,36 @@ class CandleDataLoader:
 
     def load(self, query: CandleQuery, use_cache: bool = True) -> pl.DataFrame:
         """Load data from cache (Dropbox/local) or download from exchange.
-        
+
+        ENHANCED: Always fetches the most recent data up to NOW, then tops up any missing gaps.
+
         Steps:
         1. Check if data exists in cache (Dropbox/local)
         2. If cached, check date range and determine missing data
-        3. Download missing data from exchange (top-up)
+        3. Download missing data from exchange (top-up both historical gaps AND recent data)
         4. Merge cached data with new data
         5. Update cache and upload to Dropbox
+
+        Key improvement: Always downloads data up to the current time (NOW) to ensure
+        the bot has the most recent market data for training.
         """
         cache_path = self._cache_path(query)
         cached_data = None
         cache_source = None
-        
+
+        # CRITICAL: Always update query.end_at to NOW to ensure we get the most recent data
+        # This ensures the bot never trains on stale data
+        now = datetime.now(tz=timezone.utc)
+        if query.end_at < now:
+            # Update query to fetch data up to NOW
+            query = CandleQuery(
+                symbol=query.symbol,
+                timeframe=query.timeframe,
+                start_at=query.start_at,
+                end_at=now,  # Always fetch up to NOW
+            )
+            print(f"⏰ [{query.symbol}] Updated end time to NOW: {now.strftime('%Y-%m-%d %H:%M:%S')} UTC")
+
         # Step 1: Check if data exists in cache
         if use_cache and cache_path.exists():
             try:
@@ -135,8 +153,12 @@ class CandleDataLoader:
                         
                         if cache_end < requested_end:
                             needs_topup = True
-                            topup_start = max(cache_end + timedelta(minutes=1), requested_start)
+                            topup_start = cache_end + timedelta(minutes=1)
                             print(f"⬇️  [{query.symbol}] Need to download newer data: {topup_start.date()} to {requested_end.date()}")
+                            # Show how many hours/days of new data we're fetching
+                            time_diff = requested_end - cache_end
+                            if time_diff.days > 0:
+                                print(f"📊 [{query.symbol}] Fetching {time_diff.days} days and {time_diff.seconds // 3600} hours of new data")
                         
                         if not needs_topup:
                             # Cache has all requested data
@@ -391,22 +413,38 @@ class CandleDataLoader:
 
     def _cache_path(self, query: CandleQuery) -> Path:
         """Generate cache path with coin-specific folder structure.
-        
+
+        ENHANCED: First checks for existing cache files for this symbol/timeframe combo,
+        and reuses them if found. This allows the cache to grow organically with top-ups
+        rather than creating new files with different date ranges.
+
         Structure: data/candles/{COIN}/{SYMBOL}_{TIMEFRAME}_{START}_{END}.parquet
         Example: data/candles/BTC/BTC-USDT_1m_20250611_20251108.parquet
         """
         # Normalize symbol (remove futures suffix if present)
         normalized_symbol = query.symbol.split(":")[0] if ":" in query.symbol else query.symbol
         symbol_safe = normalized_symbol.replace("/", "-")
-        
+
         # Extract base coin (e.g., "BTC" from "BTC/USDT")
         base_coin = normalized_symbol.split("/")[0]
-        
+
         # Create coin-specific folder
         coin_dir = self._cache_dir / base_coin
         coin_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Generate filename
+
+        # ENHANCED: Check if there's already a cache file for this symbol/timeframe
+        # Look for existing files with pattern: {SYMBOL}_{TIMEFRAME}_*.parquet
+        existing_pattern = f"{symbol_safe}_{query.timeframe}_*.parquet"
+        existing_files = list(coin_dir.glob(existing_pattern))
+
+        if existing_files:
+            # Use the most recently modified cache file
+            # This allows us to keep updating the same file rather than creating new ones
+            most_recent = max(existing_files, key=lambda p: p.stat().st_mtime)
+            print(f"♻️  [{query.symbol}] Found existing cache file: {most_recent.name}")
+            return most_recent
+
+        # No existing cache - generate new filename with current date range
         filename = f"{symbol_safe}_{query.timeframe}_{query.start_at:%Y%m%d}_{query.end_at:%Y%m%d}.parquet"
         return coin_dir / filename
 

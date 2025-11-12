@@ -115,6 +115,16 @@ class TripleBarrierLabeler:
             # Get entry candle - use proper Polars row access
             entry_row = df.row(entry_idx, named=True)
             entry_time = entry_row['timestamp']
+
+            # Ensure entry_time is a datetime object
+            if isinstance(entry_time, (int, float)):
+                # Convert Unix timestamp to datetime
+                from datetime import timezone
+                entry_time = datetime.fromtimestamp(entry_time, tz=timezone.utc)
+            elif not isinstance(entry_time, datetime):
+                # If it's some other type, try to convert
+                entry_time = datetime.fromisoformat(str(entry_time))
+
             entry_price = entry_row['close']
 
             # Calculate barriers
@@ -223,6 +233,14 @@ class TripleBarrierLabeler:
         for future_idx in range(entry_idx + 1, len(df)):
             future_row = df.row(future_idx, named=True)
             future_time = future_row['timestamp']
+
+            # Ensure future_time is a datetime object
+            if isinstance(future_time, (int, float)):
+                from datetime import timezone
+                future_time = datetime.fromtimestamp(future_time, tz=timezone.utc)
+            elif not isinstance(future_time, datetime):
+                future_time = datetime.fromisoformat(str(future_time))
+
             future_high = future_row['high']
             future_low = future_row['low']
             future_close = future_row['close']

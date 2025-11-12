@@ -12,35 +12,37 @@ This provides the complete intelligence layer for the Huracan Engine.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional
+from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any, Dict, List, Optional, cast
 
 import polars as pl
 import structlog
 
 from ..agents.advanced_rewards import AdvancedRewardCalculator, TradeResult
-from ..agents.rl_agent import PPOConfig, RLTradingAgent, TradingState
+from ..agents.rl_agent import PPOConfig, RLTradingAgent
 from ..analyzers.loss_analyzer import LossAnalyzer
 from ..analyzers.pattern_matcher import PatternMatcher
 from ..analyzers.post_exit_tracker import PostExitTracker
 from ..analyzers.win_analyzer import WinAnalyzer
-from ..backtesting.shadow_trader import BacktestConfig, ShadowTrader
+from ..backtesting.shadow_trader import BacktestConfig, ShadowTrader, ShadowTradeResult
 from ..config.settings import EngineSettings
 from ..datasets.data_loader import CandleDataLoader, CandleQuery
 from ..datasets.quality_checks import DataQualitySuite
+from ..integrations.dropbox_sync import DropboxSync
 from ..memory.store import MemoryStore
 from ..models.granger_causality import CausalGraphBuilder, GrangerCausalityDetector, PriceData
-from ..models.regime_transition_predictor import (
-    RegimeTransitionPredictor,
-    calculate_transition_features,
-    MarketRegime,
-)
+from ..models.regime_transition_predictor import RegimeTransitionPredictor
 from ..services.costs import CostModel
 from ..services.exchange import ExchangeClient
 from src.shared.features.higher_order import HigherOrderFeatureBuilder
 from src.shared.features.recipe import FeatureRecipe
 
 logger = structlog.get_logger(__name__)
+
+JSONDict = Dict[str, Any]
+MarketContext = Dict[str, pl.DataFrame]
+ShadowTradeList = List[ShadowTradeResult]
 
 
 class EnhancedRLPipeline:
@@ -63,7 +65,7 @@ class EnhancedRLPipeline:
         enable_granger_causality: bool = True,
         enable_regime_prediction: bool = True,
     ):
-        self.settings = settings
+        self.settings: EngineSettings = settings
         self.dsn = dsn
 
         # Feature flags for Phase 1 components
@@ -189,8 +191,8 @@ class EnhancedRLPipeline:
         symbol: str,
         exchange_client: ExchangeClient,
         lookback_days: int = 365,
-        market_context: Optional[Dict[str, pl.DataFrame]] = None,
-    ) -> dict:
+        market_context: Optional[MarketContext] = None,
+    ) -> JSONDict:
         """
         Train the RL agent with Phase 1 enhancements.
 
@@ -249,12 +251,11 @@ class EnhancedRLPipeline:
         logger.info("shadow_trading_complete", symbol=symbol, total_trades=len(trades))
 
         # 6. Update agent with accumulated experience
-        if len(trades) > 0:
+        update_metrics: JSONDict = {}
+        if trades:
             logger.info("updating_rl_agent", trades=len(trades))
             update_metrics = self.agent.update()
             logger.info("agent_updated", **update_metrics)
-        else:
-            update_metrics = {}
 
         # 7. Calculate enhanced metrics
         metrics = self._calculate_enhanced_metrics(
@@ -264,6 +265,156 @@ class EnhancedRLPipeline:
             update_metrics=update_metrics,
         )
 
+        # 8. Save model and export all data to Dropbox (COMPREHENSIVE)
+        model_path: Optional[Path] = None
+        dropbox_results: JSONDict = {}
+
+        if len(trades) > 0:
+            timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+            run_date = datetime.now(timezone.utc).date()
+            coin_symbol = symbol.replace("/", "_")
+
+            # Prepare all local artifact paths
+            temp_dir = Path("/tmp")
+            model_filename = f"rl_agent_{coin_symbol}_{timestamp}.pt"
+            model_path = temp_dir / model_filename
+
+            # Prepare additional artifact paths
+            metrics_filename = f"{coin_symbol}_{timestamp}_metrics.json"
+            metrics_local_path = temp_dir / metrics_filename
+
+            features_filename = f"{coin_symbol}_{timestamp}_features.json"
+            features_local_path = temp_dir / features_filename
+
+            trades_filename = f"{coin_symbol}_{timestamp}_trades.csv"
+            trades_local_path = temp_dir / trades_filename
+
+            try:
+                # 1. Save model locally
+                self.agent.save(str(model_path))
+                logger.info("model_saved_locally", path=str(model_path))
+                metrics["model_path"] = str(model_path)
+
+                # 2. Save metrics JSON locally
+                import json
+                with open(metrics_local_path, "w") as f:
+                    # Serialize metrics (handle any datetime objects)
+                    serializable_metrics: JSONDict = {}
+                    for k, v in metrics.items():
+                        if isinstance(v, (datetime, date)):
+                            serializable_metrics[k] = v.isoformat()
+                        else:
+                            serializable_metrics[k] = v
+                    json.dump(serializable_metrics, f, indent=2)
+                logger.info("metrics_saved_locally", path=str(metrics_local_path))
+
+                # 3. Save features metadata locally (column names and stats)
+                features_metadata: JSONDict = {
+                    "symbol": symbol,
+                    "timestamp": timestamp,
+                    "feature_columns": list(enhanced_data.columns) if 'enhanced_data' in locals() else [],
+                    "total_features": len(enhanced_data.columns) if 'enhanced_data' in locals() else 0,
+                    "data_rows": enhanced_data.height if 'enhanced_data' in locals() else 0,
+                    "higher_order_enabled": self.enable_higher_order_features,
+                    "granger_causality_enabled": self.enable_granger_causality,
+                    "regime_prediction_enabled": self.enable_regime_prediction,
+                }
+                with open(features_local_path, "w") as f:
+                    json.dump(features_metadata, f, indent=2)
+                logger.info("features_metadata_saved_locally", path=str(features_local_path))
+
+                # 4. Save trades to CSV locally
+                if len(trades) > 0:
+                    import pandas as pd
+                    trades_df = pd.DataFrame([
+                        {
+                            "entry_timestamp": t.entry_timestamp.isoformat() if t.entry_timestamp else None,
+                            "exit_timestamp": t.exit_timestamp.isoformat() if t.exit_timestamp else None,
+                            "entry_price": float(t.entry_price) if t.entry_price else None,
+                            "exit_price": float(t.exit_price) if t.exit_price else None,
+                            "direction": t.direction,
+                            "position_size_gbp": float(t.position_size_gbp) if t.position_size_gbp else None,
+                            "gross_profit_bps": float(t.gross_profit_bps) if t.gross_profit_bps else None,
+                            "net_profit_gbp": float(t.net_profit_gbp) if t.net_profit_gbp else None,
+                            "exit_reason": t.exit_reason,
+                            "hold_duration_minutes": t.hold_duration_minutes,
+                            "is_winner": t.is_winner,
+                            "model_confidence": float(t.model_confidence) if t.model_confidence else None,
+                            "market_regime": t.market_regime,
+                        }
+                        for t in trades
+                    ])
+                    trades_df.to_csv(trades_local_path, index=False)
+                    logger.info("trades_saved_locally", path=str(trades_local_path), count=len(trades))
+
+                # 5. Get candle data path (if historical_data was saved)
+                candle_data_path: Optional[Path] = None
+                if 'historical_data' in locals() and historical_data is not None:
+                    # Save historical candle data as parquet
+                    candle_filename = f"{coin_symbol}_{timestamp}_candles.parquet"
+                    candle_data_path = temp_dir / candle_filename
+                    historical_data.write_parquet(candle_data_path)
+                    logger.info("candle_data_saved_locally", path=str(candle_data_path), rows=historical_data.height)
+
+                # 6. Upload everything to Dropbox if configured
+                if self.settings.dropbox and self.settings.dropbox.access_token:
+                    try:
+                        logger.info("starting_comprehensive_dropbox_upload", symbol=symbol)
+
+                        dropbox_sync = DropboxSync(
+                            access_token=self.settings.dropbox.access_token
+                        )
+
+                        # Use export_coin_results for comprehensive, organized upload
+                        dropbox_results = dropbox_sync.export_coin_results(
+                            symbol=symbol,
+                            run_date=run_date,
+                            model_path=model_path,
+                            metrics_path=metrics_local_path,
+                            features_path=features_local_path,
+                            candle_data_path=candle_data_path,
+                            additional_files={
+                                "trades": trades_local_path,
+                            },
+                            use_organized_structure=True,  # Use organized structure by date and coin
+                        )
+
+                        logger.info("comprehensive_dropbox_upload_complete",
+                                    symbol=symbol,
+                                    results=dropbox_results)
+
+                        # Add Dropbox info to metrics
+                        metrics["dropbox_results"] = dropbox_results
+                        metrics["dropbox_organized_path"] = f"/Huracan/models/training/{run_date.isoformat()}/{symbol.replace('/', '-')}"
+                        metrics["success"] = True
+
+                        # Clean up local temp files after successful upload
+                        try:
+                            metrics_local_path.unlink(missing_ok=True)
+                            features_local_path.unlink(missing_ok=True)
+                            trades_local_path.unlink(missing_ok=True)
+                            if candle_data_path:
+                                candle_data_path.unlink(missing_ok=True)
+                            logger.info("temp_files_cleaned_up")
+                        except Exception as cleanup_err:
+                            logger.warning("temp_file_cleanup_failed", error=str(cleanup_err))
+
+                    except Exception as e:
+                        logger.warning("dropbox_upload_failed", error=str(e), exc_info=True)
+                        metrics["dropbox_error"] = str(e)
+                        metrics["success"] = True  # Training still succeeded locally
+                else:
+                    logger.info("dropbox_not_configured_skipping_upload")
+                    metrics["success"] = True
+
+            except Exception as e:
+                logger.error("model_save_failed", error=str(e), exc_info=True)
+                metrics["error"] = f"model_save_failed: {str(e)}"
+                metrics["success"] = False
+        else:
+            metrics["success"] = False
+            metrics["error"] = "no_trades_generated"
+
         logger.info("enhanced_training_complete", **metrics)
         return metrics
 
@@ -271,19 +422,22 @@ class EnhancedRLPipeline:
         self,
         data: pl.DataFrame,
         symbol: str,
-        market_context: Optional[Dict[str, pl.DataFrame]] = None,
+        market_context: Optional[MarketContext] = None,
     ) -> pl.DataFrame:
         """Build enhanced features with Phase 1 improvements."""
         # Start with base features
-        base_features = self.feature_recipe.build(data)
+        base_features = cast(pl.DataFrame, self.feature_recipe.build(data))
 
         # Add cross-asset context if available
         if market_context:
-            base_features = self.feature_recipe.build_with_market_context(
-                frame=data,
-                btc_frame=market_context.get("BTC/USD"),
-                eth_frame=market_context.get("ETH/USD"),
-                sol_frame=market_context.get("SOL/USD"),
+            base_features = cast(
+                pl.DataFrame,
+                self.feature_recipe.build_with_market_context(
+                    frame=data,
+                    btc_frame=market_context.get("BTC/USD"),
+                    eth_frame=market_context.get("ETH/USD"),
+                    sol_frame=market_context.get("SOL/USD"),
+                ),
             )
 
         # Add higher-order features (Phase 1)
@@ -304,7 +458,7 @@ class EnhancedRLPipeline:
         self,
         symbol: str,
         data: pl.DataFrame,
-        market_context: Dict[str, pl.DataFrame],
+        market_context: MarketContext,
     ) -> None:
         """Update Granger causality graph (Phase 1)."""
         if not self.enable_granger_causality:
@@ -357,7 +511,7 @@ class EnhancedRLPipeline:
         self,
         symbol: str,
         historical_data: pl.DataFrame,
-    ) -> List:
+    ) -> ShadowTradeList:
         """Run shadow trading with enhanced reward calculation (Phase 1)."""
         # Use standard shadow trader
         # The advanced rewards will be applied in the reward calculation callback
@@ -373,7 +527,7 @@ class EnhancedRLPipeline:
 
         return trades
 
-    def _apply_advanced_rewards(self, trades: List) -> None:
+    def _apply_advanced_rewards(self, trades: ShadowTradeList) -> None:
         """Apply advanced reward shaping to trades (Phase 1)."""
         for trade in trades:
             # Convert trade to TradeResult format
@@ -403,10 +557,10 @@ class EnhancedRLPipeline:
     def _calculate_enhanced_metrics(
         self,
         symbol: str,
-        trades: List,
+        trades: ShadowTradeList,
         lookback_days: int,
-        update_metrics: Dict,
-    ) -> dict:
+        update_metrics: JSONDict,
+    ) -> JSONDict:
         """Calculate enhanced metrics with Phase 1 insights."""
         # Base metrics
         wins = sum(1 for t in trades if t.is_winner)
@@ -426,7 +580,7 @@ class EnhancedRLPipeline:
             days=lookback_days,
         )
 
-        metrics = {
+        metrics: JSONDict = {
             "symbol": symbol,
             "total_trades": len(trades),
             "wins": wins,
@@ -458,7 +612,7 @@ class EnhancedRLPipeline:
         symbols: List[str],
         exchange_client: ExchangeClient,
         lookback_days: int = 365,
-    ) -> List[dict]:
+    ) -> List[JSONDict]:
         """
         Train on entire universe with Phase 1 enhancements.
 
@@ -472,7 +626,7 @@ class EnhancedRLPipeline:
             lookback_days=lookback_days,
         )
 
-        results = []
+        results: List[JSONDict] = []
 
         for idx, symbol in enumerate(symbols):
             logger.info("training_symbol", symbol=symbol, progress=f"{idx+1}/{len(symbols)}")
@@ -516,9 +670,9 @@ class EnhancedRLPipeline:
         self,
         exchange_client: ExchangeClient,
         lookback_days: int,
-    ) -> Dict[str, pl.DataFrame]:
+    ) -> MarketContext:
         """Load BTC/ETH/SOL context for cross-asset features."""
-        context = {}
+        context: MarketContext = {}
 
         for symbol in ["BTC/USD", "ETH/USD", "SOL/USD"]:
             try:
@@ -579,9 +733,9 @@ class EnhancedRLPipeline:
         self.agent.load(path)
         logger.info("enhanced_agent_loaded", path=path)
 
-    def get_phase1_stats(self) -> dict:
+    def get_phase1_stats(self) -> JSONDict:
         """Get Phase 1 component statistics."""
-        stats = {}
+        stats: JSONDict = {}
 
         if self.enable_advanced_rewards:
             stats["reward_calculator"] = self.reward_calculator.get_stats()

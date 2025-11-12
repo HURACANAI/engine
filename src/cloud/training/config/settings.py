@@ -62,11 +62,11 @@ class RLAgentSettings(BaseModel):
 class ShadowTradingSettings(BaseModel):
     enabled: bool = True
     position_size_gbp: float = 1000.0
-    stop_loss_bps: int = 50
+    stop_loss_bps: int = 200  # Hard stop at 2% (Grok AI recommendation)
     take_profit_bps: int = 20
     max_hold_hours: int = 24
     max_hold_minutes: int = 120
-    min_confidence_threshold: float = 0.52
+    min_confidence_threshold: float = 0.40  # Raised from 0.20 (Grok AI recommendation)
 
 
 class MemorySettings(BaseModel):

@@ -3,6 +3,10 @@
     "src",
     "scripts"
   ],
+  "stubPath": "typings",
+  "extraPaths": [
+    "src"
+  ],
   "exclude": [
     "**/__pycache__",
     "**/node_modules",
@@ -32,4 +36,3 @@
   "pythonVersion": "3.11",
   "typeCheckingMode": "standard"
 }
-

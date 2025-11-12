@@ -162,12 +162,27 @@ class MemoryStore:
                 conn.commit()
                 return result
     
+    def _serialize_for_json(self, obj):
+        """Convert datetime objects to ISO format strings for JSON serialization."""
+        from datetime import datetime, date
+        if isinstance(obj, dict):
+            return {k: self._serialize_for_json(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [self._serialize_for_json(v) for v in obj]
+        elif isinstance(obj, (datetime, date)):
+            return obj.isoformat()
+        else:
+            return obj
+
     def _store_trade_impl(self, cur, trade: TradeMemory) -> int:
         """Internal implementation of store_trade."""
+        # Serialize entry_features to ensure datetime objects are converted to strings
+        serialized_entry_features = self._serialize_for_json(trade.entry_features)
+
         cur.execute(
             """
             INSERT INTO trade_memory (
-                symbol, entry_timestamp, entry_price, entry_features, entry_embedding,
+                symbol, entry_timestamp, entry_price, entry_features, entry_embedding_json,
                 position_size_gbp, direction, exit_timestamp, exit_price, exit_reason,
                 hold_duration_minutes, gross_profit_bps, net_profit_gbp, fees_gbp,
                 slippage_bps, market_regime, volatility_bps, spread_at_entry_bps,
@@ -182,8 +197,8 @@ class MemoryStore:
                 trade.symbol,
                 trade.entry_timestamp,
                 trade.entry_price,
-                Json(trade.entry_features),
-                trade.entry_embedding.tolist(),
+                Json(serialized_entry_features),
+                Json(trade.entry_embedding.tolist()),  # Store as JSONB since pgvector is not installed
                 trade.position_size_gbp,
                 trade.direction,
                 trade.exit_timestamp,
@@ -278,6 +293,26 @@ class MemoryStore:
         use_regime_boost: bool,
     ) -> List[SimilarPattern]:
         """Internal implementation of find_similar_patterns."""
+        # Quick check: if table is empty, return empty list immediately
+        with conn.cursor() as check_cur:
+            check_cur.execute("SELECT COUNT(*) FROM trade_memory")
+            row_count = check_cur.fetchone()[0]
+            if row_count == 0:
+                return []
+
+        # Check if pgvector extension is available by checking column type
+        with conn.cursor() as check_cur:
+            check_cur.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'trade_memory' AND column_name = 'entry_embedding'
+            """)
+            has_vector_column = check_cur.fetchone() is not None
+
+        # If pgvector is not available (no entry_embedding column), return empty list
+        # Vector similarity search requires pgvector extension
+        if not has_vector_column:
+            return []
+
         where_clauses = ["1 - (entry_embedding <=> %s::vector) >= %s"]
         params: List[Any] = [embedding.tolist(), min_similarity]
 
@@ -316,6 +351,7 @@ class MemoryStore:
             # Standard vector similarity
             similarity_calc = "1 - (entry_embedding <=> %s::vector) as context_similarity"
             query_params = [embedding.tolist()] + params
+            query_params.append(embedding.tolist())  # For ORDER BY clause
             query_params.append(top_k)
             order_clause = "entry_embedding <=> %s::vector"
 

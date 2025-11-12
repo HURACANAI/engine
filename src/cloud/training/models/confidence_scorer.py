@@ -71,7 +71,7 @@ class ConfidenceScorer:
 
     def __init__(
         self,
-        min_confidence_threshold: float = 0.52,
+        min_confidence_threshold: float = 0.20,  # Lowered to allow initial trades
         sample_threshold: int = 20,
         strong_alignment_threshold: float = 0.7,
         use_regime_thresholds: bool = True,

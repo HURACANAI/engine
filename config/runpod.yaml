@@ -63,7 +63,7 @@ training:
     max_hold_minutes: 120
     stop_loss_bps: 15
     take_profit_bps: 20
-    min_confidence_threshold: 0.52
+    min_confidence_threshold: 0.20  # Lowered to allow initial trades
   memory:
     vector_similarity_threshold: 0.7
     min_pattern_occurrences: 10
