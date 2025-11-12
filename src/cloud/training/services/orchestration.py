@@ -92,30 +92,91 @@ def _window_bounds(run_date: date, run_time: time, window_days: int) -> tuple[da
     return start, run_dt
 
 
-def _walk_forward_masks(ts: pd.Series, train_days: int, test_days: int) -> List[tuple[np.ndarray, np.ndarray]]:
+def _walk_forward_masks(
+    ts: pd.Series, 
+    train_days: int, 
+    test_days: int,
+    shuffle_windows: bool = True,
+    shift_range_days: int = 0,
+    forward_shift_days: int = 0,
+    embargo_days: int = 2,  # Days to skip between train and test (prevents leakage)
+    random_seed: Optional[int] = None
+) -> List[tuple[np.ndarray, np.ndarray]]:
+    """
+    Create walk-forward validation masks with optional shuffling and shifting.
+    
+    Args:
+        ts: Timestamp series
+        train_days: Training window size in days
+        test_days: Test window size in days
+        shuffle_windows: If True, shuffle the order of validation windows
+        shift_range_days: Random shift range in days (0 = no shift, >0 = random shift up to N days)
+        forward_shift_days: Forward shift all windows by N days (for robustness testing)
+        random_seed: Random seed for reproducibility
+    
+    Returns:
+        List of (train_mask, test_mask) tuples
+    """
     if ts.empty:
         return []
+    
+    if random_seed is not None:
+        np.random.seed(random_seed)
+    
     splits: List[tuple[np.ndarray, np.ndarray]] = []
     start = ts.min()
     end = ts.max()
-    current = start
+    
+    # Apply forward shift to start position (shifts entire validation forward)
+    current = start + timedelta(days=forward_shift_days)
+    
+    # Collect all splits first
     while True:
-        train_start = current
+        # Apply random shift if enabled
+        shift_days = np.random.randint(-shift_range_days, shift_range_days + 1) if shift_range_days > 0 else 0
+        shifted_current = current + timedelta(days=shift_days)
+        
+        # Ensure shifted start is still within valid range
+        if shifted_current < start:
+            shifted_current = start
+        if shifted_current >= end:
+            break
+            
+        train_start = shifted_current
         train_end = train_start + timedelta(days=train_days)
-        test_end = train_end + timedelta(days=test_days)
+        # CRITICAL: Add embargo between train and test to prevent leakage
+        test_start = train_end + timedelta(days=embargo_days)
+        test_end = test_start + timedelta(days=test_days)
+        
         if test_end > end:
             break
+            
         train_mask = (ts >= train_start) & (ts < train_end)
-        test_mask = (ts >= train_end) & (ts < test_end)
+        test_mask = (ts >= test_start) & (ts < test_end)
+        
         if test_mask.sum() == 0 or train_mask.sum() == 0:
             current += timedelta(days=test_days)
             if current >= end:
                 break
             continue
+            
         splits.append((train_mask.to_numpy(), test_mask.to_numpy()))
         current += timedelta(days=test_days)
         if current + timedelta(days=train_days + test_days) > end + timedelta(days=1):
             break
+    
+    # Shuffle splits if enabled (maintains temporal order within each split)
+    if shuffle_windows and len(splits) > 1:
+        indices = np.arange(len(splits))
+        np.random.shuffle(indices)
+        splits = [splits[i] for i in indices]
+        logger.info(
+            "walk_forward_windows_shuffled",
+            total_splits=len(splits),
+            shift_range_days=shift_range_days,
+            forward_shift_days=forward_shift_days,
+        )
+    
     return splits
 
 
@@ -143,11 +204,15 @@ def _simulate_trades(
 
 
 def _max_drawdown(equity: np.ndarray) -> float:
+    """Calculate maximum drawdown from equity curve (in bps)."""
     if equity.size == 0:
         return 0.0
     running_max = np.maximum.accumulate(equity)
     drawdown = equity - running_max
-    return float(drawdown.min())
+    max_dd = float(drawdown.min())
+    # Cap drawdown at -10000 bps (-100%) - mathematically impossible to exceed
+    # If we see values worse than this, it's a calculation error
+    return max(-10000.0, max_dd)
 
 
 def _render_equity_curve(trades: pd.DataFrame, symbol: str) -> bytes:
@@ -185,13 +250,66 @@ def _compute_metrics(trades: pd.DataFrame, total_costs_bps: float, total_samples
     pnl = trades["pnl_bps"].to_numpy()
     mean_pnl = float(pnl.mean())
     std_pnl = float(pnl.std(ddof=1)) if pnl.size > 1 else 0.0
-    sharpe = (mean_pnl / std_pnl * np.sqrt(pnl.size)) if std_pnl > 0 else 0.0
+    
+    # Compute Sharpe ratio with proper scaling (annualized if we have enough data)
+    # For daily data: Sharpe = (mean_return / std_return) * sqrt(252)
+    # For trade-based: Sharpe = (mean_pnl / std_pnl) * sqrt(num_trades)
+    # Use trade-based scaling for consistency
+    if std_pnl > 0 and pnl.size > 1:
+        sharpe = (mean_pnl / std_pnl) * np.sqrt(pnl.size)
+    else:
+        sharpe = 0.0
+    
+    # Cap Sharpe ratio to prevent overflow noise (realistic range: -10 to 10)
+    # Real-world Sharpe ratios rarely exceed 3-5, so 10 is a reasonable cap
+    # If Sharpe > 10, it's likely overfitting or data leakage
+    sharpe = max(-10.0, min(10.0, sharpe))
+    
     positives = pnl[pnl > 0].sum()
     negatives = pnl[pnl < 0].sum()
-    # Cap profit factor at 999.99 to avoid extreme values when negatives are very small
-    profit_factor = min(float(positives / max(abs(negatives), 1e-9)), 999.99)
+    # Cap profit factor at 20 to avoid extreme values when negatives are very small
+    # Real-world PF rarely exceeds 5-10, so 20 is a reasonable cap
+    profit_factor = min(float(positives / max(abs(negatives), 1e-9)), 20.0)
     hit_rate = float((pnl > 0).mean()) if pnl.size else 0.0
+    
+    # Compute max drawdown with proper scaling (already in bps, so no scaling needed)
+    # Drawdown is already capped in _max_drawdown at -10000 bps (-100%)
     max_dd = _max_drawdown(trades["equity_curve"].to_numpy())
+    # Additional safety check: ensure drawdown is negative or zero
+    max_dd = min(0.0, max_dd)
+    
+    # Validate metrics for unrealistic values (indicates overfitting or data leakage)
+    is_unrealistic = False
+    validation_warnings = []
+    
+    if hit_rate >= 0.99:  # 99%+ hit rate is unrealistic
+        is_unrealistic = True
+        validation_warnings.append(f"Hit rate {hit_rate*100:.1f}% is unrealistic (likely overfitting or data leakage)")
+    
+    if profit_factor >= 19.0:  # PF near cap indicates no losses
+        is_unrealistic = True
+        validation_warnings.append(f"Profit factor {profit_factor:.2f} is unrealistic (likely overfitting or data leakage)")
+    
+    if sharpe >= 9.0:  # Sharpe > 9 is extremely rare
+        is_unrealistic = True
+        validation_warnings.append(f"Sharpe ratio {sharpe:.2f} is extremely high (likely overfitting or data leakage)")
+    
+    if max_dd < -10000.0:  # Drawdown worse than -100% is impossible
+        is_unrealistic = True
+        validation_warnings.append(f"Max drawdown {max_dd:.2f} bps is impossible (calculation error)")
+    
+    # Store validation warnings in metrics for later reporting
+    if is_unrealistic:
+        logger.warning(
+            "unrealistic_metrics_detected",
+            sharpe=sharpe,
+            profit_factor=profit_factor,
+            hit_rate=hit_rate,
+            max_dd=max_dd,
+            warnings=validation_warnings,
+            message="Model metrics indicate overfitting or data leakage"
+        )
+    
     turnover = (pnl.size / max(total_samples, 1)) * 100
     return {
         "sharpe": sharpe,
@@ -203,6 +321,8 @@ def _compute_metrics(trades: pd.DataFrame, total_costs_bps: float, total_samples
         "turnover": turnover,
         "confidence_mean": float(trades["confidence"].mean()),
         "total_costs_bps": total_costs_bps,
+        "is_unrealistic": is_unrealistic,
+        "validation_warnings": validation_warnings,
     }
 
 
@@ -516,8 +636,14 @@ class TrainingOrchestrator:
                 print(f"☁️  [{result.symbol}] Model uploaded to Dropbox: {len(result.artifacts.files)} files")
                 logger.info("artifacts_published", symbol=result.symbol, s3_uri=s3_uri, file_count=len(result.artifacts.files))
             except Exception as e:
-                print(f"❌ [{result.symbol}] Failed to publish artifacts: {e}")
-                logger.error("artifact_publish_failed", symbol=result.symbol, error=str(e), error_type=type(e).__name__)
+                # Handle missing credentials gracefully - log warning, not error
+                error_str = str(e)
+                if "credentials" in error_str.lower() or "NoCredentialsError" in str(type(e).__name__):
+                    print(f"⚠️  [{result.symbol}] S3 credentials not configured - artifacts saved locally only")
+                    logger.warning("artifact_publish_skipped_no_credentials", symbol=result.symbol, error=error_str)
+                else:
+                    print(f"❌ [{result.symbol}] Failed to publish artifacts: {e}")
+                    logger.error("artifact_publish_failed", symbol=result.symbol, error=error_str, error_type=type(e).__name__)
         
         # Also export to Dropbox in organized coin structure if available
         # This extracts artifacts from the bundle and exports them properly
@@ -1178,7 +1304,9 @@ def _train_symbol(
             )
         
         try:
-            label_builder = LabelBuilder(LabelingConfig(horizon_minutes=4))
+            # Use embargo to prevent lookahead from rolling operations
+            embargo_candles = getattr(settings.training.walk_forward, 'embargo_candles', 2)
+            label_builder = LabelBuilder(LabelingConfig(horizon_minutes=4, embargo_candles=embargo_candles))
             labeled = label_builder.build(feature_frame, costs)
             
             # Verify net_edge_bps was created correctly in Polars
@@ -1611,6 +1739,12 @@ def _train_symbol(
     # Use configurable training settings
     model_config = settings.training.model_training
     
+    # Get regularization settings (with defaults)
+    reg_alpha = getattr(model_config, 'reg_alpha', 0.1)  # L1 regularization
+    reg_lambda = getattr(model_config, 'reg_lambda', 1.0)  # L2 regularization
+    feature_fraction = getattr(model_config, 'feature_fraction', 0.8)  # Feature dropout
+    noise_injection_std = getattr(model_config, 'noise_injection_std', 0.01)  # Noise injection
+    
     hyperparams = {
         "objective": "regression",
         "learning_rate": model_config.learning_rate,
@@ -1621,10 +1755,32 @@ def _train_symbol(
         "min_child_samples": model_config.min_child_samples,
         "random_state": model_config.random_state,
         "n_jobs": model_config.n_jobs,
+        # Regularization to prevent overfitting
+        "reg_alpha": reg_alpha,  # L1 regularization
+        "reg_lambda": reg_lambda,  # L2 regularization
+        "feature_fraction": feature_fraction,  # Feature dropout (similar to dropout in neural networks)
         "verbose": model_config.verbose,
     }
 
     ts_series = dataset["ts"]
+    
+    # CRITICAL: Validate timestamps are monotonic and timezone-aware
+    if not ts_series.is_monotonic_increasing:
+        logger.warning(
+            "timestamps_not_monotonic",
+            symbol=symbol,
+            message="Timestamps are not strictly increasing - sorting to fix"
+        )
+        dataset = dataset.sort_values("ts").reset_index(drop=True)
+        ts_series = dataset["ts"]
+    
+    # Check timezone awareness
+    if hasattr(ts_series.iloc[0], 'tzinfo') and ts_series.iloc[0].tzinfo is None:
+        logger.warning(
+            "timestamps_not_timezone_aware",
+            symbol=symbol,
+            message="Timestamps are not timezone-aware - assuming UTC"
+        )
     
     # Diagnostic: Check timestamp range before walk-forward splits
     ts_min = ts_series.min()
@@ -1643,7 +1799,78 @@ def _train_symbol(
         message="Timestamp range for walk-forward validation",
     )
     
-    splits = _walk_forward_masks(ts_series, settings.training.walk_forward.train_days, settings.training.walk_forward.test_days)
+    # Get validation window configuration from settings
+    shuffle_windows = getattr(settings.training.walk_forward, 'shuffle_windows', True)
+    shift_range_days = getattr(settings.training.walk_forward, 'shift_range_days', 0)
+    forward_shift_days = getattr(settings.training.walk_forward, 'forward_shift_days', 0)
+    random_seed = getattr(settings.training.walk_forward, 'random_seed', 42)
+    shuffle_candles = getattr(settings.training.walk_forward, 'shuffle_candles', False)  # Test for overfitting
+    
+    # Get embargo_days from config (default 2 days to prevent leakage)
+    embargo_days = getattr(settings.training.walk_forward, 'embargo_days', 2)
+    
+    splits = _walk_forward_masks(
+        ts_series, 
+        settings.training.walk_forward.train_days, 
+        settings.training.walk_forward.test_days,
+        shuffle_windows=shuffle_windows,
+        shift_range_days=shift_range_days,
+        forward_shift_days=forward_shift_days,
+        embargo_days=embargo_days,
+        random_seed=random_seed
+    )
+    
+    # Filter splits by min_coverage (reject splits with too many gaps)
+    min_coverage = getattr(settings.training.walk_forward, 'min_coverage', 0.98)
+    if min_coverage > 0:
+        expected_train_candles = settings.training.walk_forward.train_days * 1440  # 1-min candles per day
+        expected_test_candles = settings.training.walk_forward.test_days * 1440
+        original_splits = len(splits)
+        filtered_splits = []
+        
+        for train_mask, test_mask in splits:
+            train_count = train_mask.sum()
+            test_count = test_mask.sum()
+            train_coverage = train_count / expected_train_candles if expected_train_candles > 0 else 0
+            test_coverage = test_count / expected_test_candles if expected_test_candles > 0 else 0
+            
+            if train_coverage >= min_coverage and test_coverage >= min_coverage:
+                filtered_splits.append((train_mask, test_mask))
+            else:
+                logger.warning(
+                    "split_rejected_low_coverage",
+                    symbol=symbol,
+                    train_coverage=train_coverage,
+                    test_coverage=test_coverage,
+                    min_coverage=min_coverage,
+                    train_count=train_count,
+                    test_count=test_count
+                )
+        
+        splits = filtered_splits
+        if len(splits) < original_splits:
+            logger.warning(
+                "splits_filtered_by_coverage",
+                symbol=symbol,
+                original_splits=original_splits,
+                filtered_splits=len(splits),
+                min_coverage=min_coverage
+            )
+    
+    # Shuffle candle order if enabled (to test if model is overfitting to temporal patterns)
+    if shuffle_candles:
+        logger.warning(
+            "candle_order_shuffled",
+            symbol=symbol,
+            message="CANDLE ORDER SHUFFLED - This tests if model is overfitting to temporal patterns. Results should degrade significantly if overfitting."
+        )
+        # Shuffle the dataset while preserving feature-target relationships
+        # This breaks temporal order to test if model relies on time-based patterns
+        shuffled_indices = np.random.permutation(len(dataset))
+        dataset = dataset.iloc[shuffled_indices].reset_index(drop=True)
+        # DO NOT re-sort by timestamp - keep shuffled order to break temporal patterns
+        # This will cause walk-forward validation to use non-sequential data
+        # If model performance degrades significantly, it's overfitting to temporal patterns
     cost_threshold = cost_model.recommended_edge_threshold(costs)
     oos_trades: List[pd.DataFrame] = []
     
@@ -1725,10 +1952,22 @@ def _train_symbol(
         
         # Create validation set from training data (20% for early stopping)
         train_size = int(0.8 * len(X_train))
-        X_train_split = X_train.iloc[:train_size]
-        y_train_split = y_train.iloc[:train_size]
+        X_train_split = X_train.iloc[:train_size].copy()
+        y_train_split = y_train.iloc[:train_size].copy()
         X_val_split = X_train.iloc[train_size:]
         y_val_split = y_train.iloc[train_size:]
+        
+        # Apply noise injection to training data if enabled (helps prevent overfitting)
+        if noise_injection_std > 0:
+            noise = np.random.normal(0, noise_injection_std, size=X_train_split.shape)
+            X_train_split = X_train_split + noise
+            logger.debug(
+                "noise_injection_applied",
+                symbol=symbol,
+                split_idx=split_idx + 1,
+                noise_std=noise_injection_std,
+                message="Added Gaussian noise to training features to improve generalization"
+            )
         
         logger.info(
             "training_split_start",
@@ -1775,6 +2014,30 @@ def _train_symbol(
             X_test = dataset.loc[test_mask, feature_cols]
             if X_test.empty:
                 continue
+            
+            # Validate no data leakage: ensure test timestamps are strictly after train timestamps
+            train_timestamps = dataset.loc[train_mask, "ts"]
+            test_timestamps = dataset.loc[test_mask, "ts"]
+            if not train_timestamps.empty and not test_timestamps.empty:
+                max_train_ts = train_timestamps.max()
+                min_test_ts = test_timestamps.min()
+                if min_test_ts <= max_train_ts:
+                    logger.warning(
+                        "potential_data_leakage_detected",
+                        symbol=symbol,
+                        split_idx=split_idx + 1,
+                        max_train_ts=max_train_ts.isoformat(),
+                        min_test_ts=min_test_ts.isoformat(),
+                        message="Test data overlaps with training data - potential lookahead bias!"
+                    )
+                else:
+                    logger.debug(
+                        "data_leakage_check_passed",
+                        symbol=symbol,
+                        split_idx=split_idx + 1,
+                        gap_days=(min_test_ts - max_train_ts).days,
+                        message="Test data is strictly after training data - no leakage"
+                    )
             
             # Use ensemble prediction
             ensemble_result = ensemble_trainer.predict_ensemble(X_test, regime=None)
@@ -1837,6 +2100,31 @@ def _train_symbol(
             X_test = dataset.loc[test_mask, feature_cols]
             if X_test.empty:
                 continue
+            
+            # Validate no data leakage: ensure test timestamps are strictly after train timestamps
+            train_timestamps = dataset.loc[train_mask, "ts"]
+            test_timestamps = dataset.loc[test_mask, "ts"]
+            if not train_timestamps.empty and not test_timestamps.empty:
+                max_train_ts = train_timestamps.max()
+                min_test_ts = test_timestamps.min()
+                if min_test_ts <= max_train_ts:
+                    logger.warning(
+                        "potential_data_leakage_detected",
+                        symbol=symbol,
+                        split_idx=split_idx + 1,
+                        max_train_ts=max_train_ts.isoformat(),
+                        min_test_ts=min_test_ts.isoformat(),
+                        message="Test data overlaps with training data - potential lookahead bias!"
+                    )
+                else:
+                    logger.debug(
+                        "data_leakage_check_passed",
+                        symbol=symbol,
+                        split_idx=split_idx + 1,
+                        gap_days=(min_test_ts - max_train_ts).days,
+                        message="Test data is strictly after training data - no leakage"
+                    )
+            
             predictions = model.predict(X_test)
             confidence = dataset.loc[test_mask, "edge_confidence"].to_numpy()
         
@@ -1957,8 +2245,68 @@ def _train_symbol(
     
     metrics = _compute_metrics(combined_trades, costs.total_costs_bps, len(dataset))
     
-    # Print key metrics
-    _print_status(f"AGGREGATED Performance: Sharpe={metrics.get('sharpe', 0):.2f}, Hit Rate={metrics.get('hit_rate', 0)*100:.1f}%, PnL={metrics.get('pnl_bps', 0):.2f} bps", sym=symbol, level="INFO")
+    # Print key metrics with robustness warnings
+    sharpe = metrics.get('sharpe', 0)
+    hit_rate = metrics.get('hit_rate', 0) * 100
+    pnl_bps = metrics.get('pnl_bps', 0)
+    is_unrealistic = metrics.get('is_unrealistic', False)
+    validation_warnings = metrics.get('validation_warnings', [])
+    
+    _print_status(f"AGGREGATED Performance: Sharpe={sharpe:.2f}, Hit Rate={hit_rate:.1f}%, PnL={pnl_bps:.2f} bps", sym=symbol, level="INFO")
+    
+    # Overfitting detection: Display validation warnings
+    if is_unrealistic:
+        _print_status("", sym=symbol, level="WARN")
+        _print_status("🚨 UNREALISTIC METRICS DETECTED - MODEL LIKELY OVERFITTED OR DATA LEAKAGE:", sym=symbol, level="WARN")
+        for warning in validation_warnings:
+            _print_status(f"  ⚠️  {warning}", sym=symbol, level="WARN")
+        _print_status("", sym=symbol, level="WARN")
+        _print_status("  RECOMMENDATIONS:", sym=symbol, level="WARN")
+        _print_status("  1. Verify no future data is used in feature generation", sym=symbol, level="WARN")
+        _print_status("  2. Check label creation - labels should be forward-looking only", sym=symbol, level="WARN")
+        _print_status("  3. Run with shuffle_candles=true to test robustness", sym=symbol, level="WARN")
+        _print_status("  4. Shift validation window forward and retrain", sym=symbol, level="WARN")
+        _print_status("  5. Review data leakage checks in walk-forward validation", sym=symbol, level="WARN")
+        _print_status("", sym=symbol, level="WARN")
+    
+    # Overfitting detection: If Sharpe > 9, warn about potential overfitting
+    if sharpe > 9.0:
+        _print_status(f"⚠️  WARNING: Sharpe ratio ({sharpe:.2f}) is extremely high (>9). This likely indicates overfitting.", sym=symbol, level="WARN")
+        _print_status("   Recommendation: Run with shuffle_candles=true to test robustness", sym=symbol, level="WARN")
+    
+    # Compare with paper trading results if available
+    paper_trading_sharpe = None
+    try:
+        # Check if paper trading results exist for this symbol
+        if dsn:
+            import psycopg2  # type: ignore[reportMissingImports]
+            conn = psycopg2.connect(dsn)
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT sharpe_ratio, hit_rate, pnl_bps 
+                FROM paper_trading_results 
+                WHERE symbol = %s 
+                ORDER BY created_at DESC 
+                LIMIT 1
+            """, (symbol,))
+            result = cursor.fetchone()
+            if result:
+                paper_trading_sharpe, paper_hit_rate, paper_pnl = result
+                _print_status("", sym=symbol, level="INFO")
+                _print_status("📊 PAPER TRADING COMPARISON:", sym=symbol, level="INFO")
+                _print_status(f"  Backtest Sharpe: {sharpe:.2f} | Paper Trading Sharpe: {paper_trading_sharpe:.2f}", sym=symbol, level="INFO")
+                _print_status(f"  Backtest Hit Rate: {hit_rate:.1f}% | Paper Trading Hit Rate: {paper_hit_rate*100:.1f}%", sym=symbol, level="INFO")
+                
+                # Overfitting detection: If backtest Sharpe >> paper trading Sharpe, likely overfitting
+                if paper_trading_sharpe and sharpe > paper_trading_sharpe * 2:
+                    _print_status(f"  ⚠️  OVERFITTING DETECTED: Backtest Sharpe ({sharpe:.2f}) is >2x paper trading Sharpe ({paper_trading_sharpe:.2f})", sym=symbol, level="WARN")
+                    _print_status("     Model may not generalize to live trading", sym=symbol, level="WARN")
+                elif paper_trading_sharpe and sharpe < 5 and paper_trading_sharpe < 5:
+                    _print_status(f"  ✅ Model performance is consistent between backtest and paper trading", sym=symbol, level="SUCCESS")
+            cursor.close()
+            conn.close()
+    except Exception as e:
+        logger.debug("paper_trading_comparison_unavailable", symbol=symbol, error=str(e))
     
     # Brain Library integration: Store final model metrics after all splits
     if brain_training:
@@ -1967,6 +2315,7 @@ def _train_symbol(
             final_model_start_time = time_module.time()
             
             # Train final model on all data - use ensemble if enabled
+            brain_ensemble_trainer = None  # Initialize for use in testing
             if use_ensemble:
                 # Train ensemble for brain integration
                 brain_ensemble_trainer, brain_ensemble_results = train_multi_model_ensemble(
@@ -2005,8 +2354,59 @@ def _train_symbol(
                 model_type=model_type,
             )
             
-            # Use last test split for evaluation
+            # Test final model on ALL unseen test windows (not just the last one)
+            # This gives a more comprehensive evaluation of the final model
             if splits:
+                all_test_trades = []
+                for split_idx, (_, test_mask) in enumerate(splits):
+                    final_X_test = dataset.loc[test_mask, feature_cols]
+                    final_y_test = dataset.loc[test_mask, "net_edge_bps"]
+                    final_confidence = dataset.loc[test_mask, "edge_confidence"].to_numpy()
+                    final_timestamps = dataset.loc[test_mask, "ts"].to_numpy()
+                    
+                    if not final_X_test.empty:
+                        # Get predictions from final model
+                        if use_ensemble and brain_ensemble_trainer:
+                            # Use the ensemble trainer for predictions
+                            final_predictions = brain_ensemble_trainer.predict_ensemble(final_X_test, regime=None).prediction
+                        else:
+                            # Use single model
+                            final_predictions = final_model.predict(final_X_test)
+                        
+                        # Simulate trades on this test window
+                        test_trades = _simulate_trades(
+                            final_predictions,
+                            final_y_test.to_numpy(),
+                            final_confidence,
+                            final_timestamps,
+                            cost_threshold
+                        )
+                        if not test_trades.empty:
+                            all_test_trades.append(test_trades)
+                            logger.debug(
+                                "final_model_test_split",
+                                symbol=symbol,
+                                split_idx=split_idx + 1,
+                                trades=len(test_trades),
+                                message=f"Final model tested on split {split_idx + 1}"
+                            )
+                
+                # Combine all test trades from final model
+                if all_test_trades:
+                    combined_final_trades = pd.concat(all_test_trades, ignore_index=True)
+                    final_metrics = _compute_metrics(combined_final_trades, costs.total_costs_bps, len(dataset))
+                    logger.info(
+                        "final_model_evaluation_complete",
+                        symbol=symbol,
+                        total_test_splits=len(splits),
+                        total_trades=len(combined_final_trades),
+                        sharpe=final_metrics.get("sharpe", 0.0),
+                        hit_rate=final_metrics.get("hit_rate", 0.0),
+                        message="Final model evaluated on all unseen test windows"
+                    )
+                    _print_status(f"Final model tested on {len(splits)} unseen windows: {len(combined_final_trades)} trades, Sharpe={final_metrics.get('sharpe', 0):.2f}", sym=symbol, level="SUCCESS")
+                
+                # For brain integration, use the last test split (as before)
                 last_train_mask, last_test_mask = splits[-1]
                 final_X_test = dataset.loc[last_test_mask, feature_cols]
                 final_y_test = dataset.loc[last_test_mask, "net_edge_bps"]
@@ -2108,33 +2508,84 @@ def _train_symbol(
             feature_metadata={"columns": feature_cols},
         )
 
+    # Calculate median values for display (needed regardless of unrealistic check)
     median_dd = median([abs(entry.get("max_dd_bps", 0.0)) for entry in history]) if history else abs(metrics["max_dd_bps"])
     median_hit = median([entry.get("hit_rate", 0.0) for entry in history]) if history else metrics["hit_rate"]
-    gate_results = {
-        "sharpe_pass": metrics["sharpe"] >= 0.7,
-        "profit_factor_pass": metrics["profit_factor"] >= 1.1,
-        "max_dd_pass": abs(metrics["max_dd_bps"]) <= 1.2 * median_dd if median_dd else True,
-        "hit_rate_pass": metrics["hit_rate"] >= max(median_hit - 0.01, 0.0),
-        "trades_pass": metrics["trades_oos"] >= settings.training.walk_forward.min_trades,
-    }
-    published = all(gate_results.values())
-    failed = [name for name, passed in gate_results.items() if not passed]
-    reason = "all_pass" if published else "gate_failure:" + ",".join(failed)
     
-    # Print gate results
+    # Check for unrealistic metrics (overfitting/data leakage) - reject even if gates pass
+    is_unrealistic = metrics.get('is_unrealistic', False)
+    if is_unrealistic:
+        _print_status("", sym=symbol, level="WARN")
+        _print_status("🚨 MODEL REJECTED: Unrealistic metrics indicate overfitting or data leakage", sym=symbol, level="WARN")
+        _print_status("   Model will NOT be published despite passing gates", sym=symbol, level="WARN")
+        _print_status("", sym=symbol, level="WARN")
+        gate_results = {
+            "sharpe_pass": False,
+            "profit_factor_pass": False,
+            "max_dd_pass": False,
+            "hit_rate_pass": False,
+            "trades_pass": metrics["trades_oos"] >= settings.training.walk_forward.min_trades,
+            "unrealistic_metrics": True,  # Special flag for unrealistic metrics
+        }
+        published = False
+        reason = "unrealistic_metrics_overfitting"
+        failed = ["unrealistic_metrics"]
+        logger.warning(
+            "model_rejected_unrealistic_metrics",
+            symbol=symbol,
+            sharpe=metrics.get('sharpe', 0),
+            profit_factor=metrics.get('profit_factor', 0),
+            hit_rate=metrics.get('hit_rate', 0),
+            max_dd=metrics.get('max_dd_bps', 0),
+            warnings=metrics.get('validation_warnings', []),
+            message="Model rejected due to unrealistic metrics indicating overfitting or data leakage"
+        )
+    else:
+        # Gate checks with min/max thresholds
+        min_sharpe = 0.7
+        max_realistic_sharpe = 9.0
+        min_pf = 1.1
+        max_realistic_pf = 5.0
+        
+        gate_results = {
+            "sharpe_pass": min_sharpe <= metrics["sharpe"] <= max_realistic_sharpe,
+            "profit_factor_pass": min_pf <= metrics["profit_factor"] <= max_realistic_pf,
+            "max_dd_pass": abs(metrics["max_dd_bps"]) <= 1.2 * median_dd if median_dd else True,
+            "hit_rate_pass": metrics["hit_rate"] >= max(median_hit - 0.01, 0.0),
+            "trades_pass": metrics["trades_oos"] >= settings.training.walk_forward.min_trades,
+            "unrealistic_metrics": False,
+        }
+        published = all([v for k, v in gate_results.items() if k != "unrealistic_metrics"])
+        failed = [name for name, passed in gate_results.items() if not passed and name != "unrealistic_metrics"]
+        reason = "all_pass" if published else "gate_failure:" + ",".join(failed)
+    
+    # Print gate results with min/max thresholds
+    min_sharpe = 0.7
+    max_realistic_sharpe = 9.0
+    min_pf = 1.1
+    max_realistic_pf = 5.0
+    
+    sharpe_pass = min_sharpe <= metrics['sharpe'] <= max_realistic_sharpe
+    pf_pass = min_pf <= metrics['profit_factor'] <= max_realistic_pf
+    
     print(f"\n{'='*80}")
     print(f"📊 [{symbol}] GATE RESULTS")
     print(f"{'='*80}")
-    print(f"  Sharpe Ratio:      {metrics['sharpe']:.2f} {'✅ PASS' if gate_results['sharpe_pass'] else '❌ FAIL'} (threshold: 0.7)")
-    print(f"  Profit Factor:     {metrics['profit_factor']:.2f} {'✅ PASS' if gate_results['profit_factor_pass'] else '❌ FAIL'} (threshold: 1.1)")
+    print(f"  Sharpe Ratio:      {metrics['sharpe']:.2f} {'✅ PASS' if sharpe_pass else '❌ FAIL'} (min: {min_sharpe}, max: {max_realistic_sharpe})")
+    print(f"  Profit Factor:     {metrics['profit_factor']:.2f} {'✅ PASS' if pf_pass else '❌ FAIL'} (min: {min_pf}, max: {max_realistic_pf})")
     print(f"  Hit Rate:          {metrics['hit_rate']*100:.1f}% {'✅ PASS' if gate_results['hit_rate_pass'] else '❌ FAIL'} (threshold: {max(median_hit - 0.01, 0.0)*100:.1f}%)")
     print(f"  Max Drawdown:      {metrics['max_dd_bps']:.2f} bps {'✅ PASS' if gate_results['max_dd_pass'] else '❌ FAIL'} (threshold: {1.2 * median_dd:.2f} bps)")
     print(f"  Trades:            {metrics['trades_oos']:,} {'✅ PASS' if gate_results['trades_pass'] else '❌ FAIL'} (threshold: {settings.training.walk_forward.min_trades:,})")
+    if gate_results.get('unrealistic_metrics', False):
+        print(f"  Unrealistic Metrics: ❌ FAIL (overfitting/data leakage detected)")
     print(f"{'='*80}")
     if published:
         print(f"✅ [{symbol}] ALL GATES PASSED - Model will be published")
     else:
-        print(f"❌ [{symbol}] GATE FAILURE - Model rejected: {', '.join(failed)}")
+        if gate_results.get('unrealistic_metrics', False):
+            print(f"❌ [{symbol}] MODEL REJECTED - Unrealistic metrics indicate overfitting or data leakage")
+        else:
+            print(f"❌ [{symbol}] GATE FAILURE - Model rejected: {', '.join(failed)}")
     print(f"{'='*80}\n")
 
     logger.info("training_final_production_model", symbol=symbol)

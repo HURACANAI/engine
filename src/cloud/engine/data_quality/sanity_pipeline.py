@@ -110,10 +110,24 @@ class DataSanityPipeline:
         # Step 3: Remove outliers
         df, outliers_removed = self._remove_outliers(df)
 
-        # Step 4: Handle gaps
+        # Step 4: Handle gaps (marks rows, does NOT forward-fill OHLCV)
         df, gaps = self.gap_handler.process(df)
+        
+        # Step 4b: Filter out rows with gaps BEFORE applying fees
+        # This prevents training on synthetic/flat candles that cause perfect hindsight
+        rows_before_gap_filter = len(df)
+        if 'gap_flag' in df.columns:
+            df = df.filter(~pl.col('gap_flag'))
+            rows_removed = rows_before_gap_filter - len(df)
+            if rows_removed > 0:
+                logger.warning(
+                    "gap_rows_excluded",
+                    rows_removed=rows_removed,
+                    pct=rows_removed / rows_before_gap_filter * 100 if rows_before_gap_filter > 0 else 0,
+                    note="Rows touching gaps excluded to prevent perfect hindsight from flat candles"
+                )
 
-        # Step 5: Apply historical fees
+        # Step 5: Apply historical fees (only to non-gap rows)
         if self.apply_fees and self.fee_manager:
             df = self.fee_manager.apply_fees_to_dataframe(df, self.exchange)
 
@@ -127,7 +141,7 @@ class DataSanityPipeline:
             bad_timestamps_removed=bad_ts_removed,
             outliers_removed=outliers_removed,
             gaps_detected=len(gaps),
-            gaps_filled=len(gaps),  # All gaps get filled
+            gaps_filled=0,  # Gaps are NOT filled - rows are excluded instead
             fees_applied=self.apply_fees,
             processing_time_seconds=processing_time
         )

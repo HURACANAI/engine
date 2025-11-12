@@ -11,7 +11,7 @@ Strategy: Detect gaps, log them, and forward-fill price (conservative approach).
 """
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List
 
 import polars as pl
@@ -44,22 +44,29 @@ class GapHandler:
     def __init__(
         self,
         max_gap_minutes: int = 5,
-        forward_fill: bool = True
+        forward_fill: bool = False  # Changed default: DO NOT forward-fill OHLCV
     ):
         """
         Initialize gap handler.
 
         Args:
             max_gap_minutes: Gap > this triggers detection
-            forward_fill: Whether to fill gaps (vs mark as NaN)
+            forward_fill: DEPRECATED - Always False. Gaps are marked, not filled.
+                          Forward-filling OHLCV creates flat candles and perfect hindsight.
         """
         self.max_gap_minutes = max_gap_minutes
-        self.forward_fill = forward_fill
+        self.forward_fill = False  # Always False - never forward-fill OHLCV
+
+        if forward_fill:
+            logger.warning(
+                "forward_fill_deprecated",
+                message="forward_fill=True is deprecated. Gaps are marked, not filled, to prevent perfect hindsight."
+            )
 
         logger.info(
             "gap_handler_initialized",
             max_gap_minutes=max_gap_minutes,
-            forward_fill=forward_fill
+            note="Gaps will be marked with flags, NOT forward-filled"
         )
 
     def detect_gaps(self, df: pl.DataFrame) -> List[DataGap]:
@@ -97,9 +104,17 @@ class GapHandler:
                 minutes_missing = gap_dur.total_seconds() / 60
                 candles_missing = int(minutes_missing) - 1
 
+                # Convert timestamp from milliseconds to datetime
+                timestamp_ms = row['timestamp']
+                if isinstance(timestamp_ms, int):
+                    end_time = datetime.fromtimestamp(timestamp_ms / 1000, tz=timezone.utc)
+                else:
+                    end_time = timestamp_ms
+                start_time = end_time - gap_dur
+
                 gap = DataGap(
-                    start_time=row['timestamp'] - gap_dur,
-                    end_time=row['timestamp'],
+                    start_time=start_time,
+                    end_time=end_time,
                     duration_minutes=minutes_missing,
                     candles_missing=candles_missing,
                     reason="exchange_outage_or_api_limit"
@@ -117,41 +132,74 @@ class GapHandler:
 
         return gaps
 
-    def fill_gaps(self, df: pl.DataFrame) -> pl.DataFrame:
+    def mark_gaps(self, df: pl.DataFrame, gaps: List[DataGap]) -> pl.DataFrame:
         """
-        Fill gaps using forward-fill strategy.
+        Mark rows that touch gaps with gap flags instead of forward-filling OHLCV.
+        
+        CRITICAL: We do NOT forward-fill OHLCV because it creates flat candles
+        that lead to perfect hindsight labels (100% hit rate). Instead, we mark
+        rows that touch gaps so they can be excluded from training.
 
         Args:
             df: DataFrame with gaps
+            gaps: List of detected gaps
 
         Returns:
-            DataFrame with gaps filled
+            DataFrame with gap_flag and gap_span_minutes columns added
         """
-        if not self.forward_fill:
+        if not gaps:
+            # No gaps - add columns with False/0
+            df = df.with_columns([
+                pl.lit(False).alias('gap_flag'),
+                pl.lit(0.0).alias('gap_span_minutes')
+            ])
             return df
 
-        # Forward-fill all columns except timestamp
-        fill_columns = [col for col in df.columns if col != 'timestamp']
+        # Create gap flags: mark rows that are within or immediately after a gap
+        # We mark rows that are within the gap period or the first row after a gap
+        gap_flags = pl.lit(False).alias('gap_flag')
+        gap_spans = pl.lit(0.0).alias('gap_span_minutes')
+        
+        for gap in gaps:
+            # Mark rows within the gap period
+            within_gap = (
+                (pl.col('timestamp') >= gap.start_time) &
+                (pl.col('timestamp') <= gap.end_time)
+            )
+            # Also mark the first row immediately after the gap (it may have stale data)
+            after_gap = (
+                (pl.col('timestamp') > gap.end_time) &
+                (pl.col('timestamp') <= gap.end_time + timedelta(minutes=1))
+            )
+            
+            gap_flags = gap_flags | within_gap | after_gap
+            # Set gap_span_minutes for rows within or after the gap
+            gap_spans = pl.when(within_gap | after_gap).then(
+                pl.lit(gap.duration_minutes)
+            ).otherwise(gap_spans)
 
-        for col in fill_columns:
-            df = df.with_columns([
-                pl.col(col).forward_fill().alias(col)
-            ])
+        df = df.with_columns([
+            gap_flags,
+            gap_spans
+        ])
 
+        gap_count = df['gap_flag'].sum()
         logger.info(
-            "gaps_filled",
-            method="forward_fill",
-            columns=len(fill_columns)
+            "gaps_marked",
+            method="gap_flagging",
+            gaps_detected=len(gaps),
+            rows_marked=gap_count,
+            note="OHLCV NOT forward-filled - rows with gaps will be excluded from training"
         )
 
         return df
 
     def process(self, df: pl.DataFrame) -> tuple[pl.DataFrame, List[DataGap]]:
         """
-        Detect and fill gaps.
+        Detect gaps and mark rows (DO NOT forward-fill OHLCV).
 
         Returns:
-            (processed_dataframe, detected_gaps)
+            (processed_dataframe_with_gap_flags, detected_gaps)
         """
         # Ensure sorted by timestamp
         df = df.sort('timestamp')
@@ -159,14 +207,14 @@ class GapHandler:
         # Detect gaps
         gaps = self.detect_gaps(df)
 
-        # Fill if configured
-        if self.forward_fill and gaps:
-            df = self.fill_gaps(df)
+        # Mark gaps (do NOT forward-fill OHLCV - this causes perfect hindsight)
+        df = self.mark_gaps(df, gaps)
 
         logger.info(
             "gap_processing_complete",
             total_gaps=len(gaps),
-            filled=self.forward_fill
+            rows_marked=df['gap_flag'].sum() if 'gap_flag' in df.columns else 0,
+            note="OHLCV preserved - gap rows marked for exclusion"
         )
 
         return df, gaps

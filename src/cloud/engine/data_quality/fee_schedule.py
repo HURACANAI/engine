@@ -9,7 +9,7 @@ produce unrealistic P&L estimates.
 """
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 
 import polars as pl
@@ -62,26 +62,26 @@ class HistoricalFeeManager:
         """
         schedules = {}
 
-        # Binance fee history
+        # Binance fee history (all dates in UTC timezone)
         schedules['binance'] = [
             FeeSchedule(
-                start_date=datetime(2020, 1, 1),
-                end_date=datetime(2023, 1, 1),
+                start_date=datetime(2020, 1, 1, tzinfo=timezone.utc),
+                end_date=datetime(2023, 1, 1, tzinfo=timezone.utc),
                 maker_fee_bps=10.0,
                 taker_fee_bps=10.0,
                 exchange='binance',
                 notes="Old standard tier"
             ),
             FeeSchedule(
-                start_date=datetime(2023, 1, 1),
-                end_date=datetime(2024, 7, 1),
+                start_date=datetime(2023, 1, 1, tzinfo=timezone.utc),
+                end_date=datetime(2024, 7, 1, tzinfo=timezone.utc),
                 maker_fee_bps=2.0,   # Maker rebate
                 taker_fee_bps=8.0,
                 exchange='binance',
                 notes="New fee structure with maker rebates"
             ),
             FeeSchedule(
-                start_date=datetime(2024, 7, 1),
+                start_date=datetime(2024, 7, 1, tzinfo=timezone.utc),
                 end_date=None,  # Ongoing
                 maker_fee_bps=2.0,
                 taker_fee_bps=6.0,  # Reduced taker fee
@@ -90,10 +90,10 @@ class HistoricalFeeManager:
             ),
         ]
 
-        # Coinbase Pro fee history
+        # Coinbase Pro fee history (all dates in UTC timezone)
         schedules['coinbase'] = [
             FeeSchedule(
-                start_date=datetime(2020, 1, 1),
+                start_date=datetime(2020, 1, 1, tzinfo=timezone.utc),
                 end_date=None,
                 maker_fee_bps=5.0,
                 taker_fee_bps=5.0,
@@ -102,10 +102,10 @@ class HistoricalFeeManager:
             ),
         ]
 
-        # Kraken fee history
+        # Kraken fee history (all dates in UTC timezone)
         schedules['kraken'] = [
             FeeSchedule(
-                start_date=datetime(2020, 1, 1),
+                start_date=datetime(2020, 1, 1, tzinfo=timezone.utc),
                 end_date=None,
                 maker_fee_bps=4.0,
                 taker_fee_bps=10.0,
@@ -119,7 +119,7 @@ class HistoricalFeeManager:
     def get_fee_for_date(
         self,
         exchange: str,
-        date: datetime,
+        date: datetime | int,
         is_maker: bool = False
     ) -> float:
         """
@@ -127,13 +127,19 @@ class HistoricalFeeManager:
 
         Args:
             exchange: Exchange name ('binance', 'coinbase', 'kraken')
-            date: Date to query
+            date: Date to query (datetime or timestamp in milliseconds)
             is_maker: True for maker orders, False for taker
 
         Returns:
             Fee in basis points
         """
         exchange = exchange.lower()
+        
+        # Convert timestamp (int) to datetime if needed
+        if isinstance(date, int):
+            # Assume milliseconds timestamp
+            from datetime import timezone
+            date = datetime.fromtimestamp(date / 1000, tz=timezone.utc)
 
         if exchange not in self.schedules:
             logger.warning(
@@ -143,8 +149,18 @@ class HistoricalFeeManager:
             )
             return 8.0  # Conservative default
 
+        # Ensure date is timezone-aware UTC
+        if date.tzinfo is None:
+            date = date.replace(tzinfo=timezone.utc)
+        
         # Find applicable schedule
         for schedule in self.schedules[exchange]:
+            # Ensure schedule dates are timezone-aware UTC
+            if schedule.start_date.tzinfo is None:
+                schedule.start_date = schedule.start_date.replace(tzinfo=timezone.utc)
+            if schedule.end_date and schedule.end_date.tzinfo is None:
+                schedule.end_date = schedule.end_date.replace(tzinfo=timezone.utc)
+            
             if schedule.start_date <= date:
                 if schedule.end_date is None or date < schedule.end_date:
                     fee = schedule.maker_fee_bps if is_maker else schedule.taker_fee_bps

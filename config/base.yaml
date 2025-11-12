@@ -75,7 +75,7 @@ training:
   # Per-coin training configuration
   per_coin:
     # Symbols allowed for training (empty list = all symbols from universe)
-    symbols_allowed: []  # e.g., ["BTCUSDT", "ETHUSDT"]
+    symbols_allowed: ["SOLUSDT"]  # Testing SOL only
     # Per-symbol cost overrides (optional)
     per_symbol_costs: {}  # e.g., {"BTCUSDT": {"taker_fee_bps": 4.0, "maker_fee_bps": 2.0}}
     # Parallel training configuration
@@ -125,6 +125,15 @@ training:
     train_days: 20
     test_days: 5
     min_trades: 300
+    # Validation window robustness
+    shuffle_windows: true  # Shuffle validation windows to test robustness
+    shift_range_days: 0  # Random shift range for windows (0 = no shift, >0 = random shift up to N days)
+    forward_shift_days: 0  # Forward shift all validation windows by N days (for robustness testing)
+    shuffle_candles: false  # Shuffle candle order to test for overfitting (WARNING: breaks temporal order)
+    random_seed: 42  # Random seed for reproducibility
+    min_coverage: 0.98  # Reject splits with <98% data coverage (gaps)
+    embargo_candles: 2  # Candles to skip between features and label window (prevents lookahead)
+    embargo_days: 2  # Days to skip between train and test sets (prevents leakage)
   model_training:
     n_estimators: 2000  # Increased from 300 for proper intensive training
     learning_rate: 0.01  # Lower learning rate for better learning
@@ -136,6 +145,11 @@ training:
     verbose: -1  # Suppress verbose output
     n_jobs: -1  # Use all CPU cores
     random_state: 42
+    # Regularization to prevent overfitting
+    reg_alpha: 0.1  # L1 regularization (feature selection)
+    reg_lambda: 1.0  # L2 regularization (weight decay)
+    feature_fraction: 0.8  # Feature dropout (80% of features per tree)
+    noise_injection_std: 0.01  # Gaussian noise injection to training data (0 = disabled)
   advanced:
     use_multi_model_ensemble: true  # Use ensemble of multiple models
     ensemble_techniques: ["xgboost", "random_forest", "lightgbm"]
