@@ -144,9 +144,10 @@ class EnhancedRLPipeline:
         # Adjust state_dim if higher-order features are enabled
         state_dim = settings.training.rl_agent.state_dim
         if self.enable_higher_order_features:
-            # Higher-order features add ~60-80 features
-            # Base features ~68 → Enhanced ~148
-            state_dim = 148  # Updated for higher-order features
+            # Calculate actual state dimension:
+            # - Higher-order features: 141 (75 base + 66 engineered)
+            # - Tail features: 36 (pattern, position, regime, risk, dual-mode)
+            state_dim = 177  # 141 market + 36 tail features
 
         self.agent = RLTradingAgent(
             state_dim=state_dim,
@@ -216,7 +217,7 @@ class EnhancedRLPipeline:
             logger.warning(
                 "insufficient_historical_data",
                 symbol=symbol,
-                rows=historical_data.height if historical_data else 0,
+                rows=historical_data.height if historical_data is not None else 0,
                 min_required=min_candles,
             )
             return {"error": "insufficient_data", "symbol": symbol}
@@ -547,7 +548,7 @@ class EnhancedRLPipeline:
 
             query = CandleQuery(
                 symbol=symbol,
-                timeframe="1d",
+                timeframe="1h",  # Use hourly data for better granularity
                 start_at=start_date,
                 end_at=end_date,
             )

@@ -275,6 +275,31 @@ class RunningNormalizer:
     def _update(self, batch: torch.Tensor) -> None:
         if batch.numel() == 0:
             return
+
+        # Handle dimension mismatch by resizing if needed
+        if batch.shape[-1] != self._mean.shape[0]:
+            import structlog
+            logger = structlog.get_logger(__name__)
+            logger.warning(
+                "normalizer_dimension_mismatch",
+                expected=self._mean.shape[0],
+                actual=batch.shape[-1],
+                action="resizing_normalizer"
+            )
+            # Resize normalizer to match incoming batch
+            new_size = batch.shape[-1]
+            old_size = self._mean.shape[0]
+
+            if new_size > old_size:
+                # Pad with zeros
+                padding = torch.zeros(new_size - old_size, dtype=torch.float32)
+                self._mean = torch.cat([self._mean, padding])
+                self._var = torch.cat([self._var, torch.ones(new_size - old_size, dtype=torch.float32)])
+            else:
+                # Trim
+                self._mean = self._mean[:new_size]
+                self._var = self._var[:new_size]
+
         batch_mean = batch.mean(dim=0)
         batch_var = batch.var(dim=0, unbiased=False)
         batch_count = batch.shape[0]
@@ -294,11 +319,19 @@ class RunningNormalizer:
 
     def normalize(self, batch: torch.Tensor, update_stats: bool = True) -> torch.Tensor:
         input_batch = batch if batch.dim() > 1 else batch.unsqueeze(0)
+
+        # Replace NaN and Inf with zeros before normalization
+        input_batch = torch.nan_to_num(input_batch, nan=0.0, posinf=1e6, neginf=-1e6)
+
         if update_stats:
             self._update(input_batch.cpu())
         mean = self._mean.to(input_batch.device)
         var = self._var.to(input_batch.device)
         normalized = (input_batch - mean) / torch.sqrt(var + self._eps)
+
+        # Replace any remaining NaN/Inf after normalization
+        normalized = torch.nan_to_num(normalized, nan=0.0, posinf=10.0, neginf=-10.0)
+
         return normalized if batch.dim() > 1 else normalized.squeeze(0)
 
 
@@ -440,7 +473,7 @@ class RLTradingAgent:
             self.use_prioritized_replay = False
             logger.info("using_standard_replay_buffer")
         self.last_update_metrics: Dict[str, Any] = {}
-        self._tail_feature_count = 31  # Updated for dual-mode (23 + 8 new fields)
+        self._tail_feature_count = 36  # Accurate count: 3 pattern + 24 core state + 9 dual-mode = 36
         self.market_feature_dim = max(1, state_dim - self._tail_feature_count)
 
         # Experience buffer
@@ -522,6 +555,17 @@ class RLTradingAgent:
         state_tensor = torch.from_numpy(state_array).to(self.device)
         normalized_state = self.normalizer.normalize(state_tensor, update_stats=not deterministic)
         network_input = normalized_state.unsqueeze(0)
+
+        # Handle dimension mismatch: pad or trim to match network's expected input
+        if network_input.shape[-1] != self.state_dim:
+            if network_input.shape[-1] < self.state_dim:
+                # Pad with zeros
+                padding_size = self.state_dim - network_input.shape[-1]
+                padding = torch.zeros((network_input.shape[0], padding_size), dtype=torch.float32, device=self.device)
+                network_input = torch.cat([network_input, padding], dim=1)
+            else:
+                # Trim
+                network_input = network_input[:, :self.state_dim]
 
         with torch.no_grad():
             logits, state_value = self.network(network_input)
@@ -639,8 +683,19 @@ class RLTradingAgent:
             next_array = self.state_to_tensor(next_state)
             next_tensor = torch.from_numpy(next_array).to(self.device)
             normalized_next = self.normalizer.normalize(next_tensor, update_stats=False)
+            next_input = normalized_next.unsqueeze(0)
+
+            # Handle dimension mismatch
+            if next_input.shape[-1] != self.state_dim:
+                if next_input.shape[-1] < self.state_dim:
+                    padding_size = self.state_dim - next_input.shape[-1]
+                    padding = torch.zeros((next_input.shape[0], padding_size), dtype=torch.float32, device=self.device)
+                    next_input = torch.cat([next_input, padding], dim=1)
+                else:
+                    next_input = next_input[:, :self.state_dim]
+
             with torch.no_grad():
-                _, next_value = self.network(normalized_next.unsqueeze(0))
+                _, next_value = self.network(next_input)
             self.bootstrap_value = float(next_value.squeeze().item())
         else:
             self.bootstrap_value = 0.0
@@ -765,7 +820,17 @@ class RLTradingAgent:
         n_updates = 0
 
         for _ in range(self.config.n_epochs):
-            logits_batch, state_values = self.network(states_tensor)
+            # Handle dimension mismatch: pad or trim to match network's expected input
+            network_input = states_tensor
+            if network_input.shape[-1] != self.state_dim:
+                if network_input.shape[-1] < self.state_dim:
+                    padding_size = self.state_dim - network_input.shape[-1]
+                    padding = torch.zeros((network_input.shape[0], padding_size), dtype=torch.float32, device=self.device)
+                    network_input = torch.cat([network_input, padding], dim=1)
+                else:
+                    network_input = network_input[:, :self.state_dim]
+
+            logits_batch, state_values = self.network(network_input)
             adjusted_logits = torch.stack(
                 [
                     self._apply_contextual_bias(logit_vec, ctx)

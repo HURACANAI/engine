@@ -637,7 +637,8 @@ class ShadowTrader:
 
         # Extract market features
         feature_names = [c for c in visible_data.columns if c not in ["ts", "open", "high", "low", "close", "volume"]]
-        market_features = np.array([float(current_row.get(f, 0.0)) for f in feature_names], dtype=np.float32)
+        market_features = np.array([float(current_row.get(f) or 0.0) for f in feature_names], dtype=np.float32)
+        # Note: Agent's state_to_tensor() will handle padding/trimming if needed
 
         close_values = np.asarray(visible_data["close"], dtype=float)
         volume_values = np.asarray(visible_data["volume"], dtype=float)
@@ -715,14 +716,21 @@ class ShadowTrader:
 
         # Create embedding and query memory
         embedding = self._create_embedding(current_row)
-        similar_patterns = self.memory.find_similar_patterns(
-            embedding=embedding,
-            symbol=symbol,
-            top_k=20,
-            min_similarity=0.6,
-        )
-
-        pattern_stats = self.memory.get_pattern_stats(similar_patterns)
+        try:
+            similar_patterns = self.memory.find_similar_patterns(
+                embedding=embedding,
+                symbol=symbol,
+                top_k=20,
+                min_similarity=0.6,
+            )
+            pattern_stats = self.memory.get_pattern_stats(similar_patterns)
+        except (IndexError, Exception) as e:
+            # If memory query fails, use empty patterns
+            import structlog
+            logger = structlog.get_logger(__name__)
+            logger.warning("memory_query_failed", error=str(e), symbol=symbol)
+            similar_patterns = []
+            pattern_stats = {"win_rate": 0.5, "avg_profit": 0.0, "sample_size": 0}
 
         # Classify regime using sophisticated regime detector
         regime_str, regime_confidence = self._classify_regime(visible_data, current_idx)
@@ -737,9 +745,9 @@ class ShadowTrader:
 
         return TradingState(
             market_features=market_features,
-            similar_pattern_win_rate=pattern_stats.win_rate,
-            similar_pattern_avg_profit=pattern_stats.avg_profit_gbp,
-            similar_pattern_reliability=pattern_stats.reliability_score,
+            similar_pattern_win_rate=pattern_stats.get("win_rate", 0.5) if isinstance(pattern_stats, dict) else getattr(pattern_stats, "win_rate", 0.5),
+            similar_pattern_avg_profit=pattern_stats.get("avg_profit", 0.0) if isinstance(pattern_stats, dict) else getattr(pattern_stats, "avg_profit_gbp", 0.0),
+            similar_pattern_reliability=pattern_stats.get("sample_size", 0) / 100.0 if isinstance(pattern_stats, dict) else getattr(pattern_stats, "reliability_score", 0.0),
             has_position=has_position,
             position_size_multiplier=1.0 if has_position else 0.0,
             unrealized_pnl_bps=unrealized_pnl_bps,
