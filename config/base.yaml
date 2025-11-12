@@ -1,0 +1,249 @@
+scheduler:
+  daily_run_time_utc: "02:00"
+  timezone: "UTC"
+engine:
+  # Maximum capacity (hardware limits)
+  max_coins: 400
+  max_concurrent_trades: 500
+  
+  # Runtime throttling (soft limits)
+  active_coins: 20  # Start small, scale up via config
+  max_active_trades: 100  # Soft throttle
+  
+  # Event loop configuration
+  coins_per_event_loop: 50  # 400 coins = 8 event loops
+  event_loop_timeout_seconds: 300
+  
+  # Message bus configuration
+  message_bus:
+    type: "redis_streams"  # or "kafka", "nats"
+    host: "localhost"
+    port: 6379
+    stream_prefix: "huracan"
+    max_consumers_per_group: 10
+  
+  # Model management
+  model_registry:
+    storage_path: "/models/trained"
+    metadata_db: "postgresql://haq:huracan123@localhost:5432/huracan_models"
+    retraining:
+      enabled: true
+      use_ray: true
+      workers_per_coin: 1
+      gpu_per_worker: 1
+  
+  # Risk management
+  risk:
+    global_max_exposure_pct: 200.0  # 2x leverage max
+    per_coin_max_exposure_pct: 40.0
+    per_sector_max_exposure_pct: 60.0
+    per_exchange_max_exposure_pct: 150.0
+    soft_throttle_threshold_pct: 80.0  # Throttle at 80% of limits
+  
+  # Cost model
+  cost_model:
+    real_time_updates: true
+    update_interval_seconds: 60
+    spread_source: "exchange_websocket"
+    fee_source: "exchange_api"
+    funding_source: "exchange_api"
+    min_edge_after_cost_bps: 5.0
+  
+  # Observability
+  observability:
+    prometheus:
+      enabled: true
+      port: 9090
+    grafana:
+      enabled: true
+      dashboard_path: "/dashboards"
+    metrics:
+      latency_percentiles: [50, 95, 99]
+      trade_rate_window_seconds: 60
+      health_check_interval_seconds: 30
+training:
+  # Training pipeline configuration
+  lookback_days: 150
+  horizons: ["1h", "4h", "1d"]
+  risk_preset: "balanced"
+  dry_run: false
+  min_liquidity_gbp: 10000000.0
+  max_spread_bps: 8.0
+  min_edge_after_cost_bps: 5.0
+  training_backend: "asyncio"  # or "ray", "dask"
+  max_concurrent_jobs: 10
+  # Per-coin training configuration
+  per_coin:
+    # Symbols allowed for training (empty list = all symbols from universe)
+    symbols_allowed: []  # e.g., ["BTCUSDT", "ETHUSDT"]
+    # Per-symbol cost overrides (optional)
+    per_symbol_costs: {}  # e.g., {"BTCUSDT": {"taker_fee_bps": 4.0, "maker_fee_bps": 2.0}}
+    # Parallel training configuration
+    parallel_tasks: 2  # Number of symbols to train in parallel
+    time_budget_per_symbol_minutes: 30  # Time budget per symbol in minutes
+    # Gates for model promotion
+    gates:
+      min_sharpe: 1.0
+      min_hit_rate: 0.50  # 50% hit rate
+      max_drawdown_pct: 15.0  # 15% max drawdown
+      min_net_pnl_pct: 1.0  # 1% net P&L improvement over champion
+      min_sample_size: 100  # Minimum sample size for validation
+    # Promotion rules (used by Mechanic)
+    promotion_rules:
+      min_hit_rate_improvement: 0.01  # 1% improvement
+      min_sharpe_improvement: 0.2  # 0.2 improvement
+      max_drawdown_tolerance: 0.0  # No tolerance (must be better or equal)
+      min_net_pnl_improvement: 0.01  # 1% improvement
+  # Consensus configuration
+  consensus:
+    adaptive_threshold: true
+    min_consensus_score: 0.5
+    correlation_penalty_weight: 0.3
+  # Regime gate configuration
+  regime_gate:
+    min_win_rate: 0.55
+    min_sharpe: 1.0
+    min_sample_size: 50
+    enable_all_by_default: true
+  # Dropbox export configuration
+  dropbox:
+    access_token: ""  # Set via environment variable DROPBOX_ACCESS_TOKEN
+    base_path: "/HuracanEngine"
+  # Hamilton interface configuration
+  hamilton:
+    model_base_path: "/models"
+    ranking_coins: []  # Will be populated from coin universe
+    ranking_horizons: ["1h", "4h", "1d"]
+    ranking_regimes: ["trend", "range", "panic", "illiquid"]
+universe:
+  target_size: 20  # Legacy: use engine.active_coins instead
+  liquidity_threshold_adv_gbp: 10000000
+  max_spread_bps: 8
+training:
+  window_days: 150
+  walk_forward:
+    train_days: 20
+    test_days: 5
+    min_trades: 300
+  model_training:
+    n_estimators: 2000  # Increased from 300 for proper intensive training
+    learning_rate: 0.01  # Lower learning rate for better learning
+    max_depth: 8  # Increased depth for more complex patterns
+    subsample: 0.8
+    colsample_bytree: 0.8
+    min_child_samples: 32
+    early_stopping_rounds: 100  # Enable early stopping
+    verbose: -1  # Suppress verbose output
+    n_jobs: -1  # Use all CPU cores
+    random_state: 42
+  advanced:
+    use_multi_model_ensemble: true  # Use ensemble of multiple models
+    ensemble_techniques: ["xgboost", "random_forest", "lightgbm"]
+    ensemble_method: "weighted_voting"  # "weighted_voting", "stacking", "dynamic"
+    use_progressive_training: false  # Disable for now (takes very long)
+    progressive_initial_epoch_days: 730  # 2 years for first epoch
+    progressive_subsequent_epoch_days: 365  # 1 year for subsequent epochs
+    progressive_max_epochs: null  # null = train until inception
+    use_enhanced_rl: true  # Use enhanced RL pipeline with Phase 1 features
+    use_rl_v2_pipeline: true  # Use V2 pipeline (triple-barrier, meta-labeling)
+    enable_advanced_rewards: true  # Advanced reward shaping
+    enable_higher_order_features: true  # Higher-order feature engineering
+    enable_granger_causality: true  # Granger causality for cross-asset timing
+    enable_regime_prediction: true  # Regime transition prediction
+    use_meta_labeling: true  # Meta-labeling for profitable trades
+    meta_label_cost_threshold: 0.0  # Cost threshold for meta-labeling
+    use_triple_barrier: true  # Triple-barrier labeling (no lookahead bias)
+    use_recency_weighting: true  # Weight recent data higher
+    use_v2_data_quality: true  # V2 data quality pipeline
+  rl_agent:
+    enabled: true
+    learning_rate: 0.0003
+    gamma: 0.99
+    clip_epsilon: 0.2
+    entropy_coef: 0.01
+    n_epochs: 10
+    epochs_per_update: 10  # More epochs per update for better learning
+    batch_size: 64
+    state_dim: 80  # Will be computed based on features
+    device: "cpu"
+  shadow_trading:
+    enabled: true
+    position_size_gbp: 1000
+    max_hold_minutes: 120
+    stop_loss_bps: 15
+    take_profit_bps: 20
+    min_confidence_threshold: 0.52
+  memory:
+    vector_similarity_threshold: 0.7
+    min_pattern_occurrences: 10
+    pattern_update_frequency: "daily"
+    max_similar_patterns: 20
+  monitoring:
+    enabled: true
+    check_interval_seconds: 300
+    win_rate_stddev_threshold: 2.0
+    profit_stddev_threshold: 2.0
+    volume_stddev_threshold: 2.5
+    auto_remediation_enabled: true
+    pause_failing_patterns: true
+    pattern_failure_threshold: 0.45
+  validation:
+    enabled: true
+    mandatory_oos:
+      enabled: true
+      min_oos_sharpe: 1.0
+      min_oos_win_rate: 0.55
+      max_train_test_gap: 0.3
+      max_sharpe_std: 0.2
+      min_test_trades: 100
+      min_windows: 5
+    overfitting_detection:
+      enabled: true
+      train_test_gap_threshold: 0.5
+      cv_stability_threshold: 0.3
+      degradation_threshold: -0.2
+    data_validation:
+      enabled: true
+      outlier_z_threshold: 3.0
+      max_missing_pct: 0.05
+      max_age_hours: 24
+      min_coverage: 0.95
+    paper_trading:
+      enabled: false  # Enable for extended validation
+      min_duration_days: 14
+      min_trades: 100
+      min_win_rate: 0.55
+      min_sharpe: 1.0
+      max_backtest_deviation: 0.20
+    stress_testing:
+      enabled: false  # Enable for stress testing
+      max_drawdown_threshold: 0.30
+      min_survival_rate: 0.70
+  optimization:
+    parallel_processing:
+      enabled: true
+      num_workers: 6
+      use_ray: true
+    caching:
+      enabled: true
+      max_size: 1000
+      default_ttl: 3600
+    query_optimization:
+      enabled: true
+      enable_caching: true
+      cache_ttl: 3600
+costs:
+  target_net_bps: 15
+  taker_buffer_bps: 9
+  notional_per_trade: 1000
+artifacts:
+  bucket: huracan-engine
+  prefix: baselines
+postgres:
+  dsn: "postgresql://haq:huracan123@localhost:5432/huracan"
+notifications:
+  telegram_enabled: true
+  telegram_webhook_url: "https://api.telegram.org/bot8229109041:AAFIcLRx3V50khoaEIG7WXeI1ITzy4s6hf0/sendMessage"
+  telegram_chat_id: "7914196017"  # Your Telegram user ID
+  grok_api_key: "${GROK_API_KEY}"  # Grok API key for AI explanations (set GROK_API_KEY env var)
+  grok_enabled: true  # Enable AI-generated metric explanations
