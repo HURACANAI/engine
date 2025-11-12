@@ -140,6 +140,11 @@ class TelegramCommandHandler:
         elif command == "/download":
             return self.handle_download_command()
 
+        elif command.startswith("/grok"):
+            # Extract question from message
+            question = message_text[len(command):].strip() if len(message_text) > len(command) else ""
+            return self.handle_grok_command(question)
+
         else:
             return f"❓ Unknown command: {command}\n\nUse /help to see available commands."
 
@@ -203,10 +208,272 @@ class TelegramCommandHandler:
         response += "*/download* - Show download progress\n"
         response += "   Shows progress of downloading historical data for all coins\n"
         response += "   Includes current symbol, progress percentage, and time estimates\n\n"
+        response += "*/grok <question>* - Ask Grok AI about the codebase\n"
+        response += "   Ask any question about the engine codebase\n"
+        response += "   Example: `/grok How does the training pipeline work?`\n"
+        response += "   ⚠️ Note: Requires valid Grok API key with API access\n\n"
         response += "*/help* - Show this help message\n\n"
         response += "The bot monitors your engine and sends automatic\n"
         response += "notifications about training, errors, and health checks."
         return response
+
+    def handle_grok_command(self, question: str) -> str:
+        """Handle /grok command - ask Grok AI about the codebase."""
+        if not question:
+            return (
+                "🤖 *Grok AI Assistant*\n\n"
+                "Ask me anything about the codebase!\n\n"
+                "Usage: `/grok <your question>`\n\n"
+                "Examples:\n"
+                "• `/grok How does the training pipeline work?`\n"
+                "• `/grok What are the main components?`\n"
+                "• `/grok How does walk-forward validation work?`\n"
+                "• `/grok Where is the cost calculator?`"
+            )
+        
+        logger.info("grok_command_received", question=question[:100])
+        
+        # Send "Thinking..." message
+        self.send_message("🤔 Asking Grok AI...\n\nThis may take a few seconds...")
+        
+        try:
+            # Get Grok API key from settings
+            grok_api_key = self.settings.notifications.grok_api_key
+            if not grok_api_key:
+                return (
+                    "❌ Grok API key not configured.\n\n"
+                    "Please set `grok_api_key` in your config file or `GROK_API_KEY` environment variable."
+                )
+            
+            # Prepare codebase context
+            codebase_context = self._get_codebase_context()
+            
+            # Query Grok API
+            response = self._query_grok_api(grok_api_key, question, codebase_context)
+            
+            if response:
+                # Format response for Telegram
+                formatted_response = f"🤖 *Grok AI Response*\n\n{response}"
+                return formatted_response
+            else:
+                # Provide helpful error message with troubleshooting
+                return (
+                    "❌ *Grok API Error*\n\n"
+                    "The API key is being rejected. Possible reasons:\n\n"
+                    "1. *Free Plan Limitation*: The free plan may not include API access.\n"
+                    "   Check: https://console.x.ai for plan details\n\n"
+                    "2. *Key Not Activated*: The key might need activation in the console\n\n"
+                    "3. *Wrong Key Type*: Ensure you're using an API key, not a web access token\n\n"
+                    "4. *Account Verification*: Your account might need additional verification\n\n"
+                    "💡 *To Fix:*\n"
+                    "• Visit https://console.x.ai\n"
+                    "• Verify your API key is active\n"
+                    "• Check if your plan includes API access\n"
+                    "• Try generating a new API key\n\n"
+                    "The command handler is working correctly - this is an API access issue."
+                )
+                
+        except Exception as e:
+            logger.exception("grok_command_failed", error=str(e))
+            return f"❌ Grok command failed:\n\n`{str(e)}`"
+    
+    def _get_codebase_context(self) -> str:
+        """Get codebase context for Grok API."""
+        context = """
+CODEBASE CONTEXT - Huracan Engine Trading System
+
+MAIN PURPOSE:
+- Cloud Training Box that builds daily baseline models
+- Trains on 3-6 months of historical market data
+- Performs walk-forward validation
+- Exports models for other components (Archive/Mechanic/Pilot)
+
+KEY COMPONENTS:
+
+1. TRAINING PIPELINE:
+   - Entry point: `src/cloud/training/pipelines/daily_retrain.py`
+   - Orchestration: `src/cloud/training/services/orchestration.py`
+   - Walk-forward validation with multiple splits
+   - Model training with LightGBM, RL agents
+
+2. DATA QUALITY:
+   - Data sanity pipeline: `src/cloud/engine/data_quality/sanity_pipeline.py`
+   - Gap handler: `src/cloud/engine/data_quality/gap_handler.py`
+   - Outlier removal, duplicate detection, gap filling
+
+3. LABELING:
+   - Triple barrier labeling: `src/cloud/engine/labeling/triple_barrier.py`
+   - Meta labeling for trade selection
+   - Labeled trades for model training
+
+4. COST CALCULATION:
+   - Cost breakdown: `src/cloud/training/services/costs.py`
+   - Includes fees, spread, slippage
+   - Per-symbol cost calculation
+
+5. NOTIFICATIONS:
+   - Telegram notifications: `src/cloud/training/services/notifications.py`
+   - Grok AI explanations for metrics
+   - Training progress updates
+
+6. RL TRAINING:
+   - RL agent: `src/cloud/training/agents/rl_agent.py`
+   - PPO-based trading agent
+   - Memory store for experience replay
+
+7. VALIDATION:
+   - Walk-forward validation across multiple time periods
+   - Metrics: Sharpe ratio, Profit Factor, Hit Rate, Max Drawdown
+   - Stability analysis across splits
+
+8. CONFIGURATION:
+   - Settings: `src/cloud/training/config/settings.py`
+   - YAML configs: `config/base.yaml`
+   - Environment variable overrides
+
+KEY METRICS:
+- Sharpe Ratio: Risk-adjusted return
+- Profit Factor: Gross profits / Gross losses
+- Hit Rate: Percentage of winning trades
+- Max Drawdown: Largest peak-to-trough decline
+- Costs (bps): Total trading costs in basis points
+
+MAIN FLOW:
+1. Download historical data (150 days)
+2. Data quality pipeline (clean, remove outliers, fill gaps)
+3. Feature engineering
+4. Triple barrier labeling
+5. Walk-forward validation (multiple splits)
+6. Model training (LightGBM, RL)
+7. Calculate metrics (Sharpe, PF, Hit Rate, Max DD)
+8. Validate against gates
+9. Export model if passed
+10. Send Telegram notification with Grok AI explanation
+"""
+        return context
+    
+    def _query_grok_api(self, api_key: str, question: str, context: str) -> Optional[str]:
+        """Query Grok API with question and codebase context."""
+        try:
+            
+            # Verify API key format
+            api_key = api_key.strip()
+            if not api_key.startswith("gsk_"):
+                logger.warning("grok_api_key_format_invalid", key_prefix=api_key[:10])
+                return None
+            
+            # Log exact key details for debugging
+            logger.info(
+                "grok_api_request_details",
+                key_length=len(api_key),
+                key_prefix=api_key[:15],
+                key_suffix=api_key[-5:],
+                key_starts_with_gsk=api_key.startswith("gsk_")
+            )
+            
+            # Prepare prompt
+            prompt = f"""You are an expert codebase analyst for the Huracan Engine trading system.
+
+{context}
+
+USER QUESTION: {question}
+
+Please provide a clear, helpful answer about the codebase. Focus on:
+- How things work in this codebase
+- Where to find relevant code
+- How components interact
+- Best practices for this system
+
+Keep your response concise and actionable."""
+            
+            # Prepare request
+            url = "https://api.x.ai/v1/chat/completions"
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "model": "grok-2-latest",
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": "You are an expert codebase analyst. Answer questions about code structure, functionality, and implementation. Be clear, concise, and actionable."
+                    },
+                    {"role": "user", "content": prompt}
+                ],
+                "temperature": 0.7,
+                "max_tokens": 1000
+            }
+            
+            # Log request details (without full key)
+            logger.debug(
+                "grok_api_request",
+                url=url,
+                model=payload["model"],
+                message_count=len(payload["messages"]),
+                prompt_length=len(prompt)
+            )
+            
+            # Query Grok API
+            response = requests.post(url, headers=headers, json=payload, timeout=20)
+            
+            if response.ok:
+                result = response.json()
+                if 'choices' in result and len(result['choices']) > 0:
+                    explanation = result['choices'][0]['message']['content'].strip()
+                    logger.info("grok_api_response_received", question_length=len(question), response_length=len(explanation))
+                    return explanation
+                else:
+                    logger.warning("grok_api_invalid_response", response=result)
+                    return None
+            else:
+                error_text = response.text[:500] if response.text else "No error message"
+                error_code = "unknown"
+                error_detail = error_text
+                
+                try:
+                    error_json = response.json()
+                    if isinstance(error_json, dict):
+                        # Handle nested error structure
+                        if "error" in error_json:
+                            if isinstance(error_json["error"], dict):
+                                error_detail = error_json["error"].get("message", error_text)
+                                error_code = error_json["error"].get("code", error_json.get("code", "unknown"))
+                            else:
+                                error_detail = str(error_json["error"])
+                        else:
+                            error_detail = error_json.get("message", error_text)
+                            error_code = error_json.get("code", "unknown")
+                except Exception as parse_error:
+                    # If JSON parsing fails, use raw text
+                    logger.debug("grok_error_parse_failed", parse_error=str(parse_error), raw_text=error_text[:200])
+                
+                # Log full error details for debugging
+                logger.error(
+                    "grok_api_failed",
+                    status=response.status_code,
+                    error_code=error_code,
+                    error_message=error_detail,
+                    response_headers=dict(response.headers),
+                    api_key_length=len(api_key),
+                    api_key_prefix=api_key[:15],
+                    api_key_suffix=api_key[-5:],
+                    full_response=response.text[:1000] if response.text else None
+                )
+                
+                # If it's specifically an API key error, provide more detailed troubleshooting
+                if "Incorrect API key" in error_detail or "invalid" in error_detail.lower():
+                    logger.error(
+                        "grok_api_key_issue",
+                        message="API key is being rejected by xAI",
+                        suggestion="Verify key at https://console.x.ai and ensure account has API access enabled"
+                    )
+                
+                return None
+                
+        except Exception as e:
+            logger.exception("grok_api_query_failed", error=str(e))
+            return None
 
     def handle_download_command(self) -> str:
         """Handle /download command - show download progress."""
@@ -452,7 +719,7 @@ class TelegramCommandHandler:
             self.thread = threading.Thread(target=self._poll_loop, daemon=True)
             self.thread.start()
             logger.info("telegram_command_polling_started", chat_id=self.chat_id)
-            print(f"✅ Telegram command handler started - listening for /health, /status, /help")
+            print(f"✅ Telegram command handler started - listening for /health, /status, /help, /grok, /download")
         except Exception as e:
             logger.exception("telegram_command_polling_start_failed", error=str(e))
             self.running = False

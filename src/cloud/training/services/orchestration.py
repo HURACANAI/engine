@@ -188,7 +188,8 @@ def _compute_metrics(trades: pd.DataFrame, total_costs_bps: float, total_samples
     sharpe = (mean_pnl / std_pnl * np.sqrt(pnl.size)) if std_pnl > 0 else 0.0
     positives = pnl[pnl > 0].sum()
     negatives = pnl[pnl < 0].sum()
-    profit_factor = float(positives / max(abs(negatives), 1e-9))
+    # Cap profit factor at 999.99 to avoid extreme values when negatives are very small
+    profit_factor = min(float(positives / max(abs(negatives), 1e-9)), 999.99)
     hit_rate = float((pnl > 0).mean()) if pnl.size else 0.0
     max_dd = _max_drawdown(trades["equity_curve"].to_numpy())
     turnover = (pnl.size / max(total_samples, 1)) * 100
@@ -218,6 +219,7 @@ class TrainingOrchestrator:
         artifact_publisher: ArtifactPublisher,
         telegram_monitor: Optional["ComprehensiveTelegramMonitor"] = None,
         learning_tracker: Optional["LearningTracker"] = None,
+        dropbox_sync: Optional[Any] = None,
     ) -> None:
         self._settings = settings
         self._exchange = exchange_client
@@ -227,6 +229,7 @@ class TrainingOrchestrator:
         self._artifact_publisher = artifact_publisher
         self._telegram_monitor = telegram_monitor
         self._learning_tracker = learning_tracker
+        self._dropbox_sync = dropbox_sync
         self._run_date = datetime.now(tz=timezone.utc).date()
 
     def run(self) -> List[TrainingTaskResult]:
@@ -515,6 +518,42 @@ class TrainingOrchestrator:
             except Exception as e:
                 print(f"❌ [{result.symbol}] Failed to publish artifacts: {e}")
                 logger.error("artifact_publish_failed", symbol=result.symbol, error=str(e), error_type=type(e).__name__)
+        
+        # Also export to Dropbox in organized coin structure if available
+        # This extracts artifacts from the bundle and exports them properly
+        if result.published and result.artifacts and hasattr(self, '_dropbox_sync') and self._dropbox_sync:
+            try:
+                from pathlib import Path
+                import tempfile
+                
+                # Extract artifacts to temp files and export
+                additional_files = {}
+                for name, content in result.artifacts.files.items():
+                    # Create temp file
+                    temp_file = Path(tempfile.gettempdir()) / f"{result.symbol}_{name}"
+                    temp_file.write_bytes(content)
+                    additional_files[name] = temp_file
+                
+                # Export using organized structure
+                export_results = self._dropbox_sync.export_coin_results(
+                    symbol=result.symbol,
+                    run_date=self._run_date,
+                    additional_files=additional_files,
+                )
+                
+                # Clean up temp files
+                for temp_file in additional_files.values():
+                    if temp_file.exists():
+                        temp_file.unlink()
+                
+                print(f"📦 [{result.symbol}] Results exported to Dropbox: {sum(1 for v in export_results.values() if v)} files")
+                logger.info(
+                    "coin_results_exported",
+                    symbol=result.symbol,
+                    files_uploaded=sum(1 for v in export_results.values() if v),
+                )
+            except Exception as e:
+                logger.warning("dropbox_export_failed", symbol=result.symbol, error=str(e))
         
         # Registry operations - wrap in try/except so they don't fail the whole pipeline
         kind = "baseline" if result.published else "candidate"
@@ -1655,6 +1694,7 @@ def _train_symbol(
     
     total_training_start_time = time_module.time()
     ensemble_trainers = []  # Store ensemble trainers for final model
+    split_metrics = []  # Store metrics for each split to show stability
     
     # Create progress bar for walk-forward splits
     split_iterator = enumerate(splits)
@@ -1819,13 +1859,37 @@ def _train_symbol(
             message=f"Split {split_idx + 1}/{len(splits)} training completed",
         )
         
-        # Print split completion with metrics
+        # Calculate and store split metrics
+        split_metric = {
+            "split_idx": split_idx + 1,
+            "trades": len(trades),
+            "training_time": split_training_time,
+        }
         if not trades.empty:
+            split_metric.update({
+                "sharpe": _compute_metrics(trades, costs.total_costs_bps, len(dataset)).get("sharpe", 0.0),
+                "profit_factor": _compute_metrics(trades, costs.total_costs_bps, len(dataset)).get("profit_factor", 0.0),
+                "hit_rate": _compute_metrics(trades, costs.total_costs_bps, len(dataset)).get("hit_rate", 0.0) * 100,
+                "pnl_bps": trades["pnl_bps"].sum(),
+                "avg_pnl": trades["pnl_bps"].mean(),
+                "max_dd": _compute_metrics(trades, costs.total_costs_bps, len(dataset)).get("max_dd_bps", 0.0),
+            })
             avg_pnl = trades["pnl_bps"].mean()
             win_rate = (trades["pnl_bps"] > 0).mean() * 100
-            _print_status(f"Split {split_idx + 1}/{len(splits)} complete: {len(trades)} trades, Avg PnL={avg_pnl:.2f} bps, Win Rate={win_rate:.1f}% ({split_training_time:.1f}s)", sym=symbol, level="SUCCESS")
+            sharpe = split_metric["sharpe"]
+            _print_status(f"Split {split_idx + 1}/{len(splits)} complete: {len(trades)} trades, Sharpe={sharpe:.2f}, Avg PnL={avg_pnl:.2f} bps, Win Rate={win_rate:.1f}% ({split_training_time:.1f}s)", sym=symbol, level="SUCCESS")
         else:
+            split_metric.update({
+                "sharpe": 0.0,
+                "profit_factor": 0.0,
+                "hit_rate": 0.0,
+                "pnl_bps": 0.0,
+                "avg_pnl": 0.0,
+                "max_dd": 0.0,
+            })
             _print_status(f"Split {split_idx + 1}/{len(splits)} complete: 0 trades generated ({split_training_time:.1f}s)", sym=symbol, level="WARN")
+        
+        split_metrics.append(split_metric)
     
     total_training_time = time_module.time() - total_training_start_time
     logger.info(
@@ -1838,6 +1902,45 @@ def _train_symbol(
     )
 
     combined_trades = pd.concat(oos_trades, ignore_index=True) if oos_trades else pd.DataFrame(columns=["timestamp", "pnl_bps", "prediction_bps", "confidence", "equity_curve"])  # type: ignore[call-overload]
+    
+    # Print detailed split-by-split results using _print_status for Ray compatibility
+    _print_status("", sym=symbol, level="INFO")  # Empty line
+    _print_status("=" * 80, sym=symbol, level="INFO")
+    _print_status(f"📊 WALK-FORWARD VALIDATION RESULTS - {symbol}", sym=symbol, level="INFO")
+    _print_status("=" * 80, sym=symbol, level="INFO")
+    if split_metrics:
+        header = f"{'Split':<8} {'Trades':<10} {'Sharpe':<10} {'Hit Rate':<12} {'PnL (bps)':<15} {'Max DD (bps)':<15}"
+        _print_status(header, sym=symbol, level="INFO")
+        _print_status("-" * 80, sym=symbol, level="INFO")
+        for sm in split_metrics:
+            row = f"{sm['split_idx']:<8} {sm['trades']:<10} {sm['sharpe']:<10.2f} {sm['hit_rate']:<12.1f}% {sm['pnl_bps']:<15.2f} {sm['max_dd']:<15.1f}"
+            _print_status(row, sym=symbol, level="INFO")
+        
+        # Calculate stability metrics
+        sharpe_values = [sm['sharpe'] for sm in split_metrics if sm['trades'] > 0]
+        hit_rate_values = [sm['hit_rate'] for sm in split_metrics if sm['trades'] > 0]
+        if sharpe_values:
+            sharpe_mean = np.mean(sharpe_values)
+            sharpe_std = np.std(sharpe_values)
+            sharpe_cv = (sharpe_std / abs(sharpe_mean)) * 100 if sharpe_mean != 0 else 0
+            hit_rate_mean = np.mean(hit_rate_values)
+            hit_rate_std = np.std(hit_rate_values)
+            
+            _print_status("-" * 80, sym=symbol, level="INFO")
+            _print_status("", sym=symbol, level="INFO")  # Empty line
+            _print_status("📈 STABILITY ANALYSIS:", sym=symbol, level="INFO")
+            _print_status(f"  Sharpe Ratio: Mean={sharpe_mean:.2f}, Std={sharpe_std:.2f}, CV={sharpe_cv:.1f}%", sym=symbol, level="INFO")
+            _print_status(f"  Hit Rate: Mean={hit_rate_mean:.1f}%, Std={hit_rate_std:.1f}%", sym=symbol, level="INFO")
+            
+            # Determine stability
+            is_stable = sharpe_cv < 50 and len([s for s in sharpe_values if s > 0]) >= len(sharpe_values) * 0.7
+            stability_status = "✅ STABLE" if is_stable else "⚠️  VARIABLE"
+            _print_status(f"  Stability: {stability_status}", sym=symbol, level="INFO")
+            if not is_stable:
+                _print_status("  ⚠️  Warning: Model performance varies significantly across time periods", sym=symbol, level="WARN")
+                _print_status("     Consider: More training data, different features, or regime detection", sym=symbol, level="WARN")
+        _print_status("=" * 80, sym=symbol, level="INFO")
+        _print_status("", sym=symbol, level="INFO")  # Empty line
     
     # Print trade summary
     total_trades = len(combined_trades) if not combined_trades.empty else 0
@@ -1855,7 +1958,7 @@ def _train_symbol(
     metrics = _compute_metrics(combined_trades, costs.total_costs_bps, len(dataset))
     
     # Print key metrics
-    _print_status(f"Model Performance: Sharpe={metrics.get('sharpe', 0):.2f}, Hit Rate={metrics.get('hit_rate', 0)*100:.1f}%, PnL={metrics.get('pnl_bps', 0):.2f} bps", sym=symbol, level="INFO")
+    _print_status(f"AGGREGATED Performance: Sharpe={metrics.get('sharpe', 0):.2f}, Hit Rate={metrics.get('hit_rate', 0)*100:.1f}%, PnL={metrics.get('pnl_bps', 0):.2f} bps", sym=symbol, level="INFO")
     
     # Brain Library integration: Store final model metrics after all splits
     if brain_training:
@@ -1983,7 +2086,11 @@ def _train_symbol(
             "hit_rate_pass": False,
             "trades_pass": False,
         }
-        metrics.update({"recommended_edge_threshold_bps": cost_threshold, "validation_window": f"{dataset['ts'].min().date()} to {dataset['ts'].max().date()}"})
+        metrics.update({
+            "recommended_edge_threshold_bps": cost_threshold, 
+            "validation_window": f"{dataset['ts'].min().date()} to {dataset['ts'].max().date()}",
+            "num_walk_forward_splits": len(splits) if 'splits' in locals() else 0,  # Number of times model was tested
+        })
         return TrainingTaskResult(
             symbol=symbol,
             costs=costs,
@@ -2129,6 +2236,7 @@ def _train_symbol(
         {
             "recommended_edge_threshold_bps": cost_threshold,
             "validation_window": validation_window,
+            "num_walk_forward_splits": len(splits),  # Number of times model was tested
             "mode": mode,
         }
     )
@@ -2267,6 +2375,129 @@ def _train_symbol(
             }
         )
         _print_status(f"Artifacts created: {len(bundle.files)} files (model.bin, config.json, metrics.json, contracts, report)", sym=symbol, level="SUCCESS")
+        
+        # Export to Dropbox in organized structure if enabled
+        # Note: feature_cols and cleaned_feature_importances are defined earlier in the function
+        if settings.dropbox.enabled and settings.dropbox.access_token:
+            try:
+                from ..integrations.dropbox_sync import DropboxSync
+                import tempfile
+                
+                dropbox_sync = DropboxSync(
+                    access_token=settings.dropbox.access_token,
+                    app_folder=settings.dropbox.app_folder,
+                    enabled=True,
+                    create_dated_folder=False,
+                )
+                
+                # Save artifacts to temp files
+                temp_dir = Path(tempfile.mkdtemp(prefix=f"huracan_{symbol}_"))
+                artifact_files = {}
+                
+                # Save model
+                model_path = temp_dir / "model.bin"
+                model_path.write_bytes(model_bytes)
+                artifact_files["model"] = model_path
+                
+                # Save metrics
+                metrics_path = temp_dir / "training_metrics.json"
+                metrics_path.write_bytes(metrics_payload.to_json().encode("utf-8"))
+                artifact_files["metrics"] = metrics_path
+                
+                # Save config
+                config_path = temp_dir / "config.json"
+                config_path.write_bytes(config_json.encode("utf-8"))
+                artifact_files["config"] = config_path
+                
+                # Save costs (create from costs object)
+                costs_path = temp_dir / "costs.json"
+                costs_json = json.dumps({
+                    "maker_fee_bps": costs.maker_fee_bps,
+                    "taker_fee_bps": costs.taker_fee_bps,
+                    "slippage_bps": costs.slippage_bps,
+                    "total_cost_bps": costs.total_cost_bps,
+                    "symbol": symbol,
+                }, indent=2)
+                costs_path.write_bytes(costs_json.encode("utf-8"))
+                artifact_files["costs"] = costs_path
+                
+                # Save contracts
+                pilot_contract_path = temp_dir / "pilot_contract.json"
+                pilot_contract_path.write_bytes(pilot_contract.to_json().encode("utf-8"))
+                artifact_files["pilot_contract"] = pilot_contract_path
+                
+                mechanic_contract_path = temp_dir / "mechanic_contract.json"
+                mechanic_contract_path.write_bytes(mechanic_contract.to_json().encode("utf-8"))
+                artifact_files["mechanic_contract"] = mechanic_contract_path
+                
+                # Save report
+                report_path = temp_dir / "report.png"
+                report_path.write_bytes(report_png)
+                artifact_files["report"] = report_path
+                
+                # Save report summary JSON
+                report_summary_path = temp_dir / "report_summary.json"
+                report_summary_path.write_bytes(report_json.encode("utf-8"))
+                artifact_files["report_summary"] = report_summary_path
+                
+                # Save features metadata (if available)
+                features_path = None
+                if feature_cols:
+                    features_metadata = {
+                        "symbol": symbol,
+                        "feature_columns": feature_cols,
+                        "feature_importances": cleaned_feature_importances if 'cleaned_feature_importances' in locals() else {},
+                        "num_features": len(feature_cols),
+                        "run_date": run_date.isoformat(),
+                    }
+                    features_path = temp_dir / "features.json"
+                    features_path.write_bytes(json.dumps(features_metadata, indent=2).encode("utf-8"))
+                    artifact_files["features"] = features_path
+                
+                # Find candle data file
+                candle_data_path = None
+                symbol_safe = symbol.replace("/", "-")
+                candles_dir = Path("data/candles")
+                if candles_dir.exists():
+                    # Look for most recent candle data file for this symbol
+                    candle_files = sorted(candles_dir.glob(f"{symbol_safe}_*.parquet"), reverse=True)
+                    if candle_files:
+                        candle_data_path = candle_files[0]
+                
+                # Export all results
+                export_results = dropbox_sync.export_coin_results(
+                    symbol=symbol,
+                    run_date=run_date,
+                    model_path=artifact_files.get("model"),
+                    metrics_path=artifact_files.get("metrics"),
+                    costs_path=artifact_files.get("costs"),
+                    features_path=features_path,
+                    candle_data_path=candle_data_path,
+                    additional_files={
+                        "config": artifact_files.get("config"),
+                        "pilot_contract": artifact_files.get("pilot_contract"),
+                        "mechanic_contract": artifact_files.get("mechanic_contract"),
+                        "report": artifact_files.get("report"),
+                        "report_summary": artifact_files.get("report_summary"),
+                    },
+                )
+                
+                # Clean up temp files
+                import shutil
+                shutil.rmtree(temp_dir, ignore_errors=True)
+                
+                files_uploaded = sum(1 for v in export_results.values() if v)
+                _print_status(f"Results exported to Dropbox: {files_uploaded}/{len(export_results)} files", sym=symbol, level="SUCCESS")
+                logger.info(
+                    "coin_results_exported_to_dropbox",
+                    symbol=symbol,
+                    run_date=run_date.isoformat(),
+                    files_uploaded=files_uploaded,
+                    total_files=len(export_results),
+                )
+            except Exception as e:
+                logger.warning("dropbox_export_failed_in_training", symbol=symbol, error=str(e))
+                # Don't fail training if Dropbox export fails
 
     # Run RL training if enabled and database configured
     if dsn and settings.training.rl_agent.enabled:

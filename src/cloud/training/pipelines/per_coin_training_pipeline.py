@@ -589,23 +589,39 @@ class PerCoinTrainingPipeline:
         with open(features_path, 'w') as f:
             json.dump(feature_recipe.to_dict(), f, indent=2)
         
-        # Upload to Dropbox if available
+        # Upload to Dropbox if available - use organized export method
         if self.dropbox_sync:
-            # Upload model
-            dropbox_model_path = f"/{self.config.get('general', {}).get('dropbox_root', 'Huracan/').strip('/')}/models/{symbol}/baseline_{date_str}/model.bin"
-            self.dropbox_sync.upload_file(str(model_path), dropbox_model_path, overwrite=True)
+            from datetime import date as date_type
+            run_date = date_type.today()
             
-            # Upload metrics
-            dropbox_metrics_path = dropbox_model_path.replace("model.bin", "metrics.json")
-            self.dropbox_sync.upload_file(str(metrics_path), dropbox_metrics_path, overwrite=True)
+            # Find candle data file for this symbol
+            candle_data_path = None
+            symbol_safe = symbol.replace("/", "-")
+            candles_dir = Path("data/candles")
+            if candles_dir.exists():
+                # Look for candle data file matching this symbol
+                for candle_file in candles_dir.glob(f"{symbol_safe}_*.parquet"):
+                    candle_data_path = candle_file
+                    break
             
-            # Upload costs
-            dropbox_costs_path = dropbox_model_path.replace("model.bin", "costs.json")
-            self.dropbox_sync.upload_file(str(costs_path), dropbox_costs_path, overwrite=True)
+            # Export all results in organized structure
+            export_results = self.dropbox_sync.export_coin_results(
+                symbol=symbol,
+                run_date=run_date,
+                model_path=model_path,
+                metrics_path=metrics_path,
+                costs_path=costs_path,
+                features_path=features_path,
+                candle_data_path=candle_data_path,
+            )
             
-            # Upload features
-            dropbox_features_path = dropbox_model_path.replace("model.bin", "features.json")
-            self.dropbox_sync.upload_file(str(features_path), dropbox_features_path, overwrite=True)
+            logger.info(
+                "coin_results_exported_to_dropbox",
+                symbol=symbol,
+                run_date=run_date.isoformat(),
+                files_uploaded=sum(1 for v in export_results.values() if v),
+                total_files=len(export_results),
+            )
         
         return {
             "model_path": str(model_path),

@@ -392,7 +392,17 @@ class RLTradingAgent:
         self.n_actions = len(TradingAction)
         self.memory_store = memory_store
         self.config = config or PPOConfig()
+        
+        # Check if CUDA is available, fall back to CPU if not
+        if device == "cuda" and not torch.cuda.is_available():
+            logger.warning(
+                "cuda_not_available",
+                message="CUDA requested but not available, falling back to CPU"
+            )
+            device = "cpu"
+        
         self.device = torch.device(device)
+        logger.info("rl_agent_device_selected", device=str(self.device), cuda_available=torch.cuda.is_available())
 
         # Initialize network
         self.network = ActorCritic(state_dim, self.n_actions).to(self.device)

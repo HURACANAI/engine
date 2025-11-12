@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from decimal import Decimal
 from dataclasses import dataclass
 from datetime import datetime
@@ -71,8 +72,9 @@ class ModelRegistry:
                 except (TypeError, ValueError):
                     return str(obj)
         
-        statement = text(
-            """
+        # Use raw SQL string to avoid SQLAlchemy's text() compilation
+        # This bypasses the boolean evaluation error in SQLAlchemy 2.0.44
+        sql = """
             INSERT INTO models (model_id, symbol, kind, created_at, s3_path, params, features, notes)
             VALUES (:model_id, :symbol, :kind, :created_at, :s3_path, :params::jsonb, :features::jsonb, :notes)
             ON CONFLICT (model_id)
@@ -83,8 +85,7 @@ class ModelRegistry:
                 params = EXCLUDED.params,
                 features = EXCLUDED.features,
                 notes = EXCLUDED.notes
-            """
-        )
+        """
         # Clean params and features before JSON serialization
         cleaned_params = clean_for_json(params)
         cleaned_features = clean_for_json(features)
@@ -113,7 +114,7 @@ class ModelRegistry:
             "features": features_json,
             "notes": notes,
         }
-        self._execute(statement, payload)
+        self._execute_raw_sql(sql, payload)
 
     def upsert_metrics(self, *, model_id: str, metrics: Dict[str, Any]) -> None:
         """Clean metrics for database storage, handling NaN/Inf values."""
@@ -140,8 +141,9 @@ class ModelRegistry:
         # Clean all metric values
         cleaned_metrics = {k: clean_value(v) for k, v in metrics.items()}
         
-        statement = text(
-            """
+        # Use raw SQL string to avoid SQLAlchemy's text() compilation
+        # This bypasses the boolean evaluation error in SQLAlchemy 2.0.44
+        sql = """
             INSERT INTO model_metrics (
                 model_id, sharpe, profit_factor, hit_rate, max_dd_bps, pnl_bps, trades_oos,
                 turnover, fee_bps, spread_bps, slippage_bps, total_costs_bps, validation_window
@@ -164,41 +166,47 @@ class ModelRegistry:
                 slippage_bps = EXCLUDED.slippage_bps,
                 total_costs_bps = EXCLUDED.total_costs_bps,
                 validation_window = EXCLUDED.validation_window
-            """
-        )
+        """
         payload = {"model_id": model_id, **cleaned_metrics}
-        self._execute(statement, payload)
+        self._execute_raw_sql(sql, payload)
 
     def log_publish(self, *, model_id: str, symbol: str, published: bool, reason: str, at: datetime) -> None:
-        # Convert boolean to PostgreSQL boolean literal to avoid SQLAlchemy 2.0 evaluation issues
-        # SQLAlchemy 2.0 may try to evaluate boolean parameters in SQL clauses, causing TypeError
-        # Use PostgreSQL boolean literal (TRUE/FALSE) in SQL string to avoid parameter binding issues
-        published_literal = "TRUE" if bool(published) else "FALSE"
-        
-        statement = text(
-            f"""
+        # Use raw SQL string to avoid SQLAlchemy's text() compilation
+        # Cast integer to boolean in SQL to handle PostgreSQL boolean type
+        # This bypasses the boolean evaluation error in SQLAlchemy 2.0.44
+        sql = """
             INSERT INTO publish_log (model_id, symbol, published, reason, at)
-            VALUES (:model_id, :symbol, {published_literal}, :reason, :at)
+            VALUES (:model_id, :symbol, :published::boolean, :reason, :at)
             ON CONFLICT (model_id)
             DO UPDATE SET
                 published = EXCLUDED.published,
                 reason = EXCLUDED.reason,
                 at = EXCLUDED.at
-            """
-        )
+        """
         
         payload = {
             "model_id": model_id,
             "symbol": symbol,
+            "published": 1 if bool(published) else 0,  # Convert boolean to integer
             "reason": reason,
             "at": at,
         }
-        self._execute(statement, payload)
+        self._execute_raw_sql(sql, payload)
 
-    def _execute(self, statement: Any, payload: Dict[str, Any]) -> None:
-        """Execute SQL statement with proper parameter binding and type conversion."""
+    def _execute_raw_sql(self, sql: str, payload: Dict[str, Any]) -> None:
+        """Execute raw SQL string with parameter binding, bypassing SQLAlchemy's text() compilation.
+        
+        CRITICAL: SQLAlchemy 2.0.44 has a bug where it tries to evaluate boolean parameters
+        in a clause context during statement compilation, causing "Boolean value of this clause
+        is not defined" TypeError. This method completely bypasses SQLAlchemy's statement compilation
+        by using exec_driver_sql() with raw SQL strings and psycopg2 parameter binding.
+        
+        Args:
+            sql: Raw SQL string with named parameters (:param_name)
+            payload: Dictionary of parameter values
+        """
         try:
-            # Clean payload values to ensure proper types for SQLAlchemy/PostgreSQL
+            # Clean payload values to ensure proper types for PostgreSQL
             cleaned_payload = {}
             for key, value in payload.items():
                 if isinstance(value, (np.integer, np.int64, np.int32, np.int16, np.int8)):
@@ -211,10 +219,7 @@ class ModelRegistry:
                     else:
                         cleaned_payload[key] = val_float
                 elif isinstance(value, (np.bool_, bool)):
-                    # CRITICAL: Convert boolean to integer to avoid SQLAlchemy 2.0 evaluation issues
-                    # SQLAlchemy 2.0 may try to evaluate boolean parameters in SQL clauses, causing TypeError
-                    # Convert to integer (0/1) - PostgreSQL will handle conversion to boolean in SQL
-                    # This prevents SQLAlchemy from evaluating the boolean in a clause context
+                    # Convert boolean to integer (0/1) - PostgreSQL will handle conversion
                     cleaned_payload[key] = 1 if bool(value) else 0
                 elif isinstance(value, np.ndarray):
                     # Convert arrays to lists (for JSON columns)
@@ -234,35 +239,91 @@ class ModelRegistry:
                         # If it can't be serialized, convert to string
                         cleaned_payload[key] = str(value)
             
-            with self._engine.begin() as connection:
-                # Execute with cleaned payload
-                # SQLAlchemy 2.0+ style: use execute() with text() statement and parameters
-                # CRITICAL: The TypeError "Boolean value of this clause is not defined" occurs when SQLAlchemy
-                # tries to evaluate boolean parameters in a clause context during statement preparation.
-                # We convert booleans to integers (0/1) in cleaned_payload, but SQLAlchemy may still try
-                # to evaluate the statement itself during compilation.
-                # Use exec_driver_sql to bypass SQLAlchemy's statement validation and use raw SQL
-                try:
-                    # Try normal execute first
-                    connection.execute(statement, cleaned_payload)
-                except TypeError as e:
-                    if "Boolean value of this clause" in str(e):
-                        # Fallback: Use raw SQL execution with psycopg2 directly
-                        # This bypasses SQLAlchemy's statement validation
-                        raw_sql = str(statement.compile(compile_kwargs={"literal_binds": True}))
-                        # Replace parameter placeholders with values
-                        for key, value in cleaned_payload.items():
-                            if isinstance(value, str):
-                                value = f"'{value.replace(chr(39), chr(39)+chr(39))}'"  # Escape single quotes
-                            elif value is None:
-                                value = "NULL"
-                            else:
-                                value = str(value)
-                            raw_sql = raw_sql.replace(f":{key}", value)
-                        # Execute raw SQL
-                        connection.exec_driver_sql(raw_sql)
+            # Convert named parameters (:param) to psycopg2 style (%s) with proper ordering
+            # Pattern: :param_name (but not ::type which is a SQL cast)
+            # Match :param_name but exclude :: which is a SQL cast operator (not a parameter)
+            # Approach: find all :word patterns, skip those that are part of :: casts
+            param_pattern = r':([a-zA-Z_][a-zA-Z0-9_]*)'
+            all_matches = list(re.finditer(param_pattern, sql))
+            param_names = []
+            processed_positions = set()  # Track positions we've already processed (to skip cast types)
+            
+            for match in all_matches:
+                param_name = match.group(1)
+                start_pos = match.start()
+                end_pos = match.end()
+                
+                # Skip if we've already processed this position (part of a cast)
+                if start_pos in processed_positions:
+                    continue
+                
+                # Check if followed by : (which would be ::, a SQL cast)
+                if end_pos < len(sql) and sql[end_pos] == ':':
+                    # This is :param::type - skip the parameter and mark cast type positions
+                    # Find where the cast type ends (next space, comma, paren, etc.)
+                    cast_start = end_pos + 1  # After ::
+                    cast_end = cast_start
+                    while cast_end < len(sql) and (sql[cast_end].isalnum() or sql[cast_end] == '_'):
+                        cast_end += 1
+                    # Mark the cast type positions (including the : before it and the type name)
+                    # This prevents the regex from matching :boolean as a parameter
+                    for pos in range(end_pos, cast_end):  # From first : to end of cast type
+                        processed_positions.add(pos)
+                    # Skip this parameter (it's part of a cast expression)
+                    continue
+                
+                # Valid parameter (not part of a cast)
+                param_names.append(param_name)
+            
+            # Build parameter list in order of appearance in SQL
+            param_list = []
+            seen_params = set()
+            for param_name in param_names:
+                if param_name in cleaned_payload and param_name not in seen_params:
+                    param_list.append(cleaned_payload[param_name])
+                    seen_params.add(param_name)
+            
+            # Replace named parameters with %s placeholders (psycopg2 style)
+            # Handle parameter replacement carefully to preserve SQL casts (e.g., ::boolean)
+            sql_psycopg = sql
+            for param_name in param_names:
+                if param_name in cleaned_payload:
+                    # Replace parameter placeholder, but be careful with SQL casts
+                    # If parameter has a cast (e.g., :published::boolean), replace the parameter name only
+                    # Pattern: :param_name or :param_name::type
+                    pattern = f':{param_name}'
+                    if f'{pattern}::boolean' in sql_psycopg:
+                        # Parameter has boolean cast - replace parameter but keep cast
+                        sql_psycopg = sql_psycopg.replace(pattern, '%s', 1)
+                        # For boolean columns, convert integer to boolean in SQL
+                        # PostgreSQL will cast %s::boolean correctly when we pass integer
+                        # But we need to ensure the cast is in the right place
+                        pass  # Cast is already in SQL, just replace parameter
                     else:
-                        raise
+                        # No cast, simple replacement
+                        sql_psycopg = sql_psycopg.replace(pattern, '%s', 1)
+            
+            # Execute using exec_driver_sql to bypass SQLAlchemy's statement compilation
+            # This directly uses the database driver (psycopg2) without SQLAlchemy's validation
+            with self._engine.begin() as connection:
+                try:
+                    # Use exec_driver_sql to bypass SQLAlchemy's compilation entirely
+                    # This executes raw SQL with psycopg2 parameter binding
+                    connection.exec_driver_sql(sql_psycopg, tuple(param_list))
+                    logger.debug("registry_execution_success", sql_preview=sql_psycopg[:100], param_count=len(param_list))
+                except Exception as e:
+                    error_msg = str(e)
+                    error_type = type(e).__name__
+                    logger.error(
+                        "registry_execution_failed",
+                        error_type=error_type,
+                        error=error_msg,
+                        sql_preview=sql_psycopg[:200],
+                        param_count=len(param_list),
+                        payload_keys=list(payload.keys()),
+                        cleaned_payload_keys=list(cleaned_payload.keys()),
+                    )
+                    raise RuntimeError(f"Failed to execute registry SQL: {error_type}: {error_msg}") from e
                 # Commit is handled by context manager (begin())
         except SQLAlchemyError as exc:
             # Include the actual error details for debugging
@@ -277,9 +338,7 @@ class ModelRegistry:
                 error=error_details,
                 original_error=original_error,
                 payload_keys=list(payload.keys()) if payload else [],
-                cleaned_payload_keys=list(cleaned_payload.keys()) if 'cleaned_payload' in locals() else [],
-                payload_types={k: type(v).__name__ for k, v in payload.items()} if payload else {},
-                statement=str(statement)[:500] if statement else None,
+                sql_preview=sql[:200] if sql else None,
             )
             raise RuntimeError(f"Failed to persist registry payload: {error_type}: {error_details} (original: {original_error})") from exc
         except Exception as exc:
@@ -291,7 +350,7 @@ class ModelRegistry:
                 error_type=error_type,
                 error=error_details,
                 payload_keys=list(payload.keys()) if payload else [],
-                statement=str(statement)[:500] if statement else None,
+                sql_preview=sql[:200] if sql else None,
             )
             raise RuntimeError(f"Failed to persist registry payload: {error_type}: {error_details}") from exc
 

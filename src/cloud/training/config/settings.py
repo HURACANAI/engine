@@ -262,6 +262,14 @@ class NotificationSettings(BaseModel):
     telegram_enabled: bool = False
     telegram_webhook_url: Optional[str] = None
     telegram_chat_id: Optional[str] = None
+    grok_api_key: Optional[str] = Field(default=None, description="Grok API key (can also be set via GROK_API_KEY env var)")
+    grok_enabled: bool = True  # Enable Grok explanations by default if API key is set
+    
+    def __init__(self, **data: Any) -> None:
+        # If grok_api_key not provided in data, try environment variable
+        if "grok_api_key" not in data or data.get("grok_api_key") is None:
+            data["grok_api_key"] = os.getenv("GROK_API_KEY") or data.get("grok_api_key")
+        super().__init__(**data)
 
 
 class DropboxSettings(BaseModel):

@@ -5,11 +5,12 @@
 
 from __future__ import annotations
 
+import json
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Any, Dict, Optional
 
 import structlog  # type: ignore[reportMissingImports]
 
@@ -27,22 +28,54 @@ logger = structlog.get_logger(__name__)  # type: ignore[reportUnknownMemberType]
 
 
 class DropboxSync:
-    """Automatic Dropbox sync for engine data.
+    """Automatic Dropbox sync for engine data with organized structure.
     
-    Syncs:
-    - Training logs
-    - Trained models
-    - Monitoring data
-    - Training results
-    - Configuration files
+    Dropbox Structure:
+    /{app_folder}/
+      /data/                    # Shared data (persists across days)
+        /candles/              # Historical candle data (organized by symbol)
+        /features/             # Feature data
+        /market_data/          # Other market data
+      
+      /models/                 # Trained models
+        /champions/            # Champion models (latest, best)
+          /latest/            # Latest champion for each coin (SYMBOL.bin)
+          /archive/           # Historical champions (YYYY-MM-DD/)
+        /training/            # Training artifacts
+          /YYYY-MM-DD/       # Dated training runs
+            /SYMBOL/         # Per-coin models and metrics
+      
+      /hamilton/              # Hamilton-specific exports (live trading)
+        /roster.json          # Current roster (ranked coins)
+        /champion.json        # Current champion pointer
+        /configs/            # Hamilton configs
+          /SYMBOL.json       # Per-symbol configs
+        /manifests/          # Run manifests
+        /active/             # Active model pointers
+          /SYMBOL.txt        # Active model ID for each symbol
+      
+      /exports/               # Comprehensive exports
+        /trades/             # Trade history (YYYY-MM-DD/)
+        /metrics/            # Performance metrics
+        /reports/            # Reports
+      
+      /logs/                  # Logs (dated)
+        /YYYY-MM-DD/
+      
+      /config/                # Configuration files
+      
+      /monitoring/            # Monitoring data
+        /YYYY-MM-DD/
     
     Usage:
         sync = DropboxSync(
             access_token="your_access_token",
             app_folder="Runpodhuracan"
         )
-        sync.upload_file("logs/engine.log", "/logs/engine.log")
-        sync.sync_directory("models/", "/models/")
+        # Export Hamilton roster
+        sync.export_hamilton_roster("champions/roster.json")
+        # Upload model to champions
+        sync.upload_champion_model("BTCUSDT", "models/BTCUSDT/model.bin")
     """
     
     def __init__(
@@ -589,6 +622,278 @@ class DropboxSync:
         
         return results
     
+    def export_coin_results(
+        self,
+        symbol: str,
+        run_date: date,
+        model_path: Optional[Path] = None,
+        metrics_path: Optional[Path] = None,
+        costs_path: Optional[Path] = None,
+        features_path: Optional[Path] = None,
+        candle_data_path: Optional[Path] = None,
+        additional_files: Optional[Dict[str, Path]] = None,
+        use_organized_structure: bool = True,  # New: Use organized structure
+    ) -> Dict[str, bool]:
+        """
+        Export all results for a specific coin to Dropbox in an organized structure.
+        
+        New Organized Structure:
+        /{app_folder}/
+          models/training/{YYYY-MM-DD}/{SYMBOL}/
+            model/
+              model.bin
+              model_metadata.json
+            metrics/
+              training_metrics.json
+              costs.json
+            features/
+              features.json
+            data/
+              candles.parquet
+        
+        Legacy Structure (if use_organized_structure=False):
+        /{app_folder}/coins/{SYMBOL}/{YYYY-MM-DD}/...
+        
+        Args:
+            symbol: Trading symbol (e.g., "BTC/USDT")
+            run_date: Date of the training run
+            model_path: Path to model file
+            metrics_path: Path to metrics JSON file
+            costs_path: Path to costs JSON file
+            features_path: Path to features JSON file
+            candle_data_path: Path to candle data parquet file
+            additional_files: Dict of {label: path} for additional files to export
+            use_organized_structure: If True (default), use new organized structure
+            
+        Returns:
+            Dictionary mapping file labels to upload success status
+        """
+        if not self._enabled or not self._dbx:
+            logger.warning("dropbox_not_enabled", message="Dropbox sync not enabled, skipping export")
+            return {}
+        
+        safe_symbol = symbol.replace("/", "-").upper()
+        date_str = run_date.isoformat()
+        
+        results = {}
+        
+        try:
+            if use_organized_structure:
+                # New organized structure: /{app_folder}/models/training/{YYYY-MM-DD}/{SYMBOL}/
+                base_path = f"/{self._app_folder}/models/training/{date_str}/{safe_symbol}"
+                
+                # 1. Export model
+                if model_path and model_path.exists():
+                    # Also upload to champions if it's a good model
+                    # (This can be determined by metrics or gates)
+                    remote_model_path = f"{base_path}/model/model.bin"
+                    success = self.upload_file(
+                        local_path=model_path,
+                        remote_path=remote_model_path,
+                        use_dated_folder=False,
+                        overwrite=True,
+                    )
+                    results["model"] = success
+                    
+                    # Also create a metadata file
+                    model_metadata = {
+                        "symbol": symbol,
+                        "run_date": date_str,
+                        "model_file": "model.bin",
+                        "uploaded_at": datetime.now(timezone.utc).isoformat(),
+                    }
+                    metadata_path = Path("/tmp") / f"{safe_symbol}_{date_str}_model_metadata.json"
+                    with open(metadata_path, "w") as f:
+                        json.dump(model_metadata, f, indent=2)
+                    
+                    remote_metadata_path = f"{base_path}/model/model_metadata.json"
+                    self.upload_file(
+                        local_path=metadata_path,
+                        remote_path=remote_metadata_path,
+                        use_dated_folder=False,
+                        overwrite=True,
+                    )
+                    metadata_path.unlink()  # Clean up temp file
+                
+                # 2. Export metrics
+                if metrics_path and metrics_path.exists():
+                    remote_metrics_path = f"{base_path}/metrics/training_metrics.json"
+                    success = self.upload_file(
+                        local_path=metrics_path,
+                        remote_path=remote_metrics_path,
+                        use_dated_folder=False,
+                        overwrite=True,
+                    )
+                    results["metrics"] = success
+                
+                # 3. Export costs
+                if costs_path and costs_path.exists():
+                    remote_costs_path = f"{base_path}/metrics/costs.json"
+                    success = self.upload_file(
+                        local_path=costs_path,
+                        remote_path=remote_costs_path,
+                        use_dated_folder=False,
+                        overwrite=True,
+                    )
+                    results["costs"] = success
+                
+                # 4. Export features
+                if features_path and features_path.exists():
+                    remote_features_path = f"{base_path}/features/features.json"
+                    success = self.upload_file(
+                        local_path=features_path,
+                        remote_path=remote_features_path,
+                        use_dated_folder=False,
+                        overwrite=True,
+                    )
+                    results["features"] = success
+                
+                # 5. Export candle data (also upload to shared data location)
+                if candle_data_path and candle_data_path.exists():
+                    # Upload to training folder
+                    candle_filename = candle_data_path.name
+                    remote_candle_path = f"{base_path}/data/{candle_filename}"
+                    success = self.upload_file(
+                        local_path=candle_data_path,
+                        remote_path=remote_candle_path,
+                        use_dated_folder=False,
+                        overwrite=True,
+                    )
+                    results["candle_data"] = success
+                    
+                    # Also upload to shared data location for easy access
+                    self.upload_candle_data(symbol, candle_data_path, overwrite=True)
+                
+                # 6. Export additional files
+                if additional_files:
+                    for label, file_path in additional_files.items():
+                        if file_path and file_path.exists():
+                            # Sanitize label for filename
+                            safe_label = label.replace(" ", "_").replace("/", "_")
+                            file_ext = file_path.suffix or ".bin"
+                            remote_additional_path = f"{base_path}/results/{safe_label}{file_ext}"
+                            success = self.upload_file(
+                                local_path=file_path,
+                                remote_path=remote_additional_path,
+                                use_dated_folder=False,
+                                overwrite=True,
+                            )
+                            results[f"additional_{label}"] = success
+            else:
+                # Legacy structure: /{app_folder}/coins/{SYMBOL}/{DATE}/
+                base_path = f"/{self._app_folder}/coins/{safe_symbol}/{date_str}"
+                
+                # 1. Export model
+                if model_path and model_path.exists():
+                    remote_model_path = f"{base_path}/models/model.bin"
+                    success = self.upload_file(
+                        local_path=model_path,
+                        remote_path=remote_model_path,
+                        use_dated_folder=False,
+                        overwrite=True,
+                    )
+                    results["model"] = success
+                    
+                    # Also create a metadata file
+                    model_metadata = {
+                        "symbol": symbol,
+                        "run_date": date_str,
+                        "model_file": "model.bin",
+                        "uploaded_at": datetime.now(timezone.utc).isoformat(),
+                    }
+                    metadata_path = Path("/tmp") / f"{safe_symbol}_{date_str}_model_metadata.json"
+                    with open(metadata_path, "w") as f:
+                        json.dump(model_metadata, f, indent=2)
+                    
+                    remote_metadata_path = f"{base_path}/models/model_metadata.json"
+                    self.upload_file(
+                        local_path=metadata_path,
+                        remote_path=remote_metadata_path,
+                        use_dated_folder=False,
+                        overwrite=True,
+                    )
+                    metadata_path.unlink()  # Clean up temp file
+                
+                # 2. Export metrics
+                if metrics_path and metrics_path.exists():
+                    remote_metrics_path = f"{base_path}/metrics/training_metrics.json"
+                    success = self.upload_file(
+                        local_path=metrics_path,
+                        remote_path=remote_metrics_path,
+                        use_dated_folder=False,
+                        overwrite=True,
+                    )
+                    results["metrics"] = success
+                
+                # 3. Export costs
+                if costs_path and costs_path.exists():
+                    remote_costs_path = f"{base_path}/metrics/costs.json"
+                    success = self.upload_file(
+                        local_path=costs_path,
+                        remote_path=remote_costs_path,
+                        use_dated_folder=False,
+                        overwrite=True,
+                    )
+                    results["costs"] = success
+                
+                # 4. Export features
+                if features_path and features_path.exists():
+                    remote_features_path = f"{base_path}/data/features.json"
+                    success = self.upload_file(
+                        local_path=features_path,
+                        remote_path=remote_features_path,
+                        use_dated_folder=False,
+                        overwrite=True,
+                    )
+                    results["features"] = success
+                
+                # 5. Export candle data
+                if candle_data_path and candle_data_path.exists():
+                    candle_filename = candle_data_path.name
+                    remote_candle_path = f"{base_path}/data/{candle_filename}"
+                    success = self.upload_file(
+                        local_path=candle_data_path,
+                        remote_path=remote_candle_path,
+                        use_dated_folder=False,
+                        overwrite=True,
+                    )
+                    results["candle_data"] = success
+                
+                # 6. Export additional files
+                if additional_files:
+                    for label, file_path in additional_files.items():
+                        if file_path and file_path.exists():
+                            safe_label = label.replace(" ", "_").replace("/", "_")
+                            file_ext = file_path.suffix or ".bin"
+                            remote_additional_path = f"{base_path}/results/{safe_label}{file_ext}"
+                            success = self.upload_file(
+                                local_path=file_path,
+                                remote_path=remote_additional_path,
+                                use_dated_folder=False,
+                                overwrite=True,
+                            )
+                            results[f"additional_{label}"] = success
+            
+            logger.info(
+                "coin_results_exported",
+                symbol=symbol,
+                run_date=date_str,
+                base_path=base_path,
+                files_uploaded=sum(1 for v in results.values() if v),
+                total_files=len(results),
+                use_organized_structure=use_organized_structure,
+            )
+            
+        except Exception as e:
+            logger.error(
+                "coin_results_export_failed",
+                symbol=symbol,
+                run_date=date_str,
+                error=str(e),
+            )
+        
+        return results
+    
     def _create_dated_folder(self) -> str:
         """Create a dated folder in Dropbox (YYYY-MM-DD format).
         
@@ -954,35 +1259,74 @@ class DropboxSync:
         self,
         data_cache_dir: str | Path = "data/candles",
         use_dated_folder: bool = False,  # Changed default: Historical data should be in shared location
+        organize_by_symbol: bool = True,  # New: Organize by symbol in organized structure
     ) -> int:
         """Upload historical data cache to Dropbox.
         
         Historical coin data should be stored in a SHARED location (not dated folders)
         so it persists across days and can be restored on startup without re-downloading.
         
+        New organized structure: /{app_folder}/data/candles/{SYMBOL}/{filename}
+        
         Args:
             data_cache_dir: Local data cache directory
             use_dated_folder: If False (default), use shared location. If True, store in dated folder.
+            organize_by_symbol: If True (default), organize by symbol in organized structure.
             
         Returns:
             Number of files uploaded
         """
-        if use_dated_folder:
-            # Store in dated folder: /Runpodhuracan/YYYY-MM-DD/data/candles/
-            remote_dir = "/data/candles"
-        else:
-            # Use shared location: /Runpodhuracan/data/candles/ (persists across days)
-            remote_dir = f"/{self._app_folder}/data/candles"
-            # Normalize without dated folder to ensure it goes to shared location
-            remote_dir = self._normalize_path(remote_dir, use_dated_folder=False)
+        if not self._enabled:
+            return 0
         
-        return self.sync_directory(
-            local_dir=data_cache_dir,
-            remote_dir=remote_dir,
-            pattern="*.parquet",
-            recursive=True,
-            use_dated_folder=False,  # Always use shared location for historical data
-        )
+        data_cache_dir = Path(data_cache_dir)
+        if not data_cache_dir.exists():
+            return 0
+        
+        if organize_by_symbol:
+            # New organized structure: organize by symbol
+            # Structure: /{app_folder}/data/candles/{SYMBOL}/{filename}
+            synced_count = 0
+            
+            # Find all parquet files
+            for parquet_file in data_cache_dir.rglob("*.parquet"):
+                if not parquet_file.is_file():
+                    continue
+                
+                # Extract symbol from filename (e.g., "BTC-USDT_1d_20250615_20251112.parquet" -> "BTC-USDT")
+                filename = parquet_file.name
+                # Try to extract symbol from filename
+                # Common patterns: "SYMBOL_TIMEFRAME_*.parquet" or "SYMBOL_*.parquet"
+                parts = filename.split("_")
+                if len(parts) >= 1:
+                    symbol = parts[0].replace("-", "").upper()
+                    
+                    # Use organized structure
+                    remote_path = f"/{self._app_folder}/data/candles/{symbol}/{filename}"
+                    remote_path = self._normalize_path(remote_path, use_dated_folder=False)
+                    
+                    if self.upload_file(parquet_file, remote_path, use_dated_folder=False):
+                        synced_count += 1
+            
+            return synced_count
+        else:
+            # Legacy structure: flat directory
+            if use_dated_folder:
+                # Store in dated folder: /Runpodhuracan/YYYY-MM-DD/data/candles/
+                remote_dir = "/data/candles"
+            else:
+                # Use shared location: /Runpodhuracan/data/candles/ (persists across days)
+                remote_dir = f"/{self._app_folder}/data/candles"
+                # Normalize without dated folder to ensure it goes to shared location
+                remote_dir = self._normalize_path(remote_dir, use_dated_folder=False)
+            
+            return self.sync_directory(
+                local_dir=data_cache_dir,
+                remote_dir=remote_dir,
+                pattern="*.parquet",
+                recursive=True,
+                use_dated_folder=False,  # Always use shared location for historical data
+            )
     
     def restore_data_cache(
         self,
@@ -1229,4 +1573,381 @@ class DropboxSync:
                 error=str(e),
             )
             return False
+    
+    # ========== ORGANIZED STRUCTURE METHODS ==========
+    
+    def export_hamilton_roster(
+        self,
+        roster_path: str | Path,
+        overwrite: bool = True,
+    ) -> bool:
+        """Export roster.json to Hamilton directory.
+        
+        Structure: /{app_folder}/hamilton/roster.json
+        
+        Args:
+            roster_path: Local path to roster.json file
+            overwrite: Whether to overwrite existing file
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self._enabled:
+            return False
+        
+        roster_path = Path(roster_path)
+        if not roster_path.exists():
+            logger.warning("roster_file_not_found", path=str(roster_path))
+            return False
+        
+        # Hamilton roster path: /{app_folder}/hamilton/roster.json
+        remote_path = f"/{self._app_folder}/hamilton/roster.json"
+        remote_path = self._normalize_path(remote_path, use_dated_folder=False)
+        
+        return self.upload_file(
+            local_path=roster_path,
+            remote_path=remote_path,
+            use_dated_folder=False,
+            overwrite=overwrite,
+        )
+    
+    def export_hamilton_champion(
+        self,
+        champion_path: str | Path,
+        overwrite: bool = True,
+    ) -> bool:
+        """Export champion.json to Hamilton directory.
+        
+        Structure: /{app_folder}/hamilton/champion.json
+        
+        Args:
+            champion_path: Local path to champion.json file
+            overwrite: Whether to overwrite existing file
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self._enabled:
+            return False
+        
+        champion_path = Path(champion_path)
+        if not champion_path.exists():
+            logger.warning("champion_file_not_found", path=str(champion_path))
+            return False
+        
+        # Hamilton champion path: /{app_folder}/hamilton/champion.json
+        remote_path = f"/{self._app_folder}/hamilton/champion.json"
+        remote_path = self._normalize_path(remote_path, use_dated_folder=False)
+        
+        return self.upload_file(
+            local_path=champion_path,
+            remote_path=remote_path,
+            use_dated_folder=False,
+            overwrite=overwrite,
+        )
+    
+    def upload_champion_model(
+        self,
+        symbol: str,
+        model_path: str | Path,
+        archive_previous: bool = True,
+        overwrite: bool = True,
+    ) -> bool:
+        """Upload champion model to organized structure.
+        
+        Structure:
+        - Latest: /{app_folder}/models/champions/latest/{SYMBOL}.bin
+        - Archive: /{app_folder}/models/champions/archive/{YYYY-MM-DD}/{SYMBOL}.bin
+        
+        Args:
+            symbol: Trading symbol (e.g., "BTCUSDT")
+            model_path: Local path to model file
+            archive_previous: Whether to archive previous champion
+            overwrite: Whether to overwrite existing file
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self._enabled:
+            return False
+        
+        model_path = Path(model_path)
+        if not model_path.exists():
+            logger.warning("model_file_not_found", path=str(model_path))
+            return False
+        
+        safe_symbol = symbol.replace("/", "-").upper()
+        
+        # Archive previous champion if it exists
+        if archive_previous:
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            latest_path = f"/{self._app_folder}/models/champions/latest/{safe_symbol}.bin"
+            latest_path = self._normalize_path(latest_path, use_dated_folder=False)
+            
+            # Check if previous champion exists
+            try:
+                existing = self._dbx.files_get_metadata(latest_path)
+                if isinstance(existing, dropbox.files.FileMetadata):  # type: ignore[misc]
+                    # Archive it
+                    archive_path = f"/{self._app_folder}/models/champions/archive/{today}/{safe_symbol}.bin"
+                    archive_path = self._normalize_path(archive_path, use_dated_folder=False)
+                    
+                    # Copy to archive
+                    try:
+                        self._dbx.files_copy_v2(latest_path, archive_path)
+                        logger.info("champion_archived", symbol=safe_symbol, archive_path=archive_path)
+                    except ApiError:
+                        # Archive folder might not exist, create it first
+                        archive_dir = f"/{self._app_folder}/models/champions/archive/{today}"
+                        archive_dir = self._normalize_path(archive_dir, use_dated_folder=False)
+                        try:
+                            self._dbx.files_create_folder_v2(archive_dir)
+                        except ApiError:
+                            pass  # Folder might already exist
+                        
+                        # Try copying again
+                        try:
+                            self._dbx.files_copy_v2(latest_path, archive_path)
+                            logger.info("champion_archived", symbol=safe_symbol, archive_path=archive_path)
+                        except Exception as archive_error:
+                            logger.warning("champion_archive_failed", symbol=safe_symbol, error=str(archive_error))
+            except ApiError:
+                # No previous champion, that's OK
+                pass
+        
+        # Upload new champion to latest
+        latest_path = f"/{self._app_folder}/models/champions/latest/{safe_symbol}.bin"
+        latest_path = self._normalize_path(latest_path, use_dated_folder=False)
+        
+        success = self.upload_file(
+            local_path=model_path,
+            remote_path=latest_path,
+            use_dated_folder=False,
+            overwrite=overwrite,
+        )
+        
+        if success:
+            logger.info("champion_uploaded", symbol=safe_symbol, path=latest_path)
+        
+        return success
+    
+    def upload_hamilton_config(
+        self,
+        symbol: str,
+        config_path: str | Path,
+        overwrite: bool = True,
+    ) -> bool:
+        """Upload Hamilton config for a symbol.
+        
+        Structure: /{app_folder}/hamilton/configs/{SYMBOL}.json
+        
+        Args:
+            symbol: Trading symbol (e.g., "BTCUSDT")
+            config_path: Local path to config file
+            overwrite: Whether to overwrite existing file
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self._enabled:
+            return False
+        
+        config_path = Path(config_path)
+        if not config_path.exists():
+            logger.warning("config_file_not_found", path=str(config_path))
+            return False
+        
+        safe_symbol = symbol.replace("/", "-").upper()
+        remote_path = f"/{self._app_folder}/hamilton/configs/{safe_symbol}.json"
+        remote_path = self._normalize_path(remote_path, use_dated_folder=False)
+        
+        return self.upload_file(
+            local_path=config_path,
+            remote_path=remote_path,
+            use_dated_folder=False,
+            overwrite=overwrite,
+        )
+    
+    def set_active_model(
+        self,
+        symbol: str,
+        model_id: str,
+        overwrite: bool = True,
+    ) -> bool:
+        """Set active model ID for a symbol (Hamilton).
+        
+        Structure: /{app_folder}/hamilton/active/{SYMBOL}.txt
+        
+        Args:
+            symbol: Trading symbol (e.g., "BTCUSDT")
+            model_id: Model ID to activate
+            overwrite: Whether to overwrite existing file
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self._enabled:
+            return False
+        
+        safe_symbol = symbol.replace("/", "-").upper()
+        remote_path = f"/{self._app_folder}/hamilton/active/{safe_symbol}.txt"
+        remote_path = self._normalize_path(remote_path, use_dated_folder=False)
+        
+        return self.write_text(
+            remote_path=remote_path,
+            text_content=model_id,
+            use_dated_folder=False,
+            overwrite=overwrite,
+        )
+    
+    def get_active_model(self, symbol: str) -> Optional[str]:
+        """Get active model ID for a symbol (Hamilton).
+        
+        Args:
+            symbol: Trading symbol (e.g., "BTCUSDT")
+            
+        Returns:
+            Active model ID, or None if not found
+        """
+        if not self._enabled:
+            return None
+        
+        safe_symbol = symbol.replace("/", "-").upper()
+        remote_path = f"/{self._app_folder}/hamilton/active/{safe_symbol}.txt"
+        remote_path = self._normalize_path(remote_path, use_dated_folder=False)
+        
+        try:
+            _, response = self._dbx.files_download(remote_path)
+            model_id = response.content.decode('utf-8').strip()
+            return model_id
+        except ApiError:
+            return None
+    
+    def upload_training_artifact(
+        self,
+        symbol: str,
+        run_date: date,
+        artifact_path: str | Path,
+        artifact_type: str = "model",  # "model", "metrics", "features", "data"
+        overwrite: bool = True,
+    ) -> bool:
+        """Upload training artifact to organized structure.
+        
+        Structure: /{app_folder}/models/training/{YYYY-MM-DD}/{SYMBOL}/{artifact_type}/
+        
+        Args:
+            symbol: Trading symbol (e.g., "BTCUSDT")
+            run_date: Training run date
+            artifact_path: Local path to artifact file
+            artifact_type: Type of artifact ("model", "metrics", "features", "data")
+            overwrite: Whether to overwrite existing file
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self._enabled:
+            return False
+        
+        artifact_path = Path(artifact_path)
+        if not artifact_path.exists():
+            logger.warning("artifact_file_not_found", path=str(artifact_path))
+            return False
+        
+        safe_symbol = symbol.replace("/", "-").upper()
+        date_str = run_date.isoformat()
+        filename = artifact_path.name
+        
+        remote_path = f"/{self._app_folder}/models/training/{date_str}/{safe_symbol}/{artifact_type}/{filename}"
+        remote_path = self._normalize_path(remote_path, use_dated_folder=False)
+        
+        return self.upload_file(
+            local_path=artifact_path,
+            remote_path=remote_path,
+            use_dated_folder=False,
+            overwrite=overwrite,
+        )
+    
+    def upload_candle_data(
+        self,
+        symbol: str,
+        candle_path: str | Path,
+        overwrite: bool = True,
+    ) -> bool:
+        """Upload candle data to organized structure.
+        
+        Structure: /{app_folder}/data/candles/{SYMBOL}/{filename}
+        
+        Args:
+            symbol: Trading symbol (e.g., "BTCUSDT")
+            candle_path: Local path to candle data file
+            overwrite: Whether to overwrite existing file
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self._enabled:
+            return False
+        
+        candle_path = Path(candle_path)
+        if not candle_path.exists():
+            logger.warning("candle_file_not_found", path=str(candle_path))
+            return False
+        
+        safe_symbol = symbol.replace("/", "-").upper()
+        filename = candle_path.name
+        
+        remote_path = f"/{self._app_folder}/data/candles/{safe_symbol}/{filename}"
+        remote_path = self._normalize_path(remote_path, use_dated_folder=False)
+        
+        return self.upload_file(
+            local_path=candle_path,
+            remote_path=remote_path,
+            use_dated_folder=False,
+            overwrite=overwrite,
+        )
+    
+    def list_hamilton_roster(self) -> Optional[Dict[str, Any]]:
+        """Load Hamilton roster from Dropbox.
+        
+        Returns:
+            Roster dictionary, or None if not found
+        """
+        if not self._enabled:
+            return None
+        
+        remote_path = f"/{self._app_folder}/hamilton/roster.json"
+        remote_path = self._normalize_path(remote_path, use_dated_folder=False)
+        
+        try:
+            _, response = self._dbx.files_download(remote_path)
+            roster: Dict[str, Any] = json.loads(response.content.decode('utf-8'))
+            return roster
+        except ApiError:
+            return None
+    
+    def list_champion_models(self) -> list[str]:
+        """List all champion models in latest directory.
+        
+        Returns:
+            List of symbols with champion models
+        """
+        if not self._enabled:
+            return []
+        
+        remote_dir = f"/{self._app_folder}/models/champions/latest"
+        remote_dir = self._normalize_path(remote_dir, use_dated_folder=False)
+        
+        try:
+            result = self._dbx.files_list_folder(remote_dir)
+            symbols = []
+            
+            for entry in result.entries:
+                if isinstance(entry, dropbox.files.FileMetadata):  # type: ignore[misc]
+                    # Extract symbol from filename (e.g., "BTCUSDT.bin" -> "BTCUSDT")
+                    symbol = entry.name.replace(".bin", "").replace(".pkl", "")
+                    symbols.append(symbol)
+            
+            return symbols
+        except ApiError:
+            return []
 

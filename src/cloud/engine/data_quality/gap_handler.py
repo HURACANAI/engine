@@ -78,18 +78,21 @@ class GapHandler:
         gaps = []
 
         # Calculate time differences
+        # Polars returns duration as int64 (milliseconds) when subtracting datetimes
         df = df.with_columns([
             (pl.col('timestamp') - pl.col('timestamp').shift(1))
-            .alias('gap_duration')
+            .alias('gap_duration_ms')
         ])
 
         # Find rows where gap > threshold
-        gap_threshold = timedelta(minutes=self.max_gap_minutes)
+        gap_threshold_ms = self.max_gap_minutes * 60 * 1000  # Convert minutes to milliseconds
 
         for row in df.iter_rows(named=True):
-            gap_dur = row.get('gap_duration')
+            gap_dur_ms = row.get('gap_duration_ms')
 
-            if gap_dur and gap_dur > gap_threshold:
+            if gap_dur_ms is not None and gap_dur_ms > gap_threshold_ms:
+                # Convert milliseconds to timedelta for calculations
+                gap_dur = timedelta(milliseconds=gap_dur_ms)
                 # Calculate missing candles (assuming 1-minute candles)
                 minutes_missing = gap_dur.total_seconds() / 60
                 candles_missing = int(minutes_missing) - 1
