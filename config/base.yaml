@@ -120,10 +120,10 @@ universe:
   liquidity_threshold_adv_gbp: 10000000
   max_spread_bps: 8
 training:
-  window_days: 150
+  window_days: 365  # Increased from 150 to 365+ days for broader training data
   walk_forward:
-    train_days: 20
-    test_days: 5
+    train_days: 45  # Increased from 20 to 45 days for more variety per split
+    test_days: 10  # Increased from 5 to 10 days
     min_trades: 300
     # Validation window robustness
     shuffle_windows: true  # Shuffle validation windows to test robustness
@@ -145,15 +145,30 @@ training:
     verbose: -1  # Suppress verbose output
     n_jobs: -1  # Use all CPU cores
     random_state: 42
-    # Regularization to prevent overfitting
-    reg_alpha: 0.1  # L1 regularization (feature selection)
-    reg_lambda: 1.0  # L2 regularization (weight decay)
+    # Regularization to prevent overfitting (increased for better generalization)
+    reg_alpha: 2.0  # L1 regularization for XGBoost (increased from 0.1)
+    reg_lambda: 5.0  # L2 regularization for XGBoost (increased from 1.0)
+    # LightGBM specific regularization
+    lambda_l1: 3.0  # L1 regularization for LightGBM
+    lambda_l2: 3.0  # L2 regularization for LightGBM
+    min_data_in_leaf: 50  # Minimum data in leaf for LightGBM (increased from default)
+    # RandomForest specific regularization
+    rf_max_depth: 5  # Max depth for RandomForest (reduced from 10)
+    rf_min_samples_leaf: 10  # Min samples per leaf for RandomForest (increased from 1)
     feature_fraction: 0.8  # Feature dropout (80% of features per tree)
-    noise_injection_std: 0.01  # Gaussian noise injection to training data (0 = disabled)
+    noise_injection_std: 0.025  # Gaussian noise injection (increased from 0.01 to 0.02-0.03 range)
   advanced:
     use_multi_model_ensemble: true  # Use ensemble of multiple models
     ensemble_techniques: ["xgboost", "random_forest", "lightgbm"]
     ensemble_method: "weighted_voting"  # "weighted_voting", "stacking", "dynamic"
+    # Fixed ensemble weights for diversification (50% XGBoost, 30% LightGBM, 20% Random Forest)
+    ensemble_weights:
+      xgboost: 0.50
+      lightgbm: 0.30
+      random_forest: 0.20
+    use_fixed_ensemble_weights: true  # Use fixed weights instead of performance-based
+    # Edge threshold override (lower to capture more trades)
+    edge_threshold_override_bps: 12  # Override recommended threshold (10-15 bps range, was 37)
     use_progressive_training: false  # Disable for now (takes very long)
     progressive_initial_epoch_days: 730  # 2 years for first epoch
     progressive_subsequent_epoch_days: 365  # 1 year for subsequent epochs

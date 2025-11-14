@@ -1,0 +1,1647 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Huracan Engine - Performance Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #0f1419;
+            --bg-secondary: #1a1f2e;
+            --bg-card: #1e2330;
+            --bg-hover: #252b3a;
+            --border: #2a3142;
+            --border-light: #1e2330;
+            --text-primary: #e4e7eb;
+            --text-secondary: #9ca3af;
+            --text-muted: #6b7280;
+            --accent-blue: #3b82f6;
+            --accent-blue-dark: #2563eb;
+            --accent-green: #10b981;
+            --accent-red: #ef4444;
+            --accent-yellow: #f59e0b;
+            --accent-purple: #8b5cf6;
+            --success: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+            --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
+            --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            padding: 0;
+            margin: 0;
+            min-height: 100vh;
+            font-size: 14px;
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        .container {
+            max-width: 1920px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+
+        /* Header */
+        .header {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px 32px;
+            margin-bottom: 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .header-logo {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 18px;
+            color: white;
+        }
+
+        .header-title {
+            font-size: 24px;
+            font-weight: 600;
+            color: var(--text-primary);
+            letter-spacing: -0.5px;
+        }
+
+        .header-subtitle {
+            font-size: 13px;
+            color: var(--text-secondary);
+            font-weight: 400;
+        }
+
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 16px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+        }
+
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            background: var(--success);
+            border-radius: 50%;
+            animation: pulse-dot 2s infinite;
+            box-shadow: 0 0 8px var(--success);
+        }
+
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.7; transform: scale(0.9); }
+        }
+
+        .status-text {
+            font-size: 13px;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        /* Grid */
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 24px;
+            margin-bottom: 24px;
+        }
+
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+            transition: all 0.2s ease;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .card:hover {
+            border-color: var(--border-light);
+            box-shadow: var(--shadow-md);
+            transform: translateY(-2px);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .card-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-primary);
+            letter-spacing: -0.3px;
+        }
+
+        .card-subtitle {
+            font-size: 12px;
+            color: var(--text-muted);
+            font-weight: 400;
+            margin-top: 4px;
+        }
+
+        .full-width {
+            grid-column: 1 / -1;
+        }
+
+        .half-width {
+            grid-column: span 2;
+        }
+
+        /* Metrics */
+        .metric {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .metric:last-child {
+            border-bottom: none;
+        }
+
+        .metric-label {
+            font-size: 13px;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        .metric-value {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .metric-value.positive { color: var(--success); }
+        .metric-value.negative { color: var(--danger); }
+        .metric-value.neutral { color: var(--accent-blue); }
+
+        .big-number {
+            font-size: 36px;
+            font-weight: 700;
+            text-align: center;
+            margin: 24px 0;
+            letter-spacing: -1px;
+            background: linear-gradient(135deg, var(--text-primary), var(--text-secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .big-number.positive {
+            background: linear-gradient(135deg, var(--success), #34d399);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .big-number.negative {
+            background: linear-gradient(135deg, var(--danger), #f87171);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        /* Charts */
+        .chart-container {
+            position: relative;
+            height: 300px;
+            margin-top: 20px;
+        }
+
+        .chart-container-large {
+            height: 400px;
+        }
+
+        /* Progress Bar */
+        .progress-bar {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            height: 32px;
+            overflow: hidden;
+            position: relative;
+            margin: 16px 0;
+        }
+
+        .progress-fill {
+            background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple));
+            height: 100%;
+            transition: width 0.5s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+            font-size: 12px;
+        }
+
+        /* Tables */
+        .table-container {
+            overflow-x: auto;
+            margin-top: 20px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        th {
+            background: var(--bg-secondary);
+            padding: 12px 16px;
+            text-align: left;
+            font-weight: 600;
+            color: var(--text-secondary);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        td {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-primary);
+        }
+
+        tr:hover {
+            background: var(--bg-secondary);
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        /* Badges */
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .badge.win {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--success);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .badge.loss {
+            background: rgba(239, 68, 68, 0.15);
+            color: var(--danger);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .badge.trend {
+            background: rgba(59, 130, 246, 0.15);
+            color: var(--accent-blue);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+        }
+
+        .badge.range {
+            background: rgba(245, 158, 11, 0.15);
+            color: var(--warning);
+            border: 1px solid rgba(245, 158, 11, 0.3);
+        }
+
+        .badge.panic {
+            background: rgba(239, 68, 68, 0.15);
+            color: var(--danger);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .badge.volatile {
+            background: rgba(139, 92, 246, 0.15);
+            color: var(--accent-purple);
+            border: 1px solid rgba(139, 92, 246, 0.3);
+        }
+
+        /* Loading */
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+
+        /* Regime List */
+        .regime-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-top: 20px;
+        }
+
+        .regime-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            transition: all 0.2s ease;
+        }
+
+        .regime-item:hover {
+            background: var(--bg-hover);
+            border-color: var(--border-light);
+        }
+
+        .regime-name {
+            font-weight: 600;
+            color: var(--text-primary);
+            font-size: 14px;
+        }
+
+        .regime-stats {
+            display: flex;
+            gap: 16px;
+            font-size: 13px;
+        }
+
+        .regime-count {
+            color: var(--text-secondary);
+        }
+
+        .regime-win-rate {
+            color: var(--success);
+            font-weight: 600;
+        }
+
+        /* Health Indicator */
+        .health-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .health-ok { background: var(--success); }
+        .health-warning { background: var(--warning); }
+        .health-error { background: var(--danger); }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 16px;
+            margin-top: 20px;
+        }
+
+        .stat-box {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            padding: 16px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+
+        .stat-value {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        /* Training Progress */
+        .training-progress {
+            display: grid;
+            grid-template-columns: 1fr 200px;
+            gap: 24px;
+            align-items: center;
+        }
+
+        .training-stage {
+            font-weight: 600;
+            color: var(--text-primary);
+            font-size: 16px;
+            margin-bottom: 8px;
+        }
+
+        .training-percent {
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--success);
+            text-align: right;
+        }
+
+        .training-message {
+            color: var(--text-secondary);
+            margin-top: 12px;
+            font-size: 13px;
+            font-style: italic;
+        }
+
+        .training-details {
+            margin-top: 12px;
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .container {
+                padding: 16px;
+            }
+
+            .header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 16px;
+            }
+
+            .grid {
+                grid-template-columns: 1fr;
+            }
+
+            .half-width {
+                grid-column: span 1;
+            }
+
+            .training-progress {
+                grid-template-columns: 1fr;
+            }
+
+            .training-percent {
+                text-align: left;
+            }
+        }
+
+        /* Chart.js overrides for dark theme */
+        .chartjs-render-monitor {
+            filter: brightness(0.95);
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-secondary);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--border-light);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div class="header-left">
+                <div class="header-logo">H</div>
+                <div>
+                    <div class="header-title">Huracan Engine</div>
+                    <div class="header-subtitle">Performance Dashboard</div>
+                </div>
+            </div>
+            <div class="status">
+                <div class="status-indicator"></div>
+                <span class="status-text" id="last-update">Connecting...</span>
+            </div>
+        </div>
+
+        <!-- Training Progress -->
+        <div class="card full-width" id="training-progress-card" style="display: none; margin-bottom: 24px;">
+            <div class="card-header">
+                <div>
+                    <div class="card-title">Training Progress</div>
+                    <div class="card-subtitle">Current model training status</div>
+                </div>
+            </div>
+            <div class="training-progress">
+                <div>
+                    <div class="training-stage" id="training-stage">--</div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="training-progress-bar" style="width: 0%;">0%</div>
+                    </div>
+                    <div class="training-message" id="training-message">--</div>
+                    <div class="training-details" id="training-details"></div>
+                </div>
+                <div class="training-percent" id="training-progress-percent">--</div>
+            </div>
+        </div>
+
+        <!-- Key Metrics Row -->
+        <div class="grid">
+            <!-- Win Rate -->
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">Win Rate</div>
+                        <div class="card-subtitle">Trading performance</div>
+                    </div>
+                </div>
+                <div class="big-number" id="win-rate">--</div>
+                <div class="metric">
+                    <span class="metric-label">Winning Trades</span>
+                    <span class="metric-value positive" id="winning-trades">--</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Losing Trades</span>
+                    <span class="metric-value negative" id="losing-trades">--</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Total Trades</span>
+                    <span class="metric-value neutral" id="total-trades">--</span>
+                </div>
+            </div>
+
+            <!-- P&L -->
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">Total P&L</div>
+                        <div class="card-subtitle">Profit & Loss</div>
+                    </div>
+                </div>
+                <div class="big-number" id="total-pnl">--</div>
+                <div class="metric">
+                    <span class="metric-label">Expectancy</span>
+                    <span class="metric-value" id="expectancy">--</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Profit Factor</span>
+                    <span class="metric-value" id="profit-factor">--</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Risk:Reward</span>
+                    <span class="metric-value" id="risk-reward">--</span>
+                </div>
+            </div>
+
+            <!-- Performance Metrics -->
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">Performance</div>
+                        <div class="card-subtitle">Key metrics</div>
+                    </div>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Avg Win</span>
+                    <span class="metric-value positive" id="avg-win">--</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Avg Loss</span>
+                    <span class="metric-value negative" id="avg-loss">--</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Max Win</span>
+                    <span class="metric-value positive" id="max-win">--</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Max Loss</span>
+                    <span class="metric-value negative" id="max-loss">--</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Avg Confidence</span>
+                    <span class="metric-value neutral" id="avg-confidence">--</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Avg Hold Time</span>
+                    <span class="metric-value neutral" id="avg-hold">--</span>
+                </div>
+            </div>
+
+            <!-- System Health -->
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">System Health</div>
+                        <div class="card-subtitle">Resource usage</div>
+                    </div>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">CPU Usage</span>
+                    <span class="metric-value" id="cpu-usage">--</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Memory Usage</span>
+                    <span class="metric-value" id="memory-usage">--</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Disk Usage</span>
+                    <span class="metric-value" id="disk-usage">--</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Database</span>
+                    <span class="metric-value" id="db-status">--</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts Row -->
+        <div class="grid">
+            <!-- P&L Chart -->
+            <div class="card half-width">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">P&L Over Time</div>
+                        <div class="card-subtitle">Last 7 days</div>
+                    </div>
+                </div>
+                <div class="chart-container chart-container-large">
+                    <canvas id="pnl-chart"></canvas>
+                </div>
+            </div>
+
+            <!-- Win Rate Trend -->
+            <div class="card half-width">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">Win Rate Trend</div>
+                        <div class="card-subtitle">Last 7 days</div>
+                    </div>
+                </div>
+                <div class="chart-container chart-container-large">
+                    <canvas id="win-rate-chart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Regime & Confidence -->
+        <div class="grid">
+            <!-- Market Regimes -->
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">Market Regimes</div>
+                        <div class="card-subtitle">Trade distribution</div>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <canvas id="regime-chart"></canvas>
+                </div>
+                <div id="regimes-list" class="regime-list">
+                    <div class="loading">Loading...</div>
+                </div>
+            </div>
+
+            <!-- Confidence Heatmap -->
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">Confidence Analysis</div>
+                        <div class="card-subtitle">By market regime</div>
+                    </div>
+                </div>
+                <div id="confidence-chart-container">
+                    <div class="chart-container">
+                        <canvas id="confidence-chart"></canvas>
+                    </div>
+                    <div id="confidence-chart-message" style="display: none; text-align: center; color: var(--text-muted); padding: 20px;"></div>
+                </div>
+            </div>
+
+            <!-- Gate Performance -->
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">Gate Performance</div>
+                        <div class="card-subtitle">Block accuracy</div>
+                    </div>
+                </div>
+                <div id="gate-performance">
+                    <div class="loading">Loading...</div>
+                </div>
+            </div>
+
+            <!-- Learning Metrics -->
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">Learning Metrics</div>
+                        <div class="card-subtitle">Model performance</div>
+                    </div>
+                </div>
+                <div id="learning-metrics">
+                    <div class="loading">Loading...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Performance by Symbol -->
+        <div class="card full-width">
+            <div class="card-header">
+                <div>
+                    <div class="card-title">Performance by Symbol</div>
+                    <div class="card-subtitle">Detailed breakdown</div>
+                </div>
+            </div>
+            <div class="chart-container">
+                <canvas id="symbol-chart"></canvas>
+            </div>
+            <div class="table-container" style="margin-top: 20px;">
+                <table id="symbol-table">
+                    <thead>
+                        <tr>
+                            <th>Symbol</th>
+                            <th>Trades</th>
+                            <th>Wins</th>
+                            <th>Win Rate</th>
+                            <th>Total P&L</th>
+                            <th>Avg P&L</th>
+                            <th>Avg Win</th>
+                            <th>Avg Loss</th>
+                            <th>Avg Confidence</th>
+                            <th>Max Win</th>
+                            <th>Max Loss</th>
+                        </tr>
+                    </thead>
+                    <tbody id="symbol-tbody">
+                        <tr><td colspan="11" class="loading">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Recent Trades -->
+        <div class="card full-width">
+            <div class="card-header">
+                <div>
+                    <div class="card-title">Recent Trades</div>
+                    <div class="card-subtitle">Last 100 trades</div>
+                </div>
+            </div>
+            <div class="table-container">
+                <table id="trades-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Symbol</th>
+                            <th>Time</th>
+                            <th>Entry</th>
+                            <th>Exit</th>
+                            <th>P&L</th>
+                            <th>BPS</th>
+                            <th>Duration</th>
+                            <th>Confidence</th>
+                            <th>Regime</th>
+                            <th>Result</th>
+                        </tr>
+                    </thead>
+                    <tbody id="trades-tbody">
+                        <tr><td colspan="11" class="loading">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Chart configuration for dark theme
+        Chart.defaults.color = '#9ca3af';
+        Chart.defaults.borderColor = '#2a3142';
+        Chart.defaults.backgroundColor = '#1a1f2e';
+
+        // Chart instances
+        let pnlChart = null;
+        let winRateChart = null;
+        let regimeChart = null;
+        let confidenceChart = null;
+        let symbolChart = null;
+
+        // EventSource for real-time updates
+        let eventSource = null;
+
+        // Formatting functions
+        function formatNumber(num, decimals = 2) {
+            if (num === null || num === undefined || isNaN(num)) return '--';
+            return num.toFixed(decimals);
+        }
+
+        function formatCurrency(num) {
+            if (num === null || num === undefined || isNaN(num)) return '£--';
+            const sign = num >= 0 ? '+' : '';
+            return sign + '£' + formatNumber(num, 2);
+        }
+
+        function formatPercent(num) {
+            if (num === null || num === undefined || isNaN(num)) return '--%';
+            return formatNumber(num, 1) + '%';
+        }
+
+        function formatTime(timestamp) {
+            if (!timestamp) return '--';
+            const date = new Date(timestamp);
+            return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        }
+
+        function getValueClass(value) {
+            if (value > 0) return 'positive';
+            if (value < 0) return 'negative';
+            return 'neutral';
+        }
+
+        // Initialize charts with dark theme
+        function initCharts() {
+            const chartOptions = {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        labels: {
+                            color: '#9ca3af',
+                            font: {
+                                family: 'Inter',
+                                size: 12
+                            }
+                        }
+                    },
+                    tooltip: {
+                        backgroundColor: '#1e2330',
+                        titleColor: '#e4e7eb',
+                        bodyColor: '#9ca3af',
+                        borderColor: '#2a3142',
+                        borderWidth: 1,
+                        padding: 12,
+                        displayColors: true,
+                        boxPadding: 6
+                    }
+                },
+                scales: {
+                    x: {
+                        ticks: {
+                            color: '#6b7280',
+                            font: {
+                                family: 'Inter',
+                                size: 11
+                            }
+                        },
+                        grid: {
+                            color: '#2a3142'
+                        }
+                    },
+                    y: {
+                        ticks: {
+                            color: '#6b7280',
+                            font: {
+                                family: 'Inter',
+                                size: 11
+                            }
+                        },
+                        grid: {
+                            color: '#2a3142'
+                        }
+                    }
+                }
+            };
+
+            // P&L Chart
+            const pnlCtx = document.getElementById('pnl-chart').getContext('2d');
+            pnlChart = new Chart(pnlCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Cumulative P&L',
+                        data: [],
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 0,
+                        pointHoverRadius: 4,
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    ...chartOptions,
+                    scales: {
+                        ...chartOptions.scales,
+                        y: {
+                            ...chartOptions.scales.y,
+                            beginAtZero: false,
+                            ticks: {
+                                ...chartOptions.scales.y.ticks,
+                                callback: function(value) {
+                                    return formatCurrency(value);
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Win Rate Chart
+            const winRateCtx = document.getElementById('win-rate-chart').getContext('2d');
+            winRateChart = new Chart(winRateCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Win Rate %',
+                        data: [],
+                        borderColor: '#10b981',
+                        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 2,
+                        pointHoverRadius: 5,
+                        borderWidth: 2
+                    }, {
+                        label: 'Avg Confidence %',
+                        data: [],
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 2,
+                        pointHoverRadius: 5,
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    ...chartOptions,
+                    scales: {
+                        ...chartOptions.scales,
+                        y: {
+                            ...chartOptions.scales.y,
+                            beginAtZero: true,
+                            max: 100,
+                            ticks: {
+                                ...chartOptions.scales.y.ticks,
+                                callback: function(value) {
+                                    return value + '%';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Regime Chart
+            const regimeCtx = document.getElementById('regime-chart').getContext('2d');
+            regimeChart = new Chart(regimeCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        data: [],
+                        backgroundColor: [
+                            'rgba(59, 130, 246, 0.8)',
+                            'rgba(139, 92, 246, 0.8)',
+                            'rgba(245, 158, 11, 0.8)',
+                            'rgba(239, 68, 68, 0.8)',
+                            'rgba(16, 185, 129, 0.8)',
+                        ],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    ...chartOptions,
+                    plugins: {
+                        ...chartOptions.plugins,
+                        legend: {
+                            ...chartOptions.plugins.legend,
+                            position: 'bottom'
+                        }
+                    }
+                }
+            });
+
+            // Confidence Chart
+            const confidenceCtx = document.getElementById('confidence-chart').getContext('2d');
+            confidenceChart = new Chart(confidenceCtx, {
+                type: 'bar',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Avg Confidence %',
+                        data: [],
+                        backgroundColor: 'rgba(59, 130, 246, 0.8)',
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    ...chartOptions,
+                    plugins: {
+                        ...chartOptions.plugins,
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        ...chartOptions.scales,
+                        y: {
+                            ...chartOptions.scales.y,
+                            beginAtZero: true,
+                            max: 100,
+                            ticks: {
+                                ...chartOptions.scales.y.ticks,
+                                callback: function(value) {
+                                    return value + '%';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Symbol Chart
+            const symbolCtx = document.getElementById('symbol-chart').getContext('2d');
+            symbolChart = new Chart(symbolCtx, {
+                type: 'bar',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Total P&L',
+                        data: [],
+                        backgroundColor: function(context) {
+                            const value = context.parsed.y;
+                            return value >= 0 ? 'rgba(16, 185, 129, 0.8)' : 'rgba(239, 68, 68, 0.8)';
+                        },
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    ...chartOptions,
+                    plugins: {
+                        ...chartOptions.plugins,
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        ...chartOptions.scales,
+                        y: {
+                            ...chartOptions.scales.y,
+                            beginAtZero: false,
+                            ticks: {
+                                ...chartOptions.scales.y.ticks,
+                                callback: function(value) {
+                                    return formatCurrency(value);
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Update dashboard (smooth updates without flashing)
+        let isUpdating = false;
+        function updateDashboard(data) {
+            // Prevent multiple simultaneous updates
+            if (isUpdating) {
+                return;
+            }
+            isUpdating = true;
+            
+            // Use requestAnimationFrame for smooth updates
+            requestAnimationFrame(() => {
+                try {
+                    // Update timestamp
+                    const now = new Date();
+                    const updateEl = document.getElementById('last-update');
+                    if (updateEl) {
+                        updateEl.textContent = 'Last updated: ' + now.toLocaleTimeString();
+                    }
+
+                    // Training Progress
+            if (data.training_progress) {
+                const progress = data.training_progress;
+                const card = document.getElementById('training-progress-card');
+                card.style.display = 'block';
+                
+                document.getElementById('training-stage').textContent = 
+                    progress.stage ? progress.stage.replace(/_/g, ' ').toUpperCase() : '--';
+                document.getElementById('training-progress-percent').textContent = 
+                    progress.progress ? progress.progress + '%' : '--';
+                document.getElementById('training-message').textContent = 
+                    progress.message || '--';
+                
+                const progressBar = document.getElementById('training-progress-bar');
+                const progressValue = progress.progress || 0;
+                progressBar.style.width = progressValue + '%';
+                progressBar.textContent = progressValue + '%';
+                
+                const detailsEl = document.getElementById('training-details');
+                if (progress.details && Object.keys(progress.details).length > 0) {
+                    detailsEl.innerHTML = Object.entries(progress.details)
+                        .map(([key, value]) => `<strong>${key}:</strong> ${value}`)
+                        .join(' | ');
+                } else {
+                    detailsEl.innerHTML = '';
+                }
+                    } else {
+                        const card = document.getElementById('training-progress-card');
+                        if (card) {
+                            card.style.display = 'none';
+                        }
+                    }
+
+                            // System Health
+                    if (data.system_health) {
+                        const health = data.system_health;
+                        const cpuEl = document.getElementById('cpu-usage');
+                        if (cpuEl) cpuEl.textContent = formatPercent(health.cpu_percent);
+                        const memEl = document.getElementById('memory-usage');
+                        if (memEl) memEl.textContent = 
+                            formatPercent(health.memory_percent) + ' (' + formatNumber(health.memory_available_gb, 1) + ' GB free)';
+                        const diskEl = document.getElementById('disk-usage');
+                        if (diskEl) diskEl.textContent = 
+                            formatPercent(health.disk_percent) + ' (' + formatNumber(health.disk_free_gb, 1) + ' GB free)';
+                        const dbEl = document.getElementById('db-status');
+                        if (dbEl) dbEl.innerHTML = 
+                            '<span class="health-indicator health-ok"></span>Connected';
+                    }
+
+                            // Overview
+                    if (data.overview) {
+                        const overview = data.overview;
+                        
+                        // Win Rate
+                        const winRate = overview.win_rate;
+                        const winRateEl = document.getElementById('win-rate');
+                        if (winRateEl) {
+                            winRateEl.textContent = formatPercent(winRate);
+                            winRateEl.className = 'big-number ' + (winRate >= 50 ? 'positive' : 'negative');
+                        }
+                        
+                        const winsEl = document.getElementById('winning-trades');
+                        if (winsEl) winsEl.textContent = overview.winning_trades || 0;
+                        const lossesEl = document.getElementById('losing-trades');
+                        if (lossesEl) lossesEl.textContent = overview.losing_trades || 0;
+                        const totalEl = document.getElementById('total-trades');
+                        if (totalEl) totalEl.textContent = overview.total_trades || 0;
+                        
+                        // P&L
+                        const pnl = overview.total_profit_gbp;
+                        const pnlEl = document.getElementById('total-pnl');
+                        if (pnlEl) {
+                            pnlEl.textContent = formatCurrency(pnl);
+                            pnlEl.className = 'big-number ' + getValueClass(pnl);
+                        }
+                        
+                        const expEl = document.getElementById('expectancy');
+                        if (expEl) expEl.textContent = formatCurrency(overview.expectancy);
+                        const pfEl = document.getElementById('profit-factor');
+                        if (pfEl) pfEl.textContent = formatNumber(overview.profit_factor, 2);
+                        const rrEl = document.getElementById('risk-reward');
+                        if (rrEl) rrEl.textContent = '1:' + formatNumber(overview.risk_reward, 2);
+                        
+                        // Performance
+                        const avgWinEl = document.getElementById('avg-win');
+                        if (avgWinEl) avgWinEl.textContent = formatCurrency(overview.avg_profit_gbp);
+                        const avgLossEl = document.getElementById('avg-loss');
+                        if (avgLossEl) avgLossEl.textContent = formatCurrency(overview.avg_loss_gbp);
+                        const maxWinEl = document.getElementById('max-win');
+                        if (maxWinEl) maxWinEl.textContent = formatCurrency(overview.max_win_gbp);
+                        const maxLossEl = document.getElementById('max-loss');
+                        if (maxLossEl) maxLossEl.textContent = formatCurrency(overview.max_loss_gbp);
+                        const confEl = document.getElementById('avg-confidence');
+                        if (confEl) confEl.textContent = formatPercent(overview.avg_confidence);
+                        const holdEl = document.getElementById('avg-hold');
+                        if (holdEl) holdEl.textContent = formatNumber(overview.avg_hold_duration, 1) + 'm';
+                    }
+
+                            // P&L Chart
+                    if (data.pnl_series && data.pnl_series.length > 0 && typeof pnlChart !== 'undefined') {
+                        const labels = data.pnl_series.map(t => {
+                            const date = new Date(t.timestamp);
+                            return date.toLocaleDateString() + ' ' + date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+                        });
+                        const values = data.pnl_series.map(t => t.cumulative_pnl);
+                        
+                        pnlChart.data.labels = labels;
+                        pnlChart.data.datasets[0].data = values;
+                        pnlChart.update('none');
+                    }
+
+                            // Win Rate Chart
+                    if (data.win_rate_trend && data.win_rate_trend.length > 0 && typeof winRateChart !== 'undefined') {
+                        const labels = data.win_rate_trend.map(t => {
+                            const date = new Date(t.timestamp);
+                            return date.toLocaleDateString() + ' ' + date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+                        });
+                        const winRates = data.win_rate_trend.map(t => t.win_rate);
+                        const confidences = data.win_rate_trend.map(t => t.avg_confidence);
+                        
+                        winRateChart.data.labels = labels;
+                        winRateChart.data.datasets[0].data = winRates;
+                        winRateChart.data.datasets[1].data = confidences;
+                        winRateChart.update('none');
+                    }
+
+                            // Regime Chart
+                    if (data.regime_distribution && data.regime_distribution.regimes && data.regime_distribution.regimes.length > 0) {
+                        const regimes = data.regime_distribution.regimes;
+                        const labels = regimes.map(r => r.regime);
+                        const counts = regimes.map(r => r.count);
+                        
+                        if (typeof regimeChart !== 'undefined') {
+                            regimeChart.data.labels = labels;
+                            regimeChart.data.datasets[0].data = counts;
+                            regimeChart.update('none');
+                        }
+                        
+                        // Regime list
+                        const regimesList = document.getElementById('regimes-list');
+                        if (regimesList) {
+                            regimesList.innerHTML = regimes.map(r => `
+                                <div class="regime-item">
+                                    <span class="regime-name">${r.regime}</span>
+                                    <div class="regime-stats">
+                                        <span class="regime-count">${r.count} trades</span>
+                                        <span class="regime-win-rate">${formatPercent(r.win_rate)} win rate</span>
+                                    </div>
+                                </div>
+                            `).join('');
+                        }
+                    }
+
+                    // Confidence Chart
+            try {
+                const chartCanvas = document.getElementById('confidence-chart');
+                const chartMessage = document.getElementById('confidence-chart-message');
+                const chartContainer = chartCanvas ? chartCanvas.closest('.chart-container') : null;
+                
+                if (data.confidence_heatmap && Object.keys(data.confidence_heatmap).length > 0) {
+                    const heatmap = data.confidence_heatmap;
+                    const labels = Object.keys(heatmap);
+                    const values = labels.map(regime => {
+                        const regimeData = heatmap[regime];
+                        return regimeData && typeof regimeData.avg_confidence === 'number' 
+                            ? regimeData.avg_confidence 
+                            : 0;
+                    });
+                    
+                    if (labels.length > 0 && values.some(v => v > 0)) {
+                        // Show chart, hide message
+                        if (chartContainer) chartContainer.style.display = 'block';
+                        if (chartMessage) chartMessage.style.display = 'none';
+                        
+                        // Update chart
+                        if (confidenceChart) {
+                            confidenceChart.data.labels = labels;
+                            confidenceChart.data.datasets[0].data = values;
+                            confidenceChart.update('none');
+                        } else {
+                            console.error('❌ Confidence chart not initialized');
+                        }
+                    } else {
+                        console.log('📊 Confidence Analysis: No valid data to display');
+                        // Hide chart, show message
+                        if (chartContainer) chartContainer.style.display = 'none';
+                        if (chartMessage) {
+                            chartMessage.textContent = 'No confidence data available';
+                            chartMessage.style.display = 'block';
+                        }
+                    }
+                } else {
+                    console.log('📊 Confidence Analysis: No confidence_heatmap data');
+                    // Hide chart, show message
+                    if (chartContainer) chartContainer.style.display = 'none';
+                    if (chartMessage) {
+                        chartMessage.textContent = 'No confidence data available';
+                        chartMessage.style.display = 'block';
+                    }
+                }
+            } catch (error) {
+                console.error('❌ Error rendering confidence chart:', error);
+                const chartCanvas = document.getElementById('confidence-chart');
+                const chartMessage = document.getElementById('confidence-chart-message');
+                const chartContainer = chartCanvas ? chartCanvas.closest('.chart-container') : null;
+                
+                // Hide chart, show error message
+                if (chartContainer) chartContainer.style.display = 'none';
+                if (chartMessage) {
+                    chartMessage.textContent = 'Error loading confidence data';
+                    chartMessage.style.color = 'var(--danger)';
+                    chartMessage.style.display = 'block';
+                }
+            }
+
+            // Gate Performance
+            try {
+                const gateEl = document.getElementById('gate-performance');
+                if (!gateEl) {
+                    console.error('❌ Gate Performance: Element not found');
+                    return;
+                }
+                
+                if (data.gate_performance) {
+                    const gates = data.gate_performance.gates || [];
+                    const error = data.gate_performance.error;
+                    
+                    if (error) {
+                        console.log(`⚠️  Gate Performance: ${error}`);
+                        gateEl.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 20px;">
+                            ${error === 'Database not found' 
+                                ? 'SQLite journal database not found. Gate performance data unavailable.' 
+                                : error === 'Table not found'
+                                ? 'shadow_trades table not found. No gate data available.'
+                                : `Error: ${error}`}
+                        </div>`;
+                    } else if (gates.length > 0) {
+                        console.log(`📊 Gate Performance: Rendering ${gates.length} gates`);
+                        gateEl.innerHTML = gates.map(g => {
+                            const gateName = String(g.gate || 'Unknown');
+                            const blocked = parseInt(g.total_blocked) || 0;
+                            const accuracy = parseFloat(g.block_accuracy) || 0;
+                            return `
+                                <div class="metric">
+                                    <span class="metric-label">${gateName}</span>
+                                    <span class="metric-value">${blocked} blocked (${formatPercent(accuracy)} accuracy)</span>
+                                </div>
+                            `;
+                        }).join('');
+                    } else {
+                        console.log('📊 Gate Performance: No gates found');
+                        gateEl.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 20px;">No gate data available (no blocked trades in the last 7 days)</div>';
+                    }
+                } else {
+                    console.log('📊 Gate Performance: No gate_performance data');
+                    gateEl.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 20px;">No gate performance data available</div>';
+                }
+            } catch (error) {
+                console.error('❌ Error rendering gate performance:', error);
+                const gateEl = document.getElementById('gate-performance');
+                if (gateEl) {
+                    gateEl.innerHTML = '<div style="text-align: center; color: var(--danger); padding: 20px;">Error loading gate performance data</div>';
+                }
+            }
+
+            // Learning Metrics
+            if (data.learning_metrics && Object.keys(data.learning_metrics).length > 0) {
+                const learning = data.learning_metrics;
+                const learningEl = document.getElementById('learning-metrics');
+                learningEl.innerHTML = `
+                    <div class="metric">
+                        <span class="metric-label">AUC</span>
+                        <span class="metric-value">${formatNumber(learning.auc, 3)}</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">ECE</span>
+                        <span class="metric-value">${formatNumber(learning.ece, 3)}</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Delta AUC</span>
+                        <span class="metric-value ${getValueClass(learning.delta_auc)}">${formatNumber(learning.delta_auc, 4)}</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Samples Processed</span>
+                        <span class="metric-value">${learning.samples_processed || 0}</span>
+                    </div>
+                `;
+            }
+
+            // Performance by Symbol
+            if (data.performance_by_symbol && data.performance_by_symbol.length > 0) {
+                const symbols = data.performance_by_symbol;
+                
+                // Chart
+                const labels = symbols.map(s => s.symbol);
+                const values = symbols.map(s => s.total_pnl);
+                
+                symbolChart.data.labels = labels;
+                symbolChart.data.datasets[0].data = values;
+                symbolChart.update('none');
+                
+                // Table
+                const tbody = document.getElementById('symbol-tbody');
+                tbody.innerHTML = symbols.map(s => `
+                    <tr>
+                        <td><strong>${s.symbol}</strong></td>
+                        <td>${s.total_trades}</td>
+                        <td>${s.wins}</td>
+                        <td>${formatPercent(s.win_rate)}</td>
+                        <td class="${getValueClass(s.total_pnl)}">${formatCurrency(s.total_pnl)}</td>
+                        <td class="${getValueClass(s.avg_pnl)}">${formatCurrency(s.avg_pnl)}</td>
+                        <td class="positive">${formatCurrency(s.avg_win)}</td>
+                        <td class="negative">${formatCurrency(s.avg_loss)}</td>
+                        <td>${formatPercent(s.avg_confidence)}</td>
+                        <td class="positive">${formatCurrency(s.max_win)}</td>
+                        <td class="negative">${formatCurrency(s.max_loss)}</td>
+                    </tr>
+                `).join('');
+            }
+
+            // Recent Trades
+            if (data.recent_trades && data.recent_trades.length > 0) {
+                const tbody = document.getElementById('trades-tbody');
+                tbody.innerHTML = data.recent_trades.map(trade => {
+                    const pnlClass = trade.is_winner ? 'positive' : 'negative';
+                    const badgeClass = trade.is_winner ? 'win' : 'loss';
+                    const regimeClass = (trade.market_regime || 'unknown').toLowerCase();
+                    
+                    return `
+                        <tr>
+                            <td>#${trade.trade_id}</td>
+                            <td><strong>${trade.symbol}</strong></td>
+                            <td>${formatTime(trade.entry_timestamp)}</td>
+                            <td>$${formatNumber(trade.entry_price, 2)}</td>
+                            <td>$${formatNumber(trade.exit_price, 2)}</td>
+                            <td class="${pnlClass}">${formatCurrency(trade.net_profit_gbp)}</td>
+                            <td>${formatNumber(trade.gross_profit_bps, 1)}</td>
+                            <td>${trade.hold_duration_minutes}m</td>
+                            <td>${formatPercent(trade.model_confidence)}</td>
+                            <td><span class="badge ${regimeClass}">${trade.market_regime || 'unknown'}</span></td>
+                            <td><span class="badge ${badgeClass}">${trade.is_winner ? 'WIN' : 'LOSS'}</span></td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+                    
+                    // Mark update as complete
+                    isUpdating = false;
+                } catch (error) {
+                    console.error('Error in updateDashboard:', error);
+                    isUpdating = false;
+                }
+            });
+        }
+
+        // Connect EventSource
+        function connectEventSource() {
+            if (eventSource) {
+                eventSource.close();
+            }
+
+            eventSource = new EventSource('/api/stream');
+
+            eventSource.onmessage = function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    // Update dashboard smoothly without flashing
+                    updateDashboard(data);
+                } catch (e) {
+                    console.error('Error parsing EventSource data:', e);
+                }
+            };
+
+            eventSource.onerror = function(error) {
+                console.error('EventSource error:', error);
+                console.error('EventSource readyState:', eventSource.readyState);
+                const updateEl = document.getElementById('last-update');
+                if (updateEl) {
+                    updateEl.textContent = 'Connection lost. Reconnecting...';
+                }
+                // Close and reconnect
+                if (eventSource.readyState === EventSource.CLOSED) {
+                    setTimeout(connectEventSource, 5000);
+                }
+            };
+            
+            eventSource.onopen = function() {
+                console.log('✅ EventSource connection opened');
+            };
+        }
+
+        // Wait for DOM to be fully loaded
+        function initializeDashboard() {
+            console.log('🚀 Initializing dashboard...');
+            
+            // Initialize charts
+            try {
+                initCharts();
+                console.log('✅ Charts initialized');
+            } catch (e) {
+                console.error('❌ Error initializing charts:', e);
+            }
+
+            // Initial load
+            console.log('🔄 Loading initial dashboard data...');
+            const updateEl = document.getElementById('last-update');
+            if (updateEl) {
+                updateEl.textContent = 'Loading data...';
+            } else {
+                console.error('❌ Could not find last-update element!');
+            }
+            
+            fetch('/api/data')
+                .then(response => {
+                    console.log('Response status:', response.status, response.statusText);
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status} ${response.statusText}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('✅ Initial data loaded:', data);
+                    console.log('📊 Data keys:', Object.keys(data));
+                    if (updateEl) {
+                        updateEl.textContent = 'Data loaded!';
+                    }
+                    updateDashboard(data);
+                })
+                .catch(error => {
+                    console.error('❌ Error loading initial data:', error);
+                    console.error('Error stack:', error.stack);
+                    if (updateEl) {
+                        updateEl.textContent = 'Error: ' + error.message + ' (retrying...)';
+                    }
+                    // Retry without reloading the page
+                    setTimeout(() => {
+                        console.log('Retrying data load...');
+                        // Just retry the fetch, don't reload the page
+                        fetch('/api/data')
+                            .then(response => response.json())
+                            .then(data => {
+                                console.log('✅ Retry successful, data loaded');
+                                if (updateEl) {
+                                    updateEl.textContent = 'Data loaded!';
+                                }
+                                updateDashboard(data);
+                            })
+                            .catch(err => {
+                                console.error('Retry failed:', err);
+                                if (updateEl) {
+                                    updateEl.textContent = 'Connection error - will retry...';
+                                }
+                            });
+                    }, 2000);
+                });
+
+            // Start real-time updates
+            try {
+                connectEventSource();
+                console.log('✅ EventSource connection started');
+            } catch (e) {
+                console.error('❌ Error starting EventSource:', e);
+            }
+        }
+
+        // Run when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initializeDashboard);
+        } else {
+            // DOM is already loaded
+            initializeDashboard();
+        }
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (eventSource) {
+                eventSource.close();
+            }
+        });
+    </script>
+</body>
+</html>

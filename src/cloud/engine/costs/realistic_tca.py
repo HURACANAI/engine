@@ -68,7 +68,11 @@ class CostEstimator:
         exchange: str = 'binance',
         default_spread_bps: float = 3.0,
         slippage_multiplier: float = 0.5,
-        use_conservative_estimates: bool = True
+        use_conservative_estimates: bool = True,
+        taker_fee_bps: Optional[float] = None,
+        maker_fee_bps: Optional[float] = None,
+        spread_bps: Optional[float] = None,
+        slippage_bps: Optional[float] = None,
     ):
         """
         Initialize cost estimator.
@@ -80,9 +84,12 @@ class CostEstimator:
             use_conservative_estimates: Use pessimistic estimates when uncertain
         """
         self.exchange = exchange.lower()
-        self.default_spread = default_spread_bps
+        self.default_spread = spread_bps if spread_bps is not None else default_spread_bps
         self.slippage_multiplier = slippage_multiplier
         self.conservative = use_conservative_estimates
+        self.override_taker_fee_bps = taker_fee_bps
+        self.override_maker_fee_bps = maker_fee_bps
+        self.override_slippage_bps = slippage_bps
 
         # Import fee manager
         from ..data_quality import HistoricalFeeManager
@@ -147,12 +154,8 @@ class CostEstimator:
             entry_time = datetime.now()  # Fallback
 
         # 1. Fee costs
-        fee_entry = self.fee_manager.get_fee_for_date(
-            self.exchange, entry_time, is_maker
-        )
-        fee_exit = self.fee_manager.get_fee_for_date(
-            self.exchange, exit_time, is_maker
-        )
+        fee_entry = self._get_fee(entry_time, is_maker)
+        fee_exit = self._get_fee(exit_time, is_maker)
         fee_total = fee_entry + fee_exit
 
         # 2. Spread costs
@@ -165,7 +168,10 @@ class CostEstimator:
         market_impact = self._estimate_market_impact(
             position_size_gbp, entry_row
         )
-        slippage_total = (volatility_bps * self.slippage_multiplier) + market_impact
+        if self.override_slippage_bps is not None:
+            slippage_total = float(self.override_slippage_bps)
+        else:
+            slippage_total = (volatility_bps * self.slippage_multiplier) + market_impact
 
         # Total round-trip costs
         total_cost = fee_total + spread_paid + slippage_total
@@ -215,7 +221,16 @@ class CostEstimator:
         return True
 
     def _get_spread(self, entry_row) -> float:
-        """Get bid-ask spread from data or use default."""
+        """
+        Get bid-ask spread in bps.
+
+        For integrated labeling runs we prefer the configured/default spread,
+        and only fall back to per-row values if no override is set.
+        """
+        # If an override/default was configured, prefer that (keeps SOL-like pairs realistic)
+        if self.default_spread is not None:
+            return float(self.default_spread)
+
         try:
             if hasattr(entry_row, '__getitem__'):
                 if 'spread_bps' in entry_row:
@@ -227,7 +242,8 @@ class CostEstimator:
             logger.debug("spread_extraction_failed", error=str(e))
             pass
 
-        return self.default_spread
+        # Fallback: modest default spread for liquid pairs
+        return 2.0
 
     def _get_volatility(self, entry_row) -> float:
         """Get volatility from ATR or estimate."""
@@ -286,6 +302,23 @@ class CostEstimator:
         # Conservative default for larger sizes
         return 2.0
 
+    def _get_fee(self, ts: datetime, is_maker: bool) -> float:
+        """
+        Resolve fee for maker/taker with optional overrides.
+        """
+        if is_maker and self.override_maker_fee_bps is not None:
+            return float(self.override_maker_fee_bps)
+        if (not is_maker) and self.override_taker_fee_bps is not None:
+            return float(self.override_taker_fee_bps)
+        if self.override_taker_fee_bps is not None and self.override_maker_fee_bps is None:
+            # Allow taker override to apply to maker as conservative fallback
+            return float(self.override_taker_fee_bps)
+
+        fee = self.fee_manager.get_fee_for_date(
+            self.exchange, ts, is_maker
+        )
+        return float(fee)
+
     def estimate_from_dataframe(
         self,
         df,
@@ -302,9 +335,10 @@ class CostEstimator:
 
         costs = []
 
-        for i in range(min(100, len(df))):  # Sample first 100 rows
+        for i in range(min(200, len(df))):  # Sample first 200 rows
             row = df[i]
-            exit_time = row['timestamp'][0] + timedelta(minutes=30)
+            ts = row['timestamp'][0] if hasattr(row['timestamp'], '__getitem__') else row['timestamp']
+            exit_time = ts + timedelta(minutes=30)
 
             cost = self.estimate(
                 entry_row=row,
@@ -315,15 +349,23 @@ class CostEstimator:
             )
             costs.append(cost)
 
-        avg_cost = np.mean(costs)
+        if not costs:
+            return self.default_spread + 10.0  # Conservative default
+
+        costs_arr = np.array(costs)
+        avg_cost = float(np.mean(costs_arr))
+        median_cost = float(np.median(costs_arr))
+        p90_cost = float(np.percentile(costs_arr, 90))
 
         logger.info(
             "average_costs_estimated",
             mode=mode,
             samples=len(costs),
             avg_cost_bps=avg_cost,
-            min_cost_bps=np.min(costs),
-            max_cost_bps=np.max(costs)
+            median_cost_bps=median_cost,
+            p90_cost_bps=p90_cost,
+            min_cost_bps=float(np.min(costs_arr)),
+            max_cost_bps=float(np.max(costs_arr)),
         )
 
         return avg_cost

@@ -140,9 +140,16 @@ class EnsemblePredictor:
             combined_alpha = self.alpha_engines.combine_signals(alpha_signals, current_regime)
 
             # Convert AlphaSignal to PredictionSource
+            # Alpha engines use "buy"/"sell"/"hold", but ensure we normalize
+            alpha_direction = combined_alpha.direction
+            if alpha_direction == "long":
+                alpha_direction = "buy"
+            elif alpha_direction == "short":
+                alpha_direction = "sell"
+            
             alpha_prediction = PredictionSource(
                 source_name="alpha_engines",
-                prediction=combined_alpha.direction,
+                prediction=alpha_direction,  # Ensure it's "buy"/"sell"/"hold"
                 confidence=combined_alpha.confidence,
                 reasoning=f"{combined_alpha.technique.value}: {combined_alpha.reasoning}",
                 weight=self.source_weights.get("alpha_engines", 0.95),
@@ -178,7 +185,17 @@ class EnsemblePredictor:
 
         for pred in predictions:
             weighted_confidence = pred.confidence * pred.weight
-            vote_scores[pred.prediction] += weighted_confidence
+            # Normalize prediction to "buy"/"sell"/"hold"
+            normalized_pred = pred.prediction
+            if normalized_pred == "long":
+                normalized_pred = "buy"
+            elif normalized_pred == "short":
+                normalized_pred = "sell"
+            elif normalized_pred not in vote_scores:
+                # Unknown prediction, skip it
+                logger.warning("unknown_prediction", prediction=normalized_pred, source=pred.source_name)
+                continue
+            vote_scores[normalized_pred] += weighted_confidence
 
         # Determine winner
         final_prediction = max(vote_scores.items(), key=lambda x: x[1])[0]

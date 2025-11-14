@@ -689,26 +689,34 @@ class FeatureRecipe:
         )
         zscore_features = []
         for n in self.momentum_windows:
-            mean = pl.col(f"ret_{n}").rolling_mean(window_size=60, min_periods=30)
-            std = pl.col(f"ret_{n}").rolling_std(window_size=60, min_periods=30)
+            # CRITICAL: Shift by 1 to prevent lookahead - only use past data
+            mean = pl.col(f"ret_{n}").rolling_mean(window_size=60, min_periods=30).shift(1)
+            std = pl.col(f"ret_{n}").rolling_std(window_size=60, min_periods=30).shift(1)
             zscore = ((pl.col(f"ret_{n}") - mean) / std).fill_null(0.0).alias(f"zscore_ret_{n}")
             zscore_features.append(zscore)
         ema_features = []
         for fast, slow in self.ema_pairs:
-            ema_fast = _ema(pl.col("close"), fast)
-            ema_slow = _ema(pl.col("close"), slow)
+            # CRITICAL: Shift by 1 to prevent lookahead - only use past data
+            ema_fast = _ema(pl.col("close"), fast).shift(1)
+            ema_slow = _ema(pl.col("close"), slow).shift(1)
             ema_features.extend([ema_fast, ema_slow, (ema_fast - ema_slow).alias(f"ema_diff_{fast}_{slow}")])
 
-        rsi_features = [_rsi(pl.col("close"), period) for period in self.rsi_periods]
+        # CRITICAL: Shift by 1 to prevent lookahead - only use past data
+        rsi_features = [_rsi(pl.col("close"), period).shift(1) for period in self.rsi_periods]
 
+        # CRITICAL: Shift by 1 to prevent lookahead - only use past data
         volatility_features = [
-            pl.col("close").pct_change().rolling_std(window_size=window, min_periods=window // 2).alias(f"realized_sigma_{window}")
+            pl.col("close").pct_change().rolling_std(window_size=window, min_periods=window // 2).shift(1).alias(f"realized_sigma_{window}")
             for window in self.volatility_windows
         ]
 
-        atr_feature = _atr(pl.col("high"), pl.col("low"), pl.col("close"))
-        adx_feature = _adx(pl.col("high"), pl.col("low"), pl.col("close"))
+        # CRITICAL: Shift by 1 to prevent lookahead - only use past data
+        atr_feature = _atr(pl.col("high"), pl.col("low"), pl.col("close")).shift(1)
+        adx_feature = _adx(pl.col("high"), pl.col("low"), pl.col("close")).shift(1)
         bb_upper, bb_lower, bb_width = _bollinger_bands(pl.col("close"), period=20, std_dev=2.0)
+        bb_upper = bb_upper.shift(1)
+        bb_lower = bb_lower.shift(1)
+        bb_width = bb_width.shift(1)
         range_feature = ((pl.col("high") - pl.col("low")) / pl.col("close")).alias("range_pct")
 
         typical_price = (pl.col("high") + pl.col("low") + pl.col("close")) / 3.0
@@ -716,8 +724,9 @@ class FeatureRecipe:
         # We'll add typical_price first, then compute cumsum in a separate step
         typical_price_col = typical_price.alias("typical_price")
 
+        # CRITICAL: Shift by 1 to prevent lookahead - only use past data
         slope_feature = (
-            pl.col("close").pct_change().rolling_mean(window_size=15, min_periods=10).alias("micro_trend")
+            pl.col("close").pct_change().rolling_mean(window_size=15, min_periods=10).shift(1).alias("micro_trend")
         )
 
         tod_seconds = pl.col("ts").dt.hour() * 3600 + pl.col("ts").dt.minute() * 60 + pl.col("ts").dt.second()
@@ -731,16 +740,17 @@ class FeatureRecipe:
         dow_sin = ((dow.cast(pl.Float64) / 7.0) * 2 * pi).sin().alias("dow_sin")
         dow_cos = ((dow.cast(pl.Float64) / 7.0) * 2 * pi).cos().alias("dow_cos")
 
-        # Enhanced volatility features
-        vol_regime = _volatility_regime(pl.col("close"), short_window=10, long_window=50)
-        price_position = _price_position_in_range(pl.col("high"), pl.col("low"), pl.col("close"), window=14)
+        # Enhanced volatility features - CRITICAL: Shift by 1 to prevent lookahead
+        vol_regime = _volatility_regime(pl.col("close"), short_window=10, long_window=50).shift(1)
+        price_position = _price_position_in_range(pl.col("high"), pl.col("low"), pl.col("close"), window=14).shift(1)
 
+        # CRITICAL: Shift by 1 to prevent lookahead - only use past data
         liquidity_features = []
         for window in self.liquidity_windows:
             liquidity_features.extend(
                 [
-                    pl.col("volume").rolling_mean(window_size=window, min_periods=window // 2).alias(f"volume_mean_{window}"),
-                    pl.col("volume").rolling_std(window_size=window, min_periods=window // 2).alias(f"volume_std_{window}"),
+                    pl.col("volume").rolling_mean(window_size=window, min_periods=window // 2).shift(1).alias(f"volume_mean_{window}"),
+                    pl.col("volume").rolling_std(window_size=window, min_periods=window // 2).shift(1).alias(f"volume_std_{window}"),
                 ]
             )
 
@@ -752,43 +762,43 @@ class FeatureRecipe:
         # REVUELTO FEATURES - Battle-Tested Alpha
         # ========================================
 
-        # Breakout Features
-        ignition = _ignition_score(pl.col("high"), pl.col("low"), pl.col("close"), pl.col("volume"), window=20)
-        breakout_thrust = _breakout_thrust(pl.col("high"), pl.col("close"), window=20)
-        breakout_qual = _breakout_quality(pl.col("close"), pl.col("volume"), window=20)
+        # Breakout Features - CRITICAL: Shift by 1 to prevent lookahead
+        ignition = _ignition_score(pl.col("high"), pl.col("low"), pl.col("close"), pl.col("volume"), window=20).shift(1)
+        breakout_thrust = _breakout_thrust(pl.col("high"), pl.col("close"), window=20).shift(1)
+        breakout_qual = _breakout_quality(pl.col("close"), pl.col("volume"), window=20).shift(1)
 
-        # Compression/Range Features
-        compression = _compression_score(pl.col("high"), pl.col("low"), window=20)
-        nr7_dens = _nr7_density(pl.col("high"), pl.col("low"), window=20)
-        compress_rank = _compression_rank(pl.col("high"), pl.col("low"), window=50)
-        mean_rev = _mean_revert_bias(pl.col("close"), window=20)
-        pullback = _pullback_depth(pl.col("close"), window=20)
+        # Compression/Range Features - CRITICAL: Shift by 1 to prevent lookahead
+        compression = _compression_score(pl.col("high"), pl.col("low"), window=20).shift(1)
+        nr7_dens = _nr7_density(pl.col("high"), pl.col("low"), window=20).shift(1)
+        compress_rank = _compression_rank(pl.col("high"), pl.col("low"), window=50).shift(1)
+        mean_rev = _mean_revert_bias(pl.col("close"), window=20).shift(1)
+        pullback = _pullback_depth(pl.col("close"), window=20).shift(1)
 
-        # Microstructure Features
-        micro = _micro_score(pl.col("close"), pl.col("volume"), window=10)
-        uptick = _uptick_ratio(pl.col("close"), window=20)
-        spread = _spread_bps(pl.col("high"), pl.col("low"), pl.col("close"))
+        # Microstructure Features - CRITICAL: Shift by 1 to prevent lookahead
+        micro = _micro_score(pl.col("close"), pl.col("volume"), window=10).shift(1)
+        uptick = _uptick_ratio(pl.col("close"), window=20).shift(1)
+        spread = _spread_bps(pl.col("high"), pl.col("low"), pl.col("close"))  # No shift needed - uses current OHLC
 
-        # Relative Strength Features (using close as benchmark for now)
-        leader = _leader_bias(pl.col("close"), pl.col("close").rolling_mean(100), window=20)
-        rs = _rs_score(pl.col("close"), pl.col("close").rolling_mean(100), short_window=10, med_window=20)
+        # Relative Strength Features - CRITICAL: Shift by 1 to prevent lookahead
+        leader = _leader_bias(pl.col("close"), pl.col("close").rolling_mean(100).shift(1), window=20).shift(1)
+        rs = _rs_score(pl.col("close"), pl.col("close").rolling_mean(100).shift(1), short_window=10, med_window=20).shift(1)
 
-        # Trend Features
-        trend_str = _trend_strength(pl.col("close"), window=20)
-        ema_slope_feat = _ema_slope(pl.col("close"), period=20)
-        momentum_slope_feat = _momentum_slope(pl.col("close"), short=5, long=20)
-        htf = _htf_bias(pl.col("close"), htf_period=100)
-        trend_flag_5 = _trend_flag(pl.col("close"), window=5)
-        trend_flag_30 = _trend_flag(pl.col("close"), window=30)
-        trend_flag_120 = _trend_flag(pl.col("close"), window=120)
-        mt_trend_short = _multi_timeframe_trend(pl.col("close"), short_window=5, long_window=60)
-        mt_trend_long = _multi_timeframe_trend(pl.col("close"), short_window=30, long_window=240)
+        # Trend Features - CRITICAL: Shift by 1 to prevent lookahead
+        trend_str = _trend_strength(pl.col("close"), window=20).shift(1)
+        ema_slope_feat = _ema_slope(pl.col("close"), period=20).shift(1)
+        momentum_slope_feat = _momentum_slope(pl.col("close"), short=5, long=20).shift(1)
+        htf = _htf_bias(pl.col("close"), htf_period=100).shift(1)
+        trend_flag_5 = _trend_flag(pl.col("close"), window=5).shift(1)
+        trend_flag_30 = _trend_flag(pl.col("close"), window=30).shift(1)
+        trend_flag_120 = _trend_flag(pl.col("close"), window=120).shift(1)
+        mt_trend_short = _multi_timeframe_trend(pl.col("close"), short_window=5, long_window=60).shift(1)
+        mt_trend_long = _multi_timeframe_trend(pl.col("close"), short_window=30, long_window=240).shift(1)
 
-        # Volume Features
-        vol_jump = _vol_jump_z(pl.col("volume"), window=20)
+        # Volume Features - CRITICAL: Shift by 1 to prevent lookahead
+        vol_jump = _vol_jump_z(pl.col("volume"), window=20).shift(1)
 
-        # Distribution Features
-        kurt = _kurtosis(pl.col("close"), window=20)
+        # Distribution Features - CRITICAL: Shift by 1 to prevent lookahead
+        kurt = _kurtosis(pl.col("close"), window=20).shift(1)
 
         feature_frame = base.with_columns(
             [
@@ -855,8 +865,9 @@ class FeatureRecipe:
             optional_features.append(
                 pl.col("funding_rate").fill_null(0.0).alias("funding_rate_latest")
             )
+            # CRITICAL: Shift by 1 to prevent lookahead
             optional_features.append(
-                pl.col("funding_rate").rolling_mean(window_size=180, min_periods=60).alias("funding_rate_trend")
+                pl.col("funding_rate").rolling_mean(window_size=180, min_periods=60).shift(1).alias("funding_rate_trend")
             )
 
         if optional_features:
@@ -866,9 +877,9 @@ class FeatureRecipe:
         # NEW ADVANCED FEATURES
         # ========================================
         
-        # Realized volatility at 1m and 5m
-        realized_vol_1m = pl.col("close").pct_change().rolling_std(window_size=1, min_periods=1).alias("realized_vol_1m")
-        realized_vol_5m = pl.col("close").pct_change().rolling_std(window_size=5, min_periods=3).alias("realized_vol_5m")
+        # Realized volatility at 1m and 5m - CRITICAL: Shift by 1 to prevent lookahead
+        realized_vol_1m = pl.col("close").pct_change().rolling_std(window_size=1, min_periods=1).shift(1).alias("realized_vol_1m")
+        realized_vol_5m = pl.col("close").pct_change().rolling_std(window_size=5, min_periods=3).shift(1).alias("realized_vol_5m")
         
         # Microprice and imbalance (if order book data available)
         microprice_features = []
@@ -887,11 +898,11 @@ class FeatureRecipe:
             
             microprice_features.extend([microprice, book_imbalance])
         
-        # Entropy (compression measure)
-        price_entropy = _entropy(pl.col("close"), window=20)
-        
-        # Residual z-score (for mean reversion)
-        residual_z = _residual_zscore(pl.col("close"), window=20)
+        # Entropy (compression measure) - CRITICAL: Shift by 1 to prevent lookahead
+        price_entropy = _entropy(pl.col("close"), window=20).shift(1)
+
+        # Residual z-score (for mean reversion) - CRITICAL: Shift by 1 to prevent lookahead
+        residual_z = _residual_zscore(pl.col("close"), window=20).shift(1)
         
         # Basis and carry PnL (if funding rate available)
         basis_features = []
@@ -934,8 +945,9 @@ class FeatureRecipe:
         feature_frame = feature_frame.with_columns([
             (pl.col("cum_typical_volume") / (pl.col("cum_volume") + 1e-9)).alias("vwap"),
         ])
+        # CRITICAL: Shift by 1 to prevent lookahead - VWAP uses past data, close should be previous close
         feature_frame = feature_frame.with_columns([
-            ((pl.col("close") - pl.col("vwap")) / pl.col("vwap")).alias("close_to_vwap"),
+            ((pl.col("close").shift(1) - pl.col("vwap").shift(1)) / pl.col("vwap").shift(1)).alias("close_to_vwap"),
         ])
         # Drop intermediate column
         feature_frame = feature_frame.drop("typical_price_volume")

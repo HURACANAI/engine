@@ -19,7 +19,7 @@ This is the key component that makes the bot learn from all historical patterns.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
@@ -104,6 +104,8 @@ class ShadowTrader:
         loss_analyzer: LossAnalyzer,
         feature_recipe: FeatureRecipe,
         config: Optional[BacktestConfig] = None,
+        alpha_engines: Optional[Any] = None,  # AlphaEngineCoordinator
+        ensemble_predictor: Optional[Any] = None,  # EnsemblePredictor
     ):
         self.agent = agent
         self.memory = memory_store
@@ -112,6 +114,11 @@ class ShadowTrader:
         self.loss_analyzer = loss_analyzer
         self.feature_recipe = feature_recipe
         self.config = config or BacktestConfig()
+        
+        # Alpha engines and ensemble predictor (optional - for full integration)
+        self.alpha_engines = alpha_engines
+        self.ensemble_predictor = ensemble_predictor
+        self.use_ensemble = alpha_engines is not None and ensemble_predictor is not None
 
         # Initialize regime detection and confidence scoring
         self.regime_detector = RegimeDetector()
@@ -129,6 +136,14 @@ class ShadowTrader:
         self.current_position: Optional[Dict[str, Any]] = None
         self.trades_today = 0
         self.wins_today = 0
+        self._progress_callback: Optional[Any] = None  # Optional progress callback
+        
+        if self.use_ensemble:
+            logger.info(
+                "shadow_trader_initialized_with_ensemble",
+                num_alpha_engines=len(alpha_engines.engines) if alpha_engines else 0,
+                ensemble_enabled=True,
+            )
 
     def backtest_symbol(
         self,
@@ -150,8 +165,10 @@ class ShadowTrader:
         logger.info("shadow_trading_start", symbol=symbol, rows=historical_data.height)
 
         if historical_data.height < 100:
-            logger.warning("insufficient_data", symbol=symbol)
+            logger.warning("insufficient_data", symbol=symbol, rows=historical_data.height)
             return []
+        
+        logger.info("building_features_for_shadow_trading", symbol=symbol)
 
         self.current_position = None
         # Ensure sorted by time
@@ -161,30 +178,71 @@ class ShadowTrader:
         features_df = self.feature_recipe.build(historical_data)
 
         all_trades: List[ShadowTradeResult] = []
+        
+        # Progress tracking
+        total_candles = features_df.height - self.config.lookback_for_optimal_exit - 100
+        start_idx = 100
+        end_idx = features_df.height - self.config.lookback_for_optimal_exit
+        progress_callback = getattr(self, '_progress_callback', None)
 
         # Walk forward through time - critical: no lookahead!
-        for current_idx in range(100, features_df.height - self.config.lookback_for_optimal_exit):
+        logger.info("entering_shadow_trading_loop", iterations=end_idx - start_idx)
+        experiences_collected = 0
+        
+        for current_idx in range(start_idx, end_idx):
             # Agent only sees data UP TO current_idx
-            visible_data = features_df[:current_idx + 1]
+            visible_data = features_df[:current_idx + 1]  # type: ignore[assignment]
+            # Ensure it's a DataFrame (slicing should always return DataFrame)
+            if not isinstance(visible_data, pl.DataFrame):
+                continue
+            
+            # Log every 1000 candles for debugging
+            if current_idx % 1000 == 0 or current_idx == start_idx:
+                logger.info("shadow_trading_progress", 
+                           current_idx=current_idx,
+                           total=end_idx,
+                           progress_pct=int((current_idx - start_idx) / total_candles * 100) if total_candles > 0 else 0,
+                           trades_so_far=len(all_trades),
+                           has_position=self.current_position is not None)
 
             # Make decision based on visible data only
             if self.current_position is None:
                 # No position - consider entry
-                self._consider_entry(
-                    symbol=symbol,
-                    current_idx=current_idx,
-                    visible_data=visible_data,
-                    training_mode=training_mode,
-                )
+                # This calls agent.select_action() which stores experience
+                try:
+                    self._consider_entry(
+                        symbol=symbol,
+                        current_idx=current_idx,
+                        visible_data=visible_data,
+                        training_mode=training_mode,
+                    )
+                    experiences_collected += 1
+                except Exception as e:
+                    logger.error("consider_entry_failed", current_idx=current_idx, error=str(e), exc_info=True)
+                
+                # IMPORTANT: Even if we don't enter, we still collected experience
+                # The agent.select_action() call in _consider_entry stores state/action
+                # This ensures we collect experiences at EVERY step for training
 
             else:
                 # Have position - consider exit
-                exit_result = self._consider_exit(
-                    current_idx=current_idx,
-                    visible_data=visible_data,
-                    future_data=features_df[current_idx + 1:],  # Hidden from agent!
-                    training_mode=training_mode,
-                )
+                # This calls agent.select_action() which stores experience
+                try:
+                    future_data_slice = features_df[current_idx + 1:]  # type: ignore[assignment]
+                    if not isinstance(future_data_slice, pl.DataFrame):
+                        future_data = pl.DataFrame()  # Fallback empty DataFrame
+                    else:
+                        future_data = future_data_slice
+                    exit_result = self._consider_exit(
+                        current_idx=current_idx,
+                        visible_data=visible_data,
+                        future_data=future_data,  # Hidden from agent!
+                        training_mode=training_mode,
+                    )
+                    experiences_collected += 1
+                except Exception as e:
+                    logger.error("consider_exit_failed", current_idx=current_idx, error=str(e), exc_info=True)
+                    exit_result = None
 
                 if exit_result:
                     all_trades.append(exit_result)
@@ -197,14 +255,35 @@ class ShadowTrader:
                             profit_bps=exit_result.gross_profit_bps,
                             timestamp=str(exit_result.entry_timestamp),
                         )
+            
+            # Update progress every 50 candles or at milestones
+            if progress_callback and (current_idx % 50 == 0 or current_idx == end_idx - 1):
+                candles_processed = current_idx - start_idx + 1
+                progress_pct = int((candles_processed / total_candles) * 100) if total_candles > 0 else 0
+                progress_callback(
+                    candles_processed=candles_processed,
+                    total_candles=total_candles,
+                    progress_percent=progress_pct,
+                    trades_executed=len(all_trades),
+                    current_idx=current_idx,
+                )
 
         # Force-close any remaining open position at end of data
         if self.current_position is not None:
             final_idx = features_df.height - self.config.lookback_for_optimal_exit - 1
             if final_idx >= 0:
-                visible_data = features_df[:final_idx + 1]
-                current_row = visible_data.row(final_idx, named=True)
-                future_data = features_df[final_idx + 1:]
+                visible_data_slice = features_df[:final_idx + 1]  # type: ignore[assignment]
+                # Ensure it's a DataFrame
+                if not isinstance(visible_data_slice, pl.DataFrame):
+                    visible_data = pl.DataFrame()  # Fallback empty DataFrame
+                else:
+                    visible_data = visible_data_slice
+                current_row = visible_data.row(final_idx, named=True)  # type: ignore[attr-defined]
+                future_data_slice = features_df[final_idx + 1:]  # type: ignore[assignment]
+                if not isinstance(future_data_slice, pl.DataFrame):
+                    future_data = pl.DataFrame()  # Fallback empty DataFrame
+                else:
+                    future_data = future_data_slice
                 forced_exit = self._force_close_position(
                     current_idx=final_idx,
                     current_row=current_row,
@@ -235,7 +314,16 @@ class ShadowTrader:
             wins=sum(1 for t in all_trades if t.is_winner),
             feature_importance_samples=importance_result.total_samples,
             top_win_feature=importance_result.top_win_features[0][0] if importance_result.top_win_features else None,
+            experiences_collected=experiences_collected,
+            candles_processed=end_idx - start_idx,
         )
+        
+        # Log agent experience buffer status
+        if hasattr(self.agent, 'states'):
+            logger.info("agent_experience_buffer_status",
+                       num_states=len(self.agent.states),
+                       num_actions=len(self.agent.actions) if hasattr(self.agent, 'actions') else 0,
+                       num_rewards=len(self.agent.rewards) if hasattr(self.agent, 'rewards') else 0)
 
         return all_trades
 
@@ -279,23 +367,67 @@ class ShadowTrader:
             symbol=symbol,
         )
 
-        # Agent decides: enter or not?
-        action, _ = self.agent.select_action(state, deterministic=not training_mode)
+        # Get regime for alpha engines and ensemble
+        regime_str, regime_conf = self._classify_regime(visible_data, current_idx)
+        
+        # Use ensemble predictor if available (combines RL agent + all 23 alpha engines)
+        if self.use_ensemble and self.ensemble_predictor is not None:
+            # Convert current_row to features dict for alpha engines
+            features_dict = {k: float(v) for k, v in current_row.items() if isinstance(v, (int, float))}
+            
+            # Get RL agent prediction
+            rl_action, rl_log_prob = self.agent.select_action(state, deterministic=not training_mode)
+            rl_prediction = None
+            if rl_action in [TradingAction.ENTER_LONG_SMALL, TradingAction.ENTER_LONG_NORMAL, TradingAction.ENTER_LONG_LARGE]:
+                from ..models.ensemble_predictor import PredictionSource
+                rl_prediction = PredictionSource(
+                    source_name="rl_agent",
+                    prediction="buy",  # Ensemble expects "buy"/"sell"/"hold", not "long"
+                    confidence=float(max(0.5, 1.0 - abs(rl_log_prob))) if rl_log_prob else 0.7,
+                    reasoning=f"RL agent action: {rl_action}",
+                )
+            
+            # Get ensemble prediction (combines RL + all 23 alpha engines)
+            ensemble_pred = self.ensemble_predictor.predict(
+                rl_prediction=rl_prediction,
+                features=features_dict,
+                current_regime=regime_str,
+            )
+            
+            # Use ensemble decision (convert "buy" to "long" for entry)
+            should_enter = ensemble_pred.final_prediction == "buy" and ensemble_pred.ensemble_confidence >= self.config.min_confidence_threshold
+            action = rl_action if should_enter else TradingAction.DO_NOTHING
+            ensemble_confidence = ensemble_pred.ensemble_confidence
+            ensemble_reasoning = ensemble_pred.reasoning
+            
+            logger.debug(
+                "ensemble_decision",
+                prediction=ensemble_pred.final_prediction,
+                confidence=ensemble_confidence,
+                agreement=ensemble_pred.agreement_score,
+                reasoning=ensemble_reasoning,
+                strongest_source=ensemble_pred.strongest_source,
+                num_sources=len(ensemble_pred.source_predictions) if hasattr(ensemble_pred, 'source_predictions') else 0,
+            )
+        else:
+            # Fallback to RL agent only
+            action, _ = self.agent.select_action(state, deterministic=not training_mode)
+            ensemble_confidence = 0.5
+            ensemble_reasoning = "RL agent only (ensemble not available)"
+            should_enter = action in [TradingAction.ENTER_LONG_SMALL, TradingAction.ENTER_LONG_NORMAL, TradingAction.ENTER_LONG_LARGE]
 
-        # Only enter if agent chooses entry action and we have confidence
+        # Only enter if agent/ensemble chooses entry action and we have confidence
         if action not in [TradingAction.ENTER_LONG_SMALL, TradingAction.ENTER_LONG_NORMAL, TradingAction.ENTER_LONG_LARGE]:
             if training_mode:
                 self.agent.store_reward(reward=0.0, done=False)  # Neutral reward for skipping
             return None
 
-        # Calculate confidence score for this trade
-        # Get regime info (already calculated in _build_state)
-        regime_str, regime_conf = self._classify_regime(visible_data, current_idx)
-
+        # Calculate confidence score for this trade (regime already calculated above)
         # Check if regime matches historical best (simplified - would query pattern_library)
         regime_match = regime_str == "trend"  # Simplified assumption
 
-        # Calculate confidence using our confidence scorer
+        # Calculate confidence using our confidence scorer (enhanced with ensemble if available)
+        base_confidence = ensemble_confidence if self.use_ensemble else 0.5
         confidence_result = self.confidence_scorer.calculate_confidence(
             sample_count=max(1, int(state.similar_pattern_reliability * 100)),  # Estimate sample count
             best_score=state.similar_pattern_win_rate,
@@ -307,8 +439,13 @@ class ShadowTrader:
             meta_features={
                 "meta_signal": float(max(0.0, state.similar_pattern_reliability * state.win_rate_today)),
                 "orderbook_bias": float(state.orderbook_imbalance),
+                "ensemble_confidence": base_confidence,  # Include ensemble confidence
             },
         )
+        
+        # Boost confidence if ensemble agrees strongly
+        if self.use_ensemble and ensemble_confidence > 0.7:
+            confidence_result.confidence = min(1.0, confidence_result.confidence * 1.1)
 
         # Skip trade if confidence is too low
         if confidence_result.decision == "skip":
@@ -348,6 +485,8 @@ class ShadowTrader:
             "entry_cost_bps": state.estimated_transaction_cost_bps,
             "visible_data": visible_data,  # Store for regime detection
             "confidence_result": confidence_result,  # Store confidence info for trade result
+            "ensemble_confidence": ensemble_confidence if self.use_ensemble else None,
+            "ensemble_reasoning": ensemble_reasoning if self.use_ensemble else None,
         }
 
         logger.debug("shadow_entry", symbol=symbol, price=entry_price, idx=current_idx)
@@ -650,8 +789,8 @@ class ShadowTrader:
         market_features = np.array([float(current_row.get(f) or 0.0) for f in feature_names], dtype=np.float32)
         # Note: Agent's state_to_tensor() will handle padding/trimming if needed
 
-        close_values = np.asarray(visible_data["close"], dtype=float)
-        volume_values = np.asarray(visible_data["volume"], dtype=float)
+        close_values = np.asarray(visible_data["close"], dtype=float)  # type: ignore[index]
+        volume_values = np.asarray(visible_data["volume"], dtype=float)  # type: ignore[index]
 
         def _pct_change(series: np.ndarray, periods: int) -> float:
             if series.size <= periods:
@@ -713,7 +852,7 @@ class ShadowTrader:
             orderbook_imbalance = 0.0
 
         if "cumulative_flow" in current_row:
-            flow_series = np.asarray(visible_data["cumulative_flow"], dtype=float)
+            flow_series = np.asarray(visible_data["cumulative_flow"], dtype=float)  # type: ignore[index]
             if flow_series.size > 60:
                 baseline = flow_series[-61]
                 flow_trend = float(flow_series[-1] - baseline)
@@ -736,14 +875,12 @@ class ShadowTrader:
             pattern_stats = self.memory.get_pattern_stats(similar_patterns)
         except (IndexError, Exception) as e:
             # If memory query fails, use empty patterns
-            import structlog
-            logger = structlog.get_logger(__name__)
             logger.warning("memory_query_failed", error=str(e), symbol=symbol)
             similar_patterns = []
             pattern_stats = {"win_rate": 0.5, "avg_profit": 0.0, "sample_size": 0}
 
         # Classify regime using sophisticated regime detector
-        regime_str, regime_confidence = self._classify_regime(visible_data, current_idx)
+        regime_str, _regime_confidence = self._classify_regime(visible_data, current_idx)
 
         # Convert to code for RL agent state (backward compatibility)
         regime_code = {
@@ -787,27 +924,27 @@ class ShadowTrader:
     ) -> pl.DataFrame:
         """Apply scenario shocks to a DataFrame without mutating original."""
 
-        mutated = frame.clone()
+        mutated = frame.clone()  # type: ignore[attr-defined]
         ops = []
 
         spread_multiplier = config.get("spread_multiplier")
         if spread_multiplier and "spread_bps" in mutated.columns:
-            ops.append((pl.col("spread_bps") * spread_multiplier).alias("spread_bps"))
+            ops.append((pl.col("spread_bps") * spread_multiplier).alias("spread_bps"))  # type: ignore[attr-defined,assignment]
 
         vol_spike = config.get("volatility_spike_bps")
         if vol_spike:
-            for col in [c for c in mutated.columns if c.startswith("realized_sigma_")]:
-                ops.append((pl.col(col) + (vol_spike / 10_000.0)).alias(col))
+            for col in [c for c in mutated.columns if c.startswith("realized_sigma_")]:  # type: ignore[attr-defined]
+                ops.append((pl.col(col) + (vol_spike / 10_000.0)).alias(col))  # type: ignore[attr-defined,assignment]
 
         latency_minutes = int(config.get("latency_minutes", 0))
         if latency_minutes > 0:
             shift_candles = max(1, latency_minutes)
             for col in ["close", "open", "high", "low", "volume"]:
-                if col in mutated.columns:
-                    ops.append(pl.col(col).shift(shift_candles).fill_null(strategy="backward").alias(col))
+                if col in mutated.columns:  # type: ignore[attr-defined]
+                    ops.append(pl.col(col).shift(shift_candles).fill_null(strategy="backward").alias(col))  # type: ignore[attr-defined,assignment]
 
         if ops:
-            mutated = mutated.with_columns(ops)
+            mutated = mutated.with_columns(ops)  # type: ignore[attr-defined]
 
         return mutated
 
@@ -815,7 +952,7 @@ class ShadowTrader:
         """Create vector embedding from features (simplified)."""
         # In production, use actual model's embedding layer
         feature_values = []
-        for k, v in sorted(features.items()):
+        for _k, v in sorted(features.items()):
             if isinstance(v, (int, float)) and not np.isnan(v):
                 feature_values.append(v)
 

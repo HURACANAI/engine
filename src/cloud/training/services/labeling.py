@@ -12,7 +12,7 @@ from .costs import CostBreakdown
 @dataclass
 class LabelingConfig:
     horizon_minutes: int = 4
-    embargo_candles: int = 2  # Number of candles to skip between features and label window
+    embargo_candles: int = 2  # Candles to skip between features and label window (prevents lookahead)
 
 
 class LabelBuilder:
@@ -57,19 +57,16 @@ class LabelBuilder:
         if zero_count > 0:
             raise ValueError(f"Found {zero_count} zero values in 'close' column (division by zero risk)")
         
-        # Calculate future close with embargo to prevent lookahead
-        # CRITICAL: Use embargo to ensure features don't leak into label calculation
-        # Formula: target = (close[t+horizon+embargo] / close[t+embargo]) - 1
-        # This ensures:
-        # 1. Features at time t use data up to t
-        # 2. Label uses price at t+embargo (not t) to t+horizon+embargo
-        # 3. No overlap between feature window and label window
+        # Calculate future close with embargo to prevent lookahead bias
+        # Shift is negative to look forward in time
+        # Use embargo: skip N candles between current price and future price
         embargo = self._config.embargo_candles
-        future_close = pl.col("close").shift(-(horizon + embargo))  # Price at t+horizon+embargo
-        current_close = pl.col("close").shift(-embargo)  # Price at t+embargo (after embargo)
+        future_close = pl.col("close").shift(-(horizon + embargo))
+        current_close = pl.col("close").shift(-embargo)
         
-        # Calculate net edge: ((future_price - embargo_price) / embargo_price) * 10000 - costs
+        # Calculate net edge: ((future_price - current_price) / current_price) * 10000 - costs
         # This gives basis points (bps) of profit/loss after costs
+        # Using current_close (with embargo) instead of close prevents lookahead
         net_edge = ((future_close - current_close) / current_close) * 10_000 - costs.total_costs_bps
         label_expr = net_edge.alias("net_edge_bps")
         

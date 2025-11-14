@@ -103,6 +103,9 @@ class MultiModelTrainer:
         use_ray: bool = True,
         is_classification: bool = False,
         n_jobs: int = -1,
+        hyperparams: Optional[Dict[str, Any]] = None,  # Hyperparameters from config
+        fixed_ensemble_weights: Optional[Dict[str, float]] = None,  # Fixed ensemble weights
+        use_fixed_weights: bool = False,  # Use fixed weights instead of performance-based
     ):
         """
         Initialize multi-model trainer.
@@ -122,13 +125,16 @@ class MultiModelTrainer:
         self.use_ray = use_ray and HAS_RAY
         self.is_classification = is_classification
         self.n_jobs = n_jobs
+        self.hyperparams = hyperparams or {}
+        self.fixed_ensemble_weights = fixed_ensemble_weights or {}
+        self.use_fixed_weights = use_fixed_weights
         
         # Trained models
         self.models: Dict[str, Any] = {}
         self.model_results: Dict[str, ModelResult] = {}
         self.scalers: Dict[str, StandardScaler] = {}
         
-        # Ensemble weights (learned from performance)
+        # Ensemble weights (learned from performance or fixed)
         self.model_weights: Dict[str, float] = {}
         
         # Performance tracking
@@ -373,17 +379,24 @@ class MultiModelTrainer:
         )
 
     def _create_model(self, technique: str) -> Any:
-        """Create a model instance for the given technique."""
+        """Create a model instance for the given technique with hyperparameters from config."""
         if technique == 'xgboost':
             if not HAS_XGBOOST:
                 raise ImportError("XGBoost not available")
-            # XGBoost 3.0+ requires early_stopping_rounds in constructor
-            # We'll set it to None initially and update it during training if validation data is available
+            # Get hyperparameters from config (with defaults)
+            reg_alpha = self.hyperparams.get('reg_alpha', 2.0)  # L1 regularization (increased)
+            reg_lambda = self.hyperparams.get('reg_lambda', 5.0)  # L2 regularization (increased)
+            n_estimators = self.hyperparams.get('n_estimators', 2000)
+            learning_rate = self.hyperparams.get('learning_rate', 0.01)
+            max_depth = self.hyperparams.get('max_depth', 8)
+            
             if self.is_classification:
                 return xgb.XGBClassifier(
-                    n_estimators=1000,  # Large number for early stopping
-                    max_depth=6,
-                    learning_rate=0.1,
+                    n_estimators=n_estimators,
+                    max_depth=max_depth,
+                    learning_rate=learning_rate,
+                    reg_alpha=reg_alpha,
+                    reg_lambda=reg_lambda,
                     random_state=42,
                     n_jobs=self.n_jobs,
                     eval_metric='logloss',
@@ -391,9 +404,11 @@ class MultiModelTrainer:
                 )
             else:
                 return xgb.XGBRegressor(
-                    n_estimators=1000,  # Large number for early stopping
-                    max_depth=6,
-                    learning_rate=0.1,
+                    n_estimators=n_estimators,
+                    max_depth=max_depth,
+                    learning_rate=learning_rate,
+                    reg_alpha=reg_alpha,
+                    reg_lambda=reg_lambda,
                     random_state=42,
                     n_jobs=self.n_jobs,
                     eval_metric='rmse',
@@ -403,19 +418,24 @@ class MultiModelTrainer:
         elif technique == 'random_forest':
             if not HAS_SKLEARN:
                 raise ImportError("scikit-learn not available")
+            # Get hyperparameters from config (with defaults)
+            rf_max_depth = self.hyperparams.get('rf_max_depth', 5)  # Reduced from 10
+            rf_min_samples_leaf = self.hyperparams.get('rf_min_samples_leaf', 10)  # Increased from 1
+            n_estimators = self.hyperparams.get('n_estimators', 2000)
+            
             if self.is_classification:
                 return RandomForestClassifier(
-                    n_estimators=100,
-                    max_depth=10,
-                    min_samples_leaf=20,
+                    n_estimators=n_estimators,
+                    max_depth=rf_max_depth,
+                    min_samples_leaf=rf_min_samples_leaf,
                     random_state=42,
                     n_jobs=self.n_jobs,
                 )
             else:
                 return RandomForestRegressor(
-                    n_estimators=100,
-                    max_depth=10,
-                    min_samples_leaf=20,
+                    n_estimators=n_estimators,
+                    max_depth=rf_max_depth,
+                    min_samples_leaf=rf_min_samples_leaf,
                     random_state=42,
                     n_jobs=self.n_jobs,
                 )
@@ -423,20 +443,37 @@ class MultiModelTrainer:
         elif technique == 'lightgbm':
             if not HAS_LIGHTGBM:
                 raise ImportError("LightGBM not available")
+            # Get hyperparameters from config (with defaults)
+            lambda_l1 = self.hyperparams.get('lambda_l1', 3.0)  # L1 regularization
+            lambda_l2 = self.hyperparams.get('lambda_l2', 3.0)  # L2 regularization
+            min_data_in_leaf = self.hyperparams.get('min_data_in_leaf', 50)  # Increased
+            n_estimators = self.hyperparams.get('n_estimators', 2000)
+            learning_rate = self.hyperparams.get('learning_rate', 0.01)
+            max_depth = self.hyperparams.get('max_depth', 8)
+            feature_fraction = self.hyperparams.get('feature_fraction', 0.8)
+            
             if self.is_classification:
                 return lgb.LGBMClassifier(
-                    n_estimators=1000,  # Large number for early stopping
-                    max_depth=6,
-                    learning_rate=0.1,
+                    n_estimators=n_estimators,
+                    max_depth=max_depth,
+                    learning_rate=learning_rate,
+                    lambda_l1=lambda_l1,
+                    lambda_l2=lambda_l2,
+                    min_data_in_leaf=min_data_in_leaf,
+                    feature_fraction=feature_fraction,
                     random_state=42,
                     n_jobs=self.n_jobs,
                     verbosity=-1,
                 )
             else:
                 return lgb.LGBMRegressor(
-                    n_estimators=1000,  # Large number for early stopping
-                    max_depth=6,
-                    learning_rate=0.1,
+                    n_estimators=n_estimators,
+                    max_depth=max_depth,
+                    learning_rate=learning_rate,
+                    lambda_l1=lambda_l1,
+                    lambda_l2=lambda_l2,
+                    min_data_in_leaf=min_data_in_leaf,
+                    feature_fraction=feature_fraction,
                     random_state=42,
                     n_jobs=self.n_jobs,
                     verbosity=-1,
@@ -471,11 +508,26 @@ class MultiModelTrainer:
             return r2_score(y_true, y_pred)
 
     def _calculate_ensemble_weights(self, results: Dict[str, ModelResult]):
-        """Calculate ensemble weights based on validation performance."""
+        """Calculate ensemble weights based on validation performance or use fixed weights."""
         if not results:
             return
         
-        # Weight by validation score (higher = better)
+        # Use fixed weights if configured
+        if self.use_fixed_weights and self.fixed_ensemble_weights:
+            # Normalize fixed weights to sum to 1.0
+            total_fixed = sum(self.fixed_ensemble_weights.values())
+            if total_fixed > 0:
+                for technique in results.keys():
+                    self.model_weights[technique] = self.fixed_ensemble_weights.get(technique, 0.0) / total_fixed
+            else:
+                # Fallback to equal weights if fixed weights sum to 0
+                equal_weight = 1.0 / len(results)
+                for technique in results.keys():
+                    self.model_weights[technique] = equal_weight
+            logger.info("ensemble_weights_using_fixed", weights=self.model_weights, fixed_weights=self.fixed_ensemble_weights)
+            return
+        
+        # Otherwise, weight by validation score (higher = better)
         total_score = 0.0
         for result in results.values():
             if result.val_score is not None:

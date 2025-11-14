@@ -227,6 +227,17 @@ class BrainLibrary:
                         UNIQUE(model_id, evaluation_date, symbol)
                     )
                 """)
+
+                # Backwards compatibility: older tables might miss evaluation_date
+                cur.execute("""
+                    ALTER TABLE model_metrics
+                    ADD COLUMN IF NOT EXISTS evaluation_date DATE NOT NULL DEFAULT CURRENT_DATE
+                """)
+
+                cur.execute("""
+                    ALTER TABLE model_metrics
+                    ALTER COLUMN evaluation_date DROP DEFAULT
+                """)
                 
                 cur.execute("""
                     CREATE INDEX IF NOT EXISTS idx_model_metrics_model 
@@ -245,6 +256,25 @@ class BrainLibrary:
                         resolved BOOLEAN DEFAULT FALSE,
                         created_at TIMESTAMP DEFAULT NOW()
                     )
+                """)
+
+                # Symbol/mode trade stats table for meta tuning
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS symbol_mode_trade_stats (
+                        id SERIAL PRIMARY KEY,
+                        stat_date DATE NOT NULL,
+                        symbol VARCHAR(20) NOT NULL,
+                        mode VARCHAR(32) NOT NULL,
+                        trades INTEGER NOT NULL,
+                        trades_per_day DECIMAL(10, 4) NOT NULL,
+                        created_at TIMESTAMP DEFAULT NOW(),
+                        UNIQUE(stat_date, symbol, mode)
+                    )
+                """)
+
+                cur.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_symbol_mode_trade_stats_symbol_mode 
+                    ON symbol_mode_trade_stats(symbol, mode, stat_date DESC)
                 """)
                 
                 cur.execute("""
@@ -791,6 +821,50 @@ class BrainLibrary:
                 result = cur.fetchone()
                 conn.commit()
                 return result[0] if result else 0
+
+    # Symbol/mode trade stats for meta tuning
+    def store_symbol_mode_trade_stats(
+        self,
+        stat_date: datetime,
+        symbol: str,
+        mode: str,
+        trades: int,
+        trades_per_day: float,
+    ) -> None:
+        """
+        Store aggregated out-of-sample trade stats for a symbol/mode on a given date.
+
+        These stats are used by the meta_tuner to infer trading frequency;
+        they are based on walk-forward evaluation trades, not necessarily live trades.
+        """
+        with self._get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO symbol_mode_trade_stats (
+                        stat_date,
+                        symbol,
+                        mode,
+                        trades,
+                        trades_per_day
+                    )
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON CONFLICT (stat_date, symbol, mode)
+                    DO UPDATE SET
+                        trades = EXCLUDED.trades,
+                        trades_per_day = EXCLUDED.trades_per_day
+                    """,
+                    (stat_date.date(), symbol, mode, trades, trades_per_day),
+                )
+                conn.commit()
+        logger.info(
+            "symbol_mode_trade_stats_stored",
+            stat_date=stat_date.date().isoformat(),
+            symbol=symbol,
+            mode=mode,
+            trades=trades,
+            trades_per_day=trades_per_day,
+        )
 
     def get_model_metrics(
         self,

@@ -15,7 +15,7 @@ With:
     predictions = ensemble_result.prediction
 """
 
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 import pandas as pd
 import numpy as np
 import structlog
@@ -35,6 +35,9 @@ def train_multi_model_ensemble(
     techniques: Optional[List[str]] = None,
     ensemble_method: str = 'weighted_voting',
     is_classification: bool = False,
+    hyperparams: Optional[Dict[str, Any]] = None,  # Hyperparameters from config
+    fixed_ensemble_weights: Optional[Dict[str, float]] = None,  # Fixed ensemble weights
+    use_fixed_weights: bool = False,  # Use fixed weights instead of performance-based
 ) -> Tuple[MultiModelTrainer, Dict[str, ModelResult]]:
     """
     Train multi-model ensemble.
@@ -60,6 +63,9 @@ def train_multi_model_ensemble(
         ensemble_method=ensemble_method,
         is_classification=is_classification,
         use_ray=True,
+        hyperparams=hyperparams,
+        fixed_ensemble_weights=fixed_ensemble_weights,
+        use_fixed_weights=use_fixed_weights,
     )
     
     # Train all models in parallel

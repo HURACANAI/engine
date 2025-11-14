@@ -31,6 +31,8 @@ from ..datasets.data_loader import CandleDataLoader, CandleQuery
 from ..datasets.quality_checks import DataQualitySuite
 from ..integrations.dropbox_sync import DropboxSync
 from ..memory.store import MemoryStore
+from ..models.alpha_engines import AlphaEngineCoordinator
+from ..models.ensemble_predictor import EnsemblePredictor
 from ..models.granger_causality import CausalGraphBuilder, GrangerCausalityDetector, PriceData
 from ..models.regime_transition_predictor import RegimeTransitionPredictor
 from ..services.costs import CostModel
@@ -130,6 +132,21 @@ class EnhancedRLPipeline:
         self.post_exit_tracker = PostExitTracker(dsn=dsn)
         self.pattern_matcher = PatternMatcher(dsn=dsn, memory_store=self.memory_store)
 
+        # Initialize Alpha Engine Coordinator (all 23 engines)
+        self.alpha_engines = AlphaEngineCoordinator(
+            use_bandit=True,
+            use_parallel=True,
+            use_adaptive_weighting=True,
+        )
+        logger.info("alpha_engines_initialized", num_engines=len(self.alpha_engines.engines))
+
+        # Initialize Ensemble Predictor (combines RL agent + alpha engines)
+        self.ensemble_predictor = EnsemblePredictor(
+            ema_alpha=0.05,
+            min_agreement_threshold=0.6,
+        )
+        logger.info("ensemble_predictor_initialized")
+
         # Cost model
         self.cost_model = CostModel(settings.costs)
 
@@ -167,6 +184,7 @@ class EnhancedRLPipeline:
             min_confidence_threshold=settings.training.shadow_trading.min_confidence_threshold,
         )
 
+        # Initialize shadow trader with ALL components integrated
         self.shadow_trader = ShadowTrader(
             agent=self.agent,
             memory_store=self.memory_store,
@@ -175,6 +193,8 @@ class EnhancedRLPipeline:
             loss_analyzer=self.loss_analyzer,
             feature_recipe=self.feature_recipe,
             config=backtest_config,
+            alpha_engines=self.alpha_engines,  # All 23 alpha engines
+            ensemble_predictor=self.ensemble_predictor,  # Ensemble combining RL + alpha engines
         )
 
         logger.info(
@@ -183,6 +203,9 @@ class EnhancedRLPipeline:
             higher_order_features=enable_higher_order_features,
             granger_causality=enable_granger_causality,
             regime_prediction=enable_regime_prediction,
+            alpha_engines_enabled=True,
+            num_alpha_engines=len(self.alpha_engines.engines),
+            ensemble_predictor_enabled=True,
             state_dim=state_dim,
         )
 
@@ -206,6 +229,7 @@ class EnhancedRLPipeline:
             Enhanced training metrics
         """
         logger.info("enhanced_training_start", symbol=symbol, lookback_days=lookback_days)
+        logger.info("step_1_loading_historical_data", symbol=symbol)
 
         # 1. Load historical data
         historical_data = self._load_historical_data(
@@ -213,6 +237,7 @@ class EnhancedRLPipeline:
             exchange_client=exchange_client,
             lookback_days=lookback_days,
         )
+        logger.info("historical_data_loaded", symbol=symbol, rows=historical_data.height if historical_data is not None else 0)
 
         min_candles = 60
         if historical_data is None or historical_data.height < min_candles:
@@ -227,49 +252,65 @@ class EnhancedRLPipeline:
         logger.info("historical_data_loaded", symbol=symbol, rows=historical_data.height)
 
         # 2. Build enhanced features (Phase 1)
+        logger.info("step_2_building_enhanced_features", symbol=symbol)
         enhanced_data = self._build_enhanced_features(
             historical_data,
             symbol=symbol,
             market_context=market_context,
         )
+        logger.info("enhanced_features_built", symbol=symbol, rows=enhanced_data.height, columns=len(enhanced_data.columns))
 
         # 3. Update causal graph if enabled (Phase 1)
+        logger.info("step_3_updating_causal_graph", enabled=self.enable_granger_causality and market_context is not None)
         if self.enable_granger_causality and market_context:
             self._update_causal_graph(symbol, historical_data, market_context)
+            logger.info("causal_graph_updated", symbol=symbol)
 
         # 4. Track regime history for transition prediction (Phase 1)
+        logger.info("step_4_tracking_regime_history", enabled=self.enable_regime_prediction)
         if self.enable_regime_prediction:
             self._track_regime_history(enhanced_data)
+            logger.info("regime_history_tracked", symbol=symbol)
 
         # 5. Run shadow trading with enhanced features
-        logger.info("starting_shadow_trading", symbol=symbol)
+        logger.info("step_5_starting_shadow_trading", symbol=symbol, data_rows=enhanced_data.height)
         trades = self._run_enhanced_shadow_trading(
             symbol=symbol,
             historical_data=enhanced_data,
         )
 
-        logger.info("shadow_trading_complete", symbol=symbol, total_trades=len(trades))
+        logger.info("shadow_trading_complete", symbol=symbol, total_trades=len(trades), wins=sum(1 for t in trades if t.is_winner))
 
         # 6. Update agent with accumulated experience
+        logger.info("step_6_updating_rl_agent", symbol=symbol, num_trades=len(trades))
         update_metrics: JSONDict = {}
         if trades:
             logger.info("updating_rl_agent", trades=len(trades))
+            logger.info("checking_agent_experience_buffer", 
+                       num_states=len(self.agent.states) if hasattr(self.agent, 'states') else 0,
+                       num_rewards=len(self.agent.rewards) if hasattr(self.agent, 'rewards') else 0)
             update_metrics = self.agent.update()
             logger.info("agent_updated", **update_metrics)
+        else:
+            logger.warning("no_trades_for_agent_update", symbol=symbol)
 
         # 7. Calculate enhanced metrics
+        logger.info("step_7_calculating_enhanced_metrics", symbol=symbol)
         metrics = self._calculate_enhanced_metrics(
             symbol=symbol,
             trades=trades,
             lookback_days=lookback_days,
             update_metrics=update_metrics,
         )
+        logger.info("enhanced_metrics_calculated", symbol=symbol, metrics_keys=list(metrics.keys()))
 
         # 8. Save model and export all data to Dropbox (COMPREHENSIVE)
+        logger.info("step_8_starting_model_save_phase", symbol=symbol, num_trades=len(trades))
         model_path: Optional[Path] = None
         dropbox_results: JSONDict = {}
 
         if len(trades) > 0:
+            logger.info("preparing_artifacts", symbol=symbol, num_trades=len(trades))
             timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
             run_date = datetime.now(timezone.utc).date()
             coin_symbol = symbol.replace("/", "_")
@@ -278,37 +319,44 @@ class EnhancedRLPipeline:
             temp_dir = Path("/tmp")
             model_filename = f"rl_agent_{coin_symbol}_{timestamp}.pt"
             model_path = temp_dir / model_filename
+            logger.info("model_path_prepared", path=str(model_path))
 
             # Prepare additional artifact paths
             metrics_filename = f"{coin_symbol}_{timestamp}_metrics.json"
             metrics_local_path = temp_dir / metrics_filename
+            logger.info("metrics_path_prepared", path=str(metrics_local_path))
 
             features_filename = f"{coin_symbol}_{timestamp}_features.json"
             features_local_path = temp_dir / features_filename
+            logger.info("features_path_prepared", path=str(features_local_path))
 
             trades_filename = f"{coin_symbol}_{timestamp}_trades.csv"
             trades_local_path = temp_dir / trades_filename
+            logger.info("trades_path_prepared", path=str(trades_local_path))
 
             try:
                 # 1. Save model locally
+                logger.info("saving_model_to_disk", path=str(model_path))
                 self.agent.save(str(model_path))
-                logger.info("model_saved_locally", path=str(model_path))
+                logger.info("model_saved_locally", path=str(model_path), file_exists=model_path.exists())
                 metrics["model_path"] = str(model_path)
 
                 # 2. Save metrics JSON locally
+                logger.info("saving_metrics_json", path=str(metrics_local_path))
                 import json
+                serializable_metrics: JSONDict = {}
+                for k, v in metrics.items():
+                    if isinstance(v, (datetime, date)):
+                        serializable_metrics[k] = v.isoformat()
+                    else:
+                        serializable_metrics[k] = v
+                logger.info("metrics_serialized", num_keys=len(serializable_metrics))
                 with open(metrics_local_path, "w") as f:
-                    # Serialize metrics (handle any datetime objects)
-                    serializable_metrics: JSONDict = {}
-                    for k, v in metrics.items():
-                        if isinstance(v, (datetime, date)):
-                            serializable_metrics[k] = v.isoformat()
-                        else:
-                            serializable_metrics[k] = v
                     json.dump(serializable_metrics, f, indent=2)
-                logger.info("metrics_saved_locally", path=str(metrics_local_path))
+                logger.info("metrics_saved_locally", path=str(metrics_local_path), file_exists=metrics_local_path.exists())
 
                 # 3. Save features metadata locally (column names and stats)
+                logger.info("preparing_features_metadata")
                 features_metadata: JSONDict = {
                     "symbol": symbol,
                     "timestamp": timestamp,
@@ -319,72 +367,104 @@ class EnhancedRLPipeline:
                     "granger_causality_enabled": self.enable_granger_causality,
                     "regime_prediction_enabled": self.enable_regime_prediction,
                 }
+                logger.info("features_metadata_prepared", num_features=features_metadata.get("total_features", 0))
                 with open(features_local_path, "w") as f:
                     json.dump(features_metadata, f, indent=2)
-                logger.info("features_metadata_saved_locally", path=str(features_local_path))
+                logger.info("features_metadata_saved_locally", path=str(features_local_path), file_exists=features_local_path.exists())
 
                 # 4. Save trades to CSV locally
+                logger.info("preparing_trades_csv", num_trades=len(trades))
                 if len(trades) > 0:
                     import pandas as pd
-                    trades_df = pd.DataFrame([
-                        {
-                            "entry_timestamp": t.entry_timestamp.isoformat() if t.entry_timestamp else None,
-                            "exit_timestamp": t.exit_timestamp.isoformat() if t.exit_timestamp else None,
-                            "entry_price": float(t.entry_price) if t.entry_price else None,
-                            "exit_price": float(t.exit_price) if t.exit_price else None,
-                            "direction": t.direction,
-                            "position_size_gbp": float(t.position_size_gbp) if t.position_size_gbp else None,
-                            "gross_profit_bps": float(t.gross_profit_bps) if t.gross_profit_bps else None,
-                            "net_profit_gbp": float(t.net_profit_gbp) if t.net_profit_gbp else None,
-                            "exit_reason": t.exit_reason,
-                            "hold_duration_minutes": t.hold_duration_minutes,
-                            "is_winner": t.is_winner,
-                            "model_confidence": float(t.model_confidence) if t.model_confidence else None,
-                            "market_regime": t.market_regime,
-                        }
-                        for t in trades
-                    ])
+                    logger.info("converting_trades_to_dataframe")
+                    trades_data = []
+                    for i, t in enumerate(trades):
+                        try:
+                            trades_data.append({
+                                "entry_timestamp": t.entry_timestamp.isoformat() if t.entry_timestamp else None,
+                                "exit_timestamp": t.exit_timestamp.isoformat() if t.exit_timestamp else None,
+                                "entry_price": float(t.entry_price) if t.entry_price else None,
+                                "exit_price": float(t.exit_price) if t.exit_price else None,
+                                "direction": t.direction,
+                                "position_size_gbp": float(t.position_size_gbp) if t.position_size_gbp else None,
+                                "gross_profit_bps": float(t.gross_profit_bps) if t.gross_profit_bps else None,
+                                "net_profit_gbp": float(t.net_profit_gbp) if t.net_profit_gbp else None,
+                                "exit_reason": t.exit_reason,
+                                "hold_duration_minutes": t.hold_duration_minutes,
+                                "is_winner": t.is_winner,
+                                "model_confidence": float(t.model_confidence) if t.model_confidence else None,
+                                "market_regime": t.market_regime,
+                            })
+                        except Exception as e:
+                            logger.warning("trade_serialization_failed", trade_index=i, error=str(e))
+                    logger.info("trades_converted_to_dict", num_dicts=len(trades_data))
+                    trades_df = pd.DataFrame(trades_data)
+                    logger.info("dataframe_created", shape=trades_df.shape)
+                    logger.info("writing_trades_csv", path=str(trades_local_path))
                     trades_df.to_csv(trades_local_path, index=False)
-                    logger.info("trades_saved_locally", path=str(trades_local_path), count=len(trades))
+                    logger.info("trades_saved_locally", path=str(trades_local_path), count=len(trades), file_exists=trades_local_path.exists())
 
                 # 5. Get candle data path (if historical_data was saved)
+                logger.info("checking_historical_data_for_save")
                 candle_data_path: Optional[Path] = None
                 if 'historical_data' in locals() and historical_data is not None:
+                    logger.info("historical_data_exists", rows=historical_data.height)
                     # Save historical candle data as parquet
                     candle_filename = f"{coin_symbol}_{timestamp}_candles.parquet"
                     candle_data_path = temp_dir / candle_filename
+                    logger.info("writing_candle_data_parquet", path=str(candle_data_path))
                     historical_data.write_parquet(candle_data_path)
-                    logger.info("candle_data_saved_locally", path=str(candle_data_path), rows=historical_data.height)
+                    logger.info("candle_data_saved_locally", path=str(candle_data_path), rows=historical_data.height, file_exists=candle_data_path.exists())
+                else:
+                    logger.info("no_historical_data_to_save")
 
                 # 6. Upload everything to Dropbox if configured
+                logger.info("checking_dropbox_config", has_dropbox_config=bool(self.settings.dropbox), has_token=bool(self.settings.dropbox and self.settings.dropbox.access_token))
                 if self.settings.dropbox and self.settings.dropbox.access_token:
                     try:
                         logger.info("starting_comprehensive_dropbox_upload", symbol=symbol)
+                        logger.info("initializing_dropbox_sync")
 
                         dropbox_sync = DropboxSync(
                             access_token=self.settings.dropbox.access_token
                         )
+                        logger.info("dropbox_sync_initialized")
 
                         # Use export_coin_results for comprehensive, organized upload
-                        dropbox_results = dropbox_sync.export_coin_results(
-                            symbol=symbol,
-                            run_date=run_date,
-                            model_path=model_path,
-                            metrics_path=metrics_local_path,
-                            features_path=features_local_path,
-                            candle_data_path=candle_data_path,
-                            additional_files={
-                                "trades": trades_local_path,
-                            },
-                            use_organized_structure=True,  # Use organized structure by date and coin
-                        )
-
+                        logger.info("calling_export_coin_results", 
+                                    symbol=symbol,
+                                    model_path=str(model_path) if model_path else None,
+                                    metrics_path=str(metrics_local_path),
+                                    features_path=str(features_local_path),
+                                    candle_path=str(candle_data_path) if candle_data_path else None,
+                                    trades_path=str(trades_local_path))
+                        
+                        # Upload files individually using existing methods
+                        upload_results: Dict[str, Any] = {}
+                        if model_path and model_path.exists():
+                            dropbox_sync.upload_file(str(model_path), f"/models/{symbol}/{run_date}/model.pth")
+                            upload_results["model"] = f"/models/{symbol}/{run_date}/model.pth"
+                        if metrics_local_path.exists():
+                            dropbox_sync.upload_file(str(metrics_local_path), f"/metrics/{symbol}/{run_date}/metrics.json")
+                            upload_results["metrics"] = f"/metrics/{symbol}/{run_date}/metrics.json"
+                        if features_local_path.exists():
+                            dropbox_sync.upload_file(str(features_local_path), f"/features/{symbol}/{run_date}/features.parquet")
+                            upload_results["features"] = f"/features/{symbol}/{run_date}/features.parquet"
+                        if candle_data_path and candle_data_path.exists():
+                            dropbox_sync.upload_file(str(candle_data_path), f"/candles/{symbol}/{run_date}/candles.parquet")
+                            upload_results["candles"] = f"/candles/{symbol}/{run_date}/candles.parquet"
+                        if trades_local_path and trades_local_path.exists():
+                            dropbox_sync.upload_file(str(trades_local_path), f"/trades/{symbol}/{run_date}/trades.parquet")
+                            upload_results["trades"] = f"/trades/{symbol}/{run_date}/trades.parquet"
+                        
+                        dropbox_results.update(upload_results)
+                        logger.info("dropbox_upload_complete", symbol=symbol, results_keys=list(upload_results.keys()))
                         logger.info("comprehensive_dropbox_upload_complete",
                                     symbol=symbol,
-                                    results=dropbox_results)
+                                    results=upload_results)
 
                         # Add Dropbox info to metrics
-                        metrics["dropbox_results"] = dropbox_results
+                        metrics["dropbox_results"] = upload_results
                         metrics["dropbox_organized_path"] = f"/Huracan/models/training/{run_date.isoformat()}/{symbol.replace('/', '-')}"
                         metrics["success"] = True
 
@@ -469,14 +549,20 @@ class EnhancedRLPipeline:
             btc_data = market_context["BTC/USD"]
 
             # Create PriceData objects
+            # Access Series from DataFrame and convert to list
+            btc_ts_series = btc_data["ts"]  # type: ignore[index]
+            btc_close_series = btc_data["close"]  # type: ignore[index]
+            data_ts_series = data["ts"]  # type: ignore[index]
+            data_close_series = data["close"]  # type: ignore[index]
+            
             leader_prices = PriceData(
-                timestamps=btc_data["ts"].to_list(),
-                prices=btc_data["close"].to_list(),
+                timestamps=btc_ts_series.to_list() if hasattr(btc_ts_series, "to_list") else list(btc_ts_series),  # type: ignore[attr-defined]
+                prices=btc_close_series.to_list() if hasattr(btc_close_series, "to_list") else list(btc_close_series),  # type: ignore[attr-defined]
             )
 
             follower_prices = PriceData(
-                timestamps=data["ts"].to_list(),
-                prices=data["close"].to_list(),
+                timestamps=data_ts_series.to_list() if hasattr(data_ts_series, "to_list") else list(data_ts_series),  # type: ignore[attr-defined]
+                prices=data_close_series.to_list() if hasattr(data_close_series, "to_list") else list(data_close_series),  # type: ignore[attr-defined]
             )
 
             # Test causality
@@ -512,9 +598,55 @@ class EnhancedRLPipeline:
         symbol: str,
         historical_data: pl.DataFrame,
     ) -> ShadowTradeList:
-        """Run shadow trading with enhanced reward calculation (Phase 1)."""
-        # Use standard shadow trader
-        # The advanced rewards will be applied in the reward calculation callback
+        """
+        Run shadow trading with:
+        - Enhanced reward calculation (Phase 1)
+        - All 23 alpha engines integrated via ensemble predictor
+        - RL agent + alpha engines working together
+        """
+        logger.info(
+            "enhanced_shadow_trading_start",
+            symbol=symbol,
+            rows=historical_data.height,
+            alpha_engines_enabled=self.shadow_trader.use_ensemble,
+            num_alpha_engines=len(self.alpha_engines.engines) if self.alpha_engines else 0,
+        )
+        
+        # Set up progress callback for shadow trader
+        def progress_callback(candles_processed, total_candles, progress_percent, trades_executed, current_idx):
+            """Update progress during shadow trading"""
+            import json
+            from pathlib import Path
+            from datetime import datetime, timezone
+            
+            # Update progress file directly
+            progress_file = Path(__file__).parent.parent.parent.parent.parent / "training_progress.json"
+            try:
+                progress_data = {
+                    "stage": "shadow_trading",
+                    "progress": 50 + int(progress_percent * 0.35),  # 50-85% range for shadow trading
+                    "message": f"Processing candles: {candles_processed:,}/{total_candles:,} ({progress_percent}%) | Trades: {trades_executed:,} | All {len(self.alpha_engines.engines)} engines active",
+                    "details": {
+                        "candles_processed": candles_processed,
+                        "total_candles": total_candles,
+                        "progress_percent": progress_percent,
+                        "trades_executed": trades_executed,
+                        "engines_active": len(self.alpha_engines.engines),
+                    },
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+                with open(progress_file, "w") as f:
+                    json.dump(progress_data, f, indent=2)
+            except Exception:
+                pass  # Don't fail training if progress update fails
+        
+        self.shadow_trader._progress_callback = progress_callback
+        
+        # Shadow trader now uses ensemble predictor which combines:
+        # - RL Agent predictions
+        # - All 23 alpha engine signals
+        # - Pattern recognition
+        # - Regime analysis
         trades = self.shadow_trader.backtest_symbol(
             symbol=symbol,
             historical_data=historical_data,
@@ -524,6 +656,14 @@ class EnhancedRLPipeline:
         # Apply advanced reward shaping if enabled
         if self.enable_advanced_rewards:
             self._apply_advanced_rewards(trades)
+        
+        # Track alpha engine performance
+        if self.alpha_engines and trades:
+            logger.info(
+                "alpha_engines_performance_tracked",
+                num_trades=len(trades),
+                engines_used=len(self.alpha_engines.engines),
+            )
 
         return trades
 

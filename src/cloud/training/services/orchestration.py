@@ -429,15 +429,15 @@ class TrainingOrchestrator:
                     )
                 
                 try:
-                    # Add timeout to prevent indefinite hanging (30 minutes per coin)
+                    # Add timeout to prevent indefinite hanging (60 minutes per coin for 365 days of data)
                     # Note: This will raise ray.exceptions.GetTimeoutError if timeout is exceeded
                     logger.info(
                         "waiting_for_training_task",
                         symbol=symbol,
-                        timeout_seconds=1800,
-                        message="Task may take time downloading historical data from exchange",
+                        timeout_seconds=36000,  # 10 hours for 365 days of data with larger splits
+                        message="Task may take time downloading historical data and training on 365 days",
                     )
-                    result = ray.get(task, timeout=1800.0)  # 30 minutes timeout
+                    result = ray.get(task, timeout=36000.0)  # 10 hours timeout for 365 days of data
                     logger.info(
                         "training_task_complete",
                         symbol=symbol,
@@ -488,8 +488,8 @@ class TrainingOrchestrator:
                     logger.error(
                         "training_task_timeout",
                         symbol=symbol,
-                        timeout_seconds=1800,
-                        message="Task exceeded 30 minute timeout - likely stuck on API call or data download",
+                        timeout_seconds=36000,  # 10 hours for 365 days of data with larger splits
+                        message="Task exceeded 10 hour timeout - likely stuck on API call or data download",
                     )
                     
                     # Notify Telegram about timeout
@@ -502,7 +502,7 @@ class TrainingOrchestrator:
                             total_tasks=len(batch_tasks),
                             status="failed",
                             details={
-                                "error": "Task exceeded 30 minute timeout - likely stuck on API call or data download",
+                                "error": "Task exceeded 10 hour timeout - likely stuck on API call or data download",
                             },
                         )
                     
@@ -514,7 +514,7 @@ class TrainingOrchestrator:
                         metrics={},
                         gate_results={},
                         published=False,
-                        reason="training_timeout: Task exceeded 30 minute timeout",
+                        reason="training_timeout: Task exceeded 10 hour timeout",
                         artifacts=None,
                         model_id=str(uuid4()),
                         run_id=f"{symbol}-{self._run_date:%Y%m%d}",
@@ -861,6 +861,28 @@ def _train_symbol(
     _print_status(f"Starting training for {symbol}", sym=symbol, level="INFO")
     _print_status(f"Exchange: {exchange_id}", sym=symbol, level="INFO")
     settings = EngineSettings.model_validate(raw_settings)
+    
+    # DEBUG: Log actual settings values to verify they're correct
+    logger.info(
+        "settings_loaded_in_ray_task",
+        symbol=symbol,
+        window_days=settings.training.window_days,
+        train_days=settings.training.walk_forward.train_days,
+        test_days=settings.training.walk_forward.test_days,
+        ensemble_weights=settings.training.advanced.ensemble_weights if settings.training.advanced else None,
+        use_fixed_weights=settings.training.advanced.use_fixed_ensemble_weights if settings.training.advanced else None,
+        edge_threshold_override=settings.training.advanced.edge_threshold_override_bps if settings.training.advanced else None,
+        message="Settings loaded in Ray remote task - verify these match config/base.yaml",
+    )
+    print(f"📋 [{symbol}] Settings loaded:")
+    print(f"   window_days: {settings.training.window_days}")
+    print(f"   train_days: {settings.training.walk_forward.train_days}")
+    print(f"   test_days: {settings.training.walk_forward.test_days}")
+    if settings.training.advanced:
+        print(f"   ensemble_weights: {settings.training.advanced.ensemble_weights}")
+        print(f"   use_fixed_weights: {settings.training.advanced.use_fixed_ensemble_weights}")
+        print(f"   edge_threshold_override: {settings.training.advanced.edge_threshold_override_bps}")
+    
     run_date = date.fromisoformat(run_date_str)
     credentials = settings.exchange.credentials.get(exchange_id, {})
     exchange = ExchangeClient(exchange_id, credentials=credentials, sandbox=settings.exchange.sandbox)
@@ -907,14 +929,19 @@ def _train_symbol(
     start_at, end_at = _window_bounds(run_date, settings.scheduler.daily_run_time_utc, settings.training.window_days)
     query = CandleQuery(symbol=symbol, start_at=start_at, end_at=end_at)
     
+    # Calculate actual days requested
+    actual_days = (end_at - start_at).total_seconds() / 86400.0
+    
     logger.info(
         "downloading_historical_data",
         symbol=symbol,
         start_at=start_at.isoformat(),
         end_at=end_at.isoformat(),
         window_days=settings.training.window_days,
-        message="This may take several minutes depending on data size",
+        actual_days=actual_days,
+        message=f"Requesting {actual_days:.1f} days of data (window_days={settings.training.window_days})",
     )
+    print(f"📥 [{symbol}] Requesting {actual_days:.1f} days of data (from {start_at.date()} to {end_at.date()})")
     raw_frame = loader.load(query)
     
     # Verify raw data has valid close values
@@ -1120,11 +1147,34 @@ def _train_symbol(
             from ...engine.costs import CostEstimator
             
             # Create triple-barrier labeler
-            label_config = ScalpLabelConfig()  # Use scalp config for 4-minute horizon
+            # Use scalp config but let costs remain realistic and slightly conservative.
+            label_config = ScalpLabelConfig()
+
+            # Derive per-side fee and spread overrides from aggregated costs,
+            # then clamp into a sane range for a liquid symbol like SOL/USDT.
+            roundtrip_fee_bps = float(costs.fee_bps)
+            per_side_fee_bps = roundtrip_fee_bps / 2.0 if roundtrip_fee_bps > 0 else taker_fee
+            per_side_fee_bps = float(min(max(per_side_fee_bps, 2.0), 6.0))  # 4–12 bps round-trip
+
+            spread_override_bps = float(spread_bps)
+            spread_override_bps = float(min(max(spread_override_bps, 0.5), 5.0))
+
+            slippage_override_bps = float(costs.slippage_bps if hasattr(costs, "slippage_bps") else 2.0)
+            slippage_override_bps = float(min(max(slippage_override_bps, 0.5), 6.0))
+
+            logger.info(
+                "v2_labeling_cost_overrides",
+                symbol=symbol,
+                fee_per_side_bps=per_side_fee_bps,
+                spread_bps=spread_override_bps,
+                slippage_bps=slippage_override_bps,
+                total_roundtrip_bps=roundtrip_fee_bps,
+            )
+
             cost_estimator = CostEstimator(
-                taker_fee_bps=taker_fee,
-                spread_bps=spread_bps,
-                slippage_bps=costs.slippage_bps,
+                taker_fee_bps=per_side_fee_bps,
+                spread_bps=spread_override_bps,
+                slippage_bps=slippage_override_bps,
             )
             triple_barrier_labeler = TripleBarrierLabeler(
                 config=label_config,
@@ -1158,7 +1208,7 @@ def _train_symbol(
                     total_trades=len(labeled_trades),
                 )
             
-            # Convert labeled trades to DataFrame format expected by training
+            # Convert labeled trades into a dataset compatible with the training pipeline.
             if not labeled_trades:
                 logger.warning(
                     "no_labeled_trades_from_v2_labeling",
@@ -1167,27 +1217,44 @@ def _train_symbol(
                 )
                 dataset = pd.DataFrame()
             else:
-                # Convert LabeledTrade objects to DataFrame
-                trade_data = []
-                for trade in labeled_trades:
-                    # Get the original row index for this trade
-                    # We'll need to match trade.entry_time to feature_frame timestamps
-                    trade_data.append({
-                        "net_edge_bps": trade.pnl_net_bps,
-                        "edge_confidence": 1.0 if trade.meta_label == 1 else 0.0,
-                        "trade_entry_time": trade.entry_time,
-                        "trade_exit_time": trade.exit_time,
-                        "trade_pnl_bps": trade.pnl_net_bps,
-                    })
-                
-                # For now, use basic labeling as fallback if V2 produces no trades
-                # This is a temporary workaround - V2 labeling needs more integration
-                logger.warning(
-                    "v2_labeling_integration_incomplete",
+                # Build a Pandas view of feature_frame so we can attach labels at entry indices.
+                base_df = feature_frame.to_pandas()
+
+                entry_indices = [t.entry_idx for t in labeled_trades]
+                net_edges = [t.pnl_net_bps for t in labeled_trades]
+                confidences = [1.0 if t.meta_label == 1 else 0.0 for t in labeled_trades]
+                entry_times = [t.entry_time for t in labeled_trades]
+                exit_times = [t.exit_time for t in labeled_trades]
+
+                # Select the feature rows at entry indices.
+                dataset = base_df.iloc[entry_indices].reset_index(drop=True)
+
+                # Attach v2 labels.
+                dataset["net_edge_bps"] = net_edges
+                dataset["edge_confidence"] = confidences
+                dataset["trade_entry_time"] = entry_times
+                dataset["trade_exit_time"] = exit_times
+
+                # Ensure we have a consistent timestamp column named 'ts' for downstream code.
+                if "ts" not in dataset.columns:
+                    if "timestamp" in dataset.columns:
+                        dataset["ts"] = pd.to_datetime(dataset["timestamp"], utc=True)
+                    else:
+                        logger.warning(
+                            "v2_labeling_ts_column_missing",
+                            symbol=symbol,
+                            available_columns=list(dataset.columns),
+                            message="No 'ts' column found; creating from trade_entry_time",
+                        )
+                        dataset["ts"] = pd.to_datetime(dataset["trade_entry_time"], utc=True)
+
+                logger.info(
+                    "v2_labeling_dataset_built",
                     symbol=symbol,
-                    message="V2 labeling not fully integrated with training pipeline, using basic labeling",
+                    total_rows=len(dataset),
+                    winners=sum(1 for t in labeled_trades if t.meta_label == 1),
+                    losers=sum(1 for t in labeled_trades if t.meta_label == 0),
                 )
-                use_v2_labeling = False  # Fall back to basic labeling
                 
         except Exception as e:
             logger.warning(
@@ -1534,8 +1601,8 @@ def _train_symbol(
                 )
                 dataset = pd.DataFrame()  # Empty dataset
     else:
-        # V2 labeling path (if we implement full integration)
-        dataset = pd.DataFrame()
+        # V2 labeling path has already constructed `dataset` above.
+        pass
     
     if dataset.empty:
         logger.error(
@@ -1716,7 +1783,21 @@ def _train_symbol(
             feature_metadata={},
         )
 
-    excluded = {"ts", "open", "high", "low", "close", "volume", "vwap", "net_edge_bps"}
+    excluded = {
+        "ts",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+        "vwap",
+        "net_edge_bps",
+        "edge_confidence",
+        "timestamp",
+        "trade_entry_time",
+        "trade_exit_time",
+        "trade_pnl_bps",
+    }
     feature_cols = [col for col in dataset.columns if col not in excluded and dataset[col].dtype != object]
     if not feature_cols:
         return TrainingTaskResult(
@@ -1739,11 +1820,31 @@ def _train_symbol(
     # Use configurable training settings
     model_config = settings.training.model_training
     
-    # Get regularization settings (with defaults)
-    reg_alpha = getattr(model_config, 'reg_alpha', 0.1)  # L1 regularization
-    reg_lambda = getattr(model_config, 'reg_lambda', 1.0)  # L2 regularization
+    # Get regularization settings (with defaults - increased for better generalization)
+    reg_alpha = getattr(model_config, 'reg_alpha', 2.0)  # L1 regularization (increased from 0.1)
+    reg_lambda = getattr(model_config, 'reg_lambda', 5.0)  # L2 regularization (increased from 1.0)
     feature_fraction = getattr(model_config, 'feature_fraction', 0.8)  # Feature dropout
-    noise_injection_std = getattr(model_config, 'noise_injection_std', 0.01)  # Noise injection
+    noise_injection_std = getattr(model_config, 'noise_injection_std', 0.025)  # Noise injection (increased from 0.01)
+    
+    # Get advanced config for ensemble weights and edge threshold
+    advanced_config = settings.training.advanced
+    fixed_weights = getattr(advanced_config, 'ensemble_weights', None)
+    use_fixed = getattr(advanced_config, 'use_fixed_ensemble_weights', False)
+    
+    # Build hyperparameters dict for ensemble models
+    ensemble_hyperparams = {
+        'n_estimators': model_config.n_estimators,
+        'learning_rate': model_config.learning_rate,
+        'max_depth': model_config.max_depth,
+        'reg_alpha': reg_alpha,
+        'reg_lambda': reg_lambda,
+        'lambda_l1': getattr(model_config, 'lambda_l1', 3.0),
+        'lambda_l2': getattr(model_config, 'lambda_l2', 3.0),
+        'min_data_in_leaf': getattr(model_config, 'min_data_in_leaf', 50),
+        'rf_max_depth': getattr(model_config, 'rf_max_depth', 5),
+        'rf_min_samples_leaf': getattr(model_config, 'rf_min_samples_leaf', 10),
+        'feature_fraction': feature_fraction,
+    }
     
     hyperparams = {
         "objective": "regression",
@@ -1871,7 +1972,80 @@ def _train_symbol(
         # DO NOT re-sort by timestamp - keep shuffled order to break temporal patterns
         # This will cause walk-forward validation to use non-sequential data
         # If model performance degrades significantly, it's overfitting to temporal patterns
-    cost_threshold = cost_model.recommended_edge_threshold(costs)
+    
+    # Get edge threshold (allow override for lower threshold to capture more trades)
+    edge_threshold_override = getattr(advanced_config, 'edge_threshold_override_bps', None)
+    # Base recommendation from cost model (in bps, round-trip)
+    recommended_threshold = float(cost_model.recommended_edge_threshold(costs))
+
+    base_cost_bps = float(getattr(costs, "total_costs_bps", 0.0))
+    median_cost_bps = base_cost_bps
+    p90_cost_bps = base_cost_bps * 1.5 if base_cost_bps > 0 else base_cost_bps
+
+    # Also look at the realized net_edge_bps distribution from labels.
+    if "net_edge_bps" in dataset.columns:
+        net_edges_series = dataset["net_edge_bps"].replace([np.inf, -np.inf], np.nan).dropna()
+        if not net_edges_series.empty:
+            net_edge_median = float(net_edges_series.median())
+            net_edge_p90 = float(net_edges_series.quantile(0.9))
+            net_edge_max = float(net_edges_series.max())
+        else:
+            net_edge_median = net_edge_p90 = net_edge_max = 0.0
+    else:
+        net_edge_median = net_edge_p90 = net_edge_max = 0.0
+
+    if use_v2_labeling:
+        # V2 labels (triple-barrier) use realized PnL net of costs.
+        # Edge threshold should therefore be based on the distribution of net_edge_bps,
+        # not on a large cost-based target that may be unattainable.
+        base_threshold = max(0.0, net_edge_p90)
+
+        if edge_threshold_override is not None:
+            # Treat override as an upper bound when using v2 labels.
+            base_threshold = min(base_threshold, float(edge_threshold_override))
+
+        cost_threshold = base_threshold
+        logger.info(
+            "edge_threshold_v2_labels_selected",
+            symbol=symbol,
+            final_edge_threshold=cost_threshold,
+            net_edge_median=net_edge_median,
+            net_edge_p90=net_edge_p90,
+            net_edge_max=net_edge_max,
+            edge_threshold_override=edge_threshold_override,
+            total_costs_bps=base_cost_bps,
+            recommended_threshold=recommended_threshold,
+            median_cost_bps=median_cost_bps,
+            p90_cost_bps=p90_cost_bps,
+        )
+    else:
+        # For basic labels, keep a conservative, cost-based minimum threshold.
+        min_edge_bps = max(recommended_threshold, p90_cost_bps + 2.0)
+
+        if edge_threshold_override is not None:
+            requested = float(edge_threshold_override)
+            # Never allow threshold below min_edge_bps (we don't want obviously negative after costs).
+            cost_threshold = max(requested, min_edge_bps)
+            logger.info(
+                "edge_threshold_overridden",
+                symbol=symbol,
+                recommended_threshold=recommended_threshold,
+                override_threshold=requested,
+                final_edge_threshold=cost_threshold,
+                median_cost_bps=median_cost_bps,
+                p90_cost_bps=p90_cost_bps,
+                message="Using overridden edge threshold, clamped to remain above costs",
+            )
+        else:
+            cost_threshold = max(recommended_threshold, min_edge_bps)
+            logger.info(
+                "edge_threshold_selected",
+                symbol=symbol,
+                recommended_threshold=recommended_threshold,
+                final_edge_threshold=cost_threshold,
+                median_cost_bps=median_cost_bps,
+                p90_cost_bps=p90_cost_bps,
+            )
     oos_trades: List[pd.DataFrame] = []
     
     # Initialize Brain Library integration (if database is available)
@@ -1937,8 +2111,116 @@ def _train_symbol(
     
     for split_idx, (train_mask, test_mask) in split_iterator:
         split_start_time = time_module.time()
+        
+        # CRITICAL: Recompute features for test set using only data up to split point
+        # This prevents leakage from future data in rolling windows
+        train_timestamps = dataset.loc[train_mask, "ts"]
+        test_timestamps = dataset.loc[test_mask, "ts"]
+        
+        # Get training data (for training features - can use full dataset)
         X_train = dataset.loc[train_mask, feature_cols]
         y_train = dataset.loc[train_mask, "net_edge_bps"]
+
+        # Sanity check labels before model training on this split.
+        # Current pipeline treats net_edge_bps as a regression target.
+        if False:  # Placeholder for future classification mode
+            winners = int((y_train > 0).sum())
+            losers = int((y_train <= 0).sum())
+            total = int(len(y_train))
+            win_rate = winners / total if total else 0.0
+
+            logger.info(
+                "label_sanity_check_split",
+                symbol=symbol,
+                split_idx=split_idx + 1,
+                total=total,
+                winners=winners,
+                losers=losers,
+                win_rate=win_rate,
+            )
+
+            if total == 0 or win_rate == 0.0 or win_rate == 1.0:
+                logger.warning(
+                    "labels_degenerate_split_skipped",
+                    symbol=symbol,
+                    split_idx=split_idx + 1,
+                    total=total,
+                    win_rate=win_rate,
+                    message="Skipping split due to degenerate classification labels",
+                )
+                continue
+        # Regression: require non-trivial variance
+        var = float(np.var(y_train.values)) if len(y_train) > 0 else 0.0
+        logger.info(
+            "label_sanity_check_split_regression",
+            symbol=symbol,
+            split_idx=split_idx + 1,
+            total=len(y_train),
+            variance=var,
+        )
+        if var < 1e-6:
+            logger.warning(
+                "labels_low_variance_split_skipped",
+                symbol=symbol,
+                split_idx=split_idx + 1,
+                variance=var,
+                message="Skipping split due to near-zero target variance",
+            )
+            continue
+        
+        # For test set, recompute features using only data up to the split point
+        # This ensures test features don't include future test data in rolling windows
+        if not train_timestamps.empty and not test_timestamps.empty:
+            split_point = train_timestamps.max()
+            # Get all data up to and including the split point (end of training)
+            # This is what would have been available at prediction time
+            data_up_to_split = raw_frame.filter(pl.col("ts") <= split_point)
+            
+            # Also include test data for feature computation (but features will only use past data due to shift(1))
+            # Actually, we need to include test data too for the test features to be computed
+            # But the shift(1) ensures they only use past data
+            data_for_test_features = raw_frame.filter(pl.col("ts") <= test_timestamps.max())
+            
+            # Recompute features for test set using only data up to test end
+            # This ensures rolling windows don't include future test data
+            test_feature_frame = recipe.build(data_for_test_features)
+            
+            # Convert to pandas and align with test mask
+            test_feature_df = test_feature_frame.to_pandas()
+            test_feature_df["ts"] = pd.to_datetime(test_feature_df["ts"])
+            
+            # Get test features from recomputed frame
+            # CRITICAL: Only select columns that exist in the recomputed feature frame
+            # (recipe.build() only creates features, not labels like edge_confidence or net_edge_bps)
+            available_feature_cols = [col for col in feature_cols if col in test_feature_df.columns]
+            if len(available_feature_cols) != len(feature_cols):
+                missing_cols = set(feature_cols) - set(available_feature_cols)
+                logger.warning(
+                    "some_feature_cols_missing_in_recomputed_features",
+                    symbol=symbol,
+                    split_idx=split_idx + 1,
+                    missing_cols=list(missing_cols),
+                    available_cols_count=len(available_feature_cols),
+                    expected_cols_count=len(feature_cols),
+                    note="Recomputed features don't include label columns (edge_confidence, net_edge_bps) - this is expected"
+                )
+            
+            test_ts_mask = test_feature_df["ts"].isin(test_timestamps)
+            X_test_recomputed = test_feature_df.loc[test_ts_mask, available_feature_cols]
+            
+            # Use recomputed test features
+            X_test = X_test_recomputed
+            logger.debug(
+                "test_features_recomputed",
+                symbol=symbol,
+                split_idx=split_idx + 1,
+                split_point=split_point.isoformat() if hasattr(split_point, 'isoformat') else str(split_point),
+                test_samples=len(X_test),
+                note="Test features recomputed using only data up to test end - prevents leakage"
+            )
+        else:
+            # Fallback: use pre-computed features (less ideal but faster)
+            X_test = dataset.loc[test_mask, feature_cols]
         
         if len(y_train) < 100:
             logger.warning(
@@ -1996,7 +2278,7 @@ def _train_symbol(
             )
             _print_status(f"Training ensemble: {', '.join(ensemble_techniques)}", sym=symbol, level="PROGRESS")
             
-            # Train ensemble
+            # Train ensemble with hyperparameters and fixed weights
             ensemble_trainer, ensemble_results = train_multi_model_ensemble(
                 X_train=X_train_split,
                 y_train=y_train_split,
@@ -2006,12 +2288,14 @@ def _train_symbol(
                 techniques=ensemble_techniques,
                 ensemble_method=ensemble_method,
                 is_classification=False,
+                hyperparams=ensemble_hyperparams,
+                fixed_ensemble_weights=fixed_weights,
+                use_fixed_weights=use_fixed,
             )
             
             ensemble_trainers.append(ensemble_trainer)
             
-            # Get best model for predictions (or use ensemble)
-            X_test = dataset.loc[test_mask, feature_cols]
+            # X_test already computed above with proper feature recomputation
             if X_test.empty:
                 continue
             
@@ -2097,7 +2381,7 @@ def _train_symbol(
                 )
                 _print_status(f"LightGBM trained: {model_config.n_estimators} iterations (full training)", sym=symbol, level="SUCCESS")
             
-            X_test = dataset.loc[test_mask, feature_cols]
+            # X_test already computed above with proper feature recomputation
             if X_test.empty:
                 continue
             
@@ -2133,6 +2417,20 @@ def _train_symbol(
         y_test = dataset.loc[test_mask, "net_edge_bps"].to_numpy()
         timestamps = dataset.loc[test_mask, "ts"].to_numpy()
         
+        # Trade funnel diagnostics: how many predictions survive the edge threshold?
+        total_candidates = int(len(predictions))
+        executed_mask = predictions >= cost_threshold
+        executed_count = int(executed_mask.sum())
+
+        logger.info(
+            "trade_funnel_split",
+            symbol=symbol,
+            split_idx=split_idx + 1,
+            total_candidates=total_candidates,
+            above_edge_threshold=executed_count,
+            edge_threshold_bps=cost_threshold,
+        )
+
         trades = _simulate_trades(predictions, y_test, confidence, timestamps, cost_threshold)
         if not trades.empty:
             oos_trades.append(trades)
@@ -2240,6 +2538,42 @@ def _train_symbol(
         total_pnl = combined_trades["pnl_bps"].sum()
         avg_pnl = combined_trades["pnl_bps"].mean()
         _print_status(f"Trade Summary: {total_trades:,} trades ({winning_trades:,} wins, {losing_trades:,} losses), Total PnL={total_pnl:.2f} bps, Avg={avg_pnl:.2f} bps", sym=symbol, level="INFO")
+
+        # Persist aggregated trade stats for meta tuning (symbol/mode level).
+        # Approximate trades_per_day from OOS trades timestamp range.
+        try:
+            ts_min = combined_trades["timestamp"].min()
+            ts_max = combined_trades["timestamp"].max()
+            if isinstance(ts_min, pd.Timestamp) and isinstance(ts_max, pd.Timestamp):
+                days_range = max((ts_max - ts_min).total_seconds() / 86400.0, 1.0)
+            else:
+                days_range = max(len(combined_trades) / 28800.0, 1.0)  # fallback heuristic
+            trades_per_day = float(total_trades / days_range)
+
+            if brain_training is not None:
+                # For now, treat this training as "scalp" mode by default.
+                training_mode = getattr(settings.training, "trading_mode", "scalp")
+                try:
+                    brain_training.brain.store_symbol_mode_trade_stats(  # type: ignore[attr-defined]
+                        stat_date=run_date,
+                        symbol=symbol,
+                        mode=str(training_mode),
+                        trades=int(total_trades),
+                        trades_per_day=trades_per_day,
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "symbol_mode_trade_stats_store_failed",
+                        symbol=symbol,
+                        mode=str(training_mode),
+                        error=str(e),
+                    )
+        except Exception as e:
+            logger.warning(
+                "symbol_mode_trade_stats_compute_failed",
+                symbol=symbol,
+                error=str(e),
+            )
     else:
         _print_status("WARNING: No trades generated during walk-forward validation", sym=symbol, level="WARN")
     
@@ -2317,7 +2651,7 @@ def _train_symbol(
             # Train final model on all data - use ensemble if enabled
             brain_ensemble_trainer = None  # Initialize for use in testing
             if use_ensemble:
-                # Train ensemble for brain integration
+                # Train ensemble for brain integration with hyperparameters and fixed weights
                 brain_ensemble_trainer, brain_ensemble_results = train_multi_model_ensemble(
                     X_train=dataset[feature_cols],
                     y_train=dataset["net_edge_bps"],
@@ -2327,6 +2661,9 @@ def _train_symbol(
                     techniques=ensemble_techniques,
                     ensemble_method=ensemble_method,
                     is_classification=False,
+                    hyperparams=ensemble_hyperparams,
+                    fixed_ensemble_weights=fixed_weights,
+                    use_fixed_weights=use_fixed,
                 )
                 # For brain integration, use the best single model from ensemble
                 # (Brain integration may not support ensemble directly)
@@ -2602,7 +2939,7 @@ def _train_symbol(
             ensemble_method=ensemble_method,
         )
         
-        # Train final ensemble on all data
+        # Train final ensemble on all data with hyperparameters and fixed weights
         final_ensemble_trainer, final_ensemble_results = train_multi_model_ensemble(
             X_train=dataset[feature_cols],
             y_train=dataset["net_edge_bps"],
@@ -2612,6 +2949,9 @@ def _train_symbol(
             techniques=ensemble_techniques,
             ensemble_method=ensemble_method,
             is_classification=False,
+            hyperparams=ensemble_hyperparams,
+            fixed_ensemble_weights=fixed_weights,
+            use_fixed_weights=use_fixed,
         )
         
         # For serialization, we'll pickle the ensemble trainer

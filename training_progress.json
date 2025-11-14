@@ -1,0 +1,7 @@
+{
+  "stage": "error",
+  "progress": 0,
+  "message": "Error: The size of tensor a (5409) must match the size of tensor b (1248) at non-singleton dimension 0",
+  "details": {},
+  "timestamp": "2025-11-12T21:20:50.589204+00:00"
+}

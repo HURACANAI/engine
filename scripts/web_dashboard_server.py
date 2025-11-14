@@ -307,6 +307,20 @@ def get_data():
     """Get all dashboard data as JSON"""
     data = dashboard_data.fetch_data()
     data['timestamp'] = datetime.now(timezone.utc).isoformat()
+    
+    # Add training progress if available
+    progress_file = PROJECT_ROOT / 'training_progress.json'
+    if progress_file.exists():
+        try:
+            with open(progress_file, 'r') as f:
+                training_progress = json.load(f)
+                data['training_progress'] = training_progress
+        except Exception as e:
+            print(f"Error reading training progress: {e}")
+            data['training_progress'] = None
+    else:
+        data['training_progress'] = None
+    
     return jsonify(data)
 
 @app.route('/api/stream')
@@ -317,6 +331,19 @@ def stream():
             try:
                 data = dashboard_data.fetch_data()
                 data['timestamp'] = datetime.now(timezone.utc).isoformat()
+                
+                # Add training progress if available
+                progress_file = PROJECT_ROOT / 'training_progress.json'
+                if progress_file.exists():
+                    try:
+                        with open(progress_file, 'r') as f:
+                            training_progress = json.load(f)
+                            data['training_progress'] = training_progress
+                    except Exception:
+                        data['training_progress'] = None
+                else:
+                    data['training_progress'] = None
+                
                 yield f"data: {json.dumps(data)}\n\n"
                 time.sleep(1.5)  # Update every 1.5 seconds
             except GeneratorExit:

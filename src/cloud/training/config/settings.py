@@ -25,8 +25,8 @@ class UniverseSettings(BaseModel):
 
 
 class WalkForwardSettings(BaseModel):
-    train_days: int = 20
-    test_days: int = 5
+    train_days: int = 45  # Increased from 20 to 45 days for more variety per split
+    test_days: int = 10  # Increased from 5 to 10 days
     min_trades: int = 300
 
 
@@ -192,6 +192,9 @@ class AdvancedTrainingSettings(BaseModel):
     use_multi_model_ensemble: bool = True  # Use ensemble of multiple models
     ensemble_techniques: List[str] = Field(default_factory=lambda: ["xgboost", "random_forest", "lightgbm"])
     ensemble_method: str = "weighted_voting"  # "weighted_voting", "stacking", "dynamic"
+    ensemble_weights: Optional[Dict[str, float]] = None  # Fixed ensemble weights (e.g., {"xgboost": 0.50, "lightgbm": 0.30, "random_forest": 0.20})
+    use_fixed_ensemble_weights: bool = False  # Use fixed weights instead of performance-based
+    edge_threshold_override_bps: Optional[float] = None  # Override recommended edge threshold (lower to capture more trades)
     
     use_progressive_training: bool = True  # Train on full coin history
     progressive_initial_epoch_days: int = 730  # 2 years for first epoch
@@ -214,7 +217,7 @@ class AdvancedTrainingSettings(BaseModel):
 
 
 class TrainingSettings(BaseModel):
-    window_days: int = 150
+    window_days: int = 365  # Increased from 150 to 365+ days for broader training data
     walk_forward: WalkForwardSettings = Field(default_factory=WalkForwardSettings)
     model_training: ModelTrainingSettings = Field(default_factory=ModelTrainingSettings)
     advanced: AdvancedTrainingSettings = Field(default_factory=AdvancedTrainingSettings)

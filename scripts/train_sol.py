@@ -3,10 +3,10 @@
 Train SOL coin - Full Pipeline Test
 
 This script runs the complete training pipeline for SOL:
-1. Download historical data (150 days)
-2. Feature engineering
-3. Labeling with validation
-4. LightGBM training (2000 estimators, intensive)
+1. Download historical data (365 days - increased for broader training data)
+2. Feature engineering (75+ features with leakage fixes)
+3. Labeling with validation (embargo: 2 candles)
+4. Multi-model ensemble training (XGBoost, LightGBM, RandomForest with increased regularization)
 5. RL training (shadow trading)
 6. Model evaluation
 7. Save to Dropbox
@@ -67,10 +67,13 @@ def main():
     print("=" * 80)
     print()
     print("Pipeline steps:")
-    print("  1. Download 150 days of historical data")
-    print("  2. Feature engineering (75+ features)")
-    print("  3. Labeling with validation")
-    print("  4. LightGBM training (2000 estimators, intensive)")
+    print("  1. Download 365 days of historical data (increased for broader training)")
+    print("  2. Feature engineering (75+ features with leakage fixes)")
+    print("  3. Labeling with validation (embargo: 2 candles)")
+    print("  4. Multi-model ensemble training (XGBoost, LightGBM, RandomForest)")
+    print("     - Increased regularization (reg_alpha=2, reg_lambda=5)")
+    print("     - Fixed ensemble weights (50% XGBoost, 30% LightGBM, 20% RF)")
+    print("     - Noise injection: 2.5%")
     print("  5. RL training (shadow trading)")
     print("  6. Model evaluation")
     print("  7. Save to Dropbox")
@@ -237,7 +240,7 @@ def main():
     print("Starting SOL training...")
     print("This may take 10-30 minutes depending on data size and hardware.")
     print("Steps:")
-    print("  - Downloading 150 days of 1-minute candles")
+    print(f"  - Downloading {settings.training.window_days} days of 1-minute candles")
     print("  - Feature engineering (75+ features)")
     print("  - Labeling with validation")
     print("  - LightGBM training (2000 estimators)")

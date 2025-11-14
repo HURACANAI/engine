@@ -2,17 +2,42 @@
 
 Production-grade AI-driven cryptocurrency trading system.
 
+## 🚀 Simple Start (Works on Any Laptop)
+
+**Just run one command:**
+
+```bash
+# On Mac/Linux:
+./start.sh
+
+# On Windows or any platform:
+python start.py
+```
+
+That's it! The script automatically:
+- ✅ Checks Python version
+- ✅ Creates virtual environment
+- ✅ Installs all dependencies
+- ✅ Sets up environment
+- ✅ Runs the engine
+
+📖 **[See GETTING_STARTED.md](docs/GETTING_STARTED.md) for detailed instructions**
+
+---
+
 ## Quick Start
 
-- **[How It Works (Simple Explanation)](docs/HOW_IT_WORKS_SIMPLE.md)** - 🎯 **START HERE!** Simple explanation for beginners
-- **[Quick Start Guide](docs/setup/QUICK_START.md)** - Get started in 15 minutes
+- **[Getting Started](docs/GETTING_STARTED.md)** - 🎯 **START HERE!** One command to run everything
+- **[How It Works](docs/HOW_IT_WORKS_SIMPLE.md)** - Simple explanation for beginners
 - **[Architecture Standards](docs/architecture/ARCHITECTURE.md)** - Development guidelines
-- **[Start Here](docs/setup/START_HERE.md)** - First-time setup
 
 ## Documentation
 
 All documentation is organized in the `docs/` directory:
 
+- **[Getting Started](docs/GETTING_STARTED.md)** - Quick start guide
+- **[Dashboard Guide](docs/DASHBOARD_GUIDE.md)** - Monitor training
+- **[Dropbox Guide](docs/DROPBOX_GUIDE.md)** - Dropbox setup
 - **`docs/architecture/`** - Architecture standards, compliance reports
 - **`docs/setup/`** - Setup guides, deployment instructions
 - **`docs/guides/`** - Feature documentation, how-to guides

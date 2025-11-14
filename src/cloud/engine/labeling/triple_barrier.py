@@ -20,7 +20,7 @@ Then subtract costs → that's your META-LABEL.
 This prevents lookahead because you're simulating what would actually happen.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Tuple
 
 import numpy as np
@@ -107,6 +107,7 @@ class TripleBarrierLabeler:
         # Label every candle as potential entry
         # (in practice, you'd filter by signal strength)
         max_idx = len(df) - 1
+        last_timestamp = self._coerce_timestamp(df.row(max_idx, named=True)['timestamp'])
 
         for entry_idx in range(len(df) - 1):  # Leave room for exit
             if max_labels and len(labeled_trades) >= max_labels:
@@ -114,22 +115,13 @@ class TripleBarrierLabeler:
 
             # Get entry candle - use proper Polars row access
             entry_row = df.row(entry_idx, named=True)
-            entry_time = entry_row['timestamp']
-
-            # Ensure entry_time is a datetime object
-            if isinstance(entry_time, (int, float)):
-                # Convert Unix timestamp to datetime
-                from datetime import timezone
-                entry_time = datetime.fromtimestamp(entry_time, tz=timezone.utc)
-            elif not isinstance(entry_time, datetime):
-                # If it's some other type, try to convert
-                entry_time = datetime.fromisoformat(str(entry_time))
+            entry_time = self._coerce_timestamp(entry_row['timestamp'])
 
             entry_price = entry_row['close']
 
             # Calculate barriers
             tp_price, sl_price, timeout_time = self._calculate_barriers(
-                entry_price, entry_time
+                entry_price, entry_time, last_timestamp
             )
 
             # Find which barrier hits first
@@ -182,13 +174,34 @@ class TripleBarrierLabeler:
 
             labeled_trades.append(labeled_trade)
 
+        total = len(labeled_trades)
+        winners_net = sum(1 for l in labeled_trades if l.is_winner())
+        losers_net = total - winners_net
+        winners_gross = sum(1 for l in labeled_trades if l.pnl_gross_bps > 0)
+        losers_gross = total - winners_gross
+
+        sample = [
+            {
+                "pnl_gross_bps": l.pnl_gross_bps,
+                "costs_bps": l.costs_bps,
+                "pnl_net_bps": l.pnl_net_bps,
+                "meta_label": l.meta_label,
+                "exit_reason": l.exit_reason.value,
+            }
+            for l in labeled_trades[:5]
+        ]
+
         logger.info(
             "labeling_complete",
             symbol=symbol,
-            total_labels=len(labeled_trades),
-            winners=sum(1 for l in labeled_trades if l.is_winner()),
-            losers=sum(1 for l in labeled_trades if not l.is_winner()),
-            win_rate=sum(1 for l in labeled_trades if l.is_winner()) / len(labeled_trades) if labeled_trades else 0
+            total_labels=total,
+            winners_net=winners_net,
+            losers_net=losers_net,
+            win_rate_net=winners_net / total if total else 0.0,
+            winners_gross=winners_gross,
+            losers_gross=losers_gross,
+            win_rate_gross=winners_gross / total if total else 0.0,
+            sample_labels=sample,
         )
 
         return labeled_trades
@@ -196,7 +209,8 @@ class TripleBarrierLabeler:
     def _calculate_barriers(
         self,
         entry_price: float,
-        entry_time: datetime
+        entry_time: datetime,
+        last_timestamp: datetime,
     ) -> Tuple[float, float, datetime]:
         """
         Calculate TP, SL, and timeout barriers.
@@ -211,7 +225,25 @@ class TripleBarrierLabeler:
         sl_price = entry_price * (1 - self.config.sl_bps / 10000)
 
         # Timeout barrier
-        timeout_time = entry_time + timedelta(minutes=self.config.timeout_minutes)
+        try:
+            timeout_delta = timedelta(minutes=self.config.timeout_minutes)
+            timeout_time = entry_time + timeout_delta
+        except OverflowError:
+            logger.warning(
+                "triple_barrier_timeout_overflow",
+                entry_time=entry_time.isoformat(),
+                timeout_minutes=self.config.timeout_minutes,
+            )
+            timeout_time = last_timestamp
+
+        if timeout_time > last_timestamp:
+            timeout_time = last_timestamp
+            logger.debug(
+                "triple_barrier_timeout_clamped",
+                entry_time=entry_time.isoformat(),
+                timeout_time=timeout_time.isoformat(),
+                last_timestamp=last_timestamp.isoformat(),
+            )
 
         return tp_price, sl_price, timeout_time
 
@@ -232,14 +264,7 @@ class TripleBarrierLabeler:
         # Look forward from entry
         for future_idx in range(entry_idx + 1, len(df)):
             future_row = df.row(future_idx, named=True)
-            future_time = future_row['timestamp']
-
-            # Ensure future_time is a datetime object
-            if isinstance(future_time, (int, float)):
-                from datetime import timezone
-                future_time = datetime.fromtimestamp(future_time, tz=timezone.utc)
-            elif not isinstance(future_time, datetime):
-                future_time = datetime.fromisoformat(str(future_time))
+            future_time = self._coerce_timestamp(future_row['timestamp'])
 
             future_high = future_row['high']
             future_low = future_row['low']
@@ -315,6 +340,57 @@ class TripleBarrierLabeler:
         total_costs = (fee_bps * 2) + (spread_bps / 2) + slippage_bps
 
         return total_costs
+
+    def _coerce_timestamp(self, value) -> datetime:
+        """Convert various timestamp representations into timezone-aware datetime."""
+        if isinstance(value, datetime):
+            if value.tzinfo is None:
+                return value.replace(tzinfo=timezone.utc)
+            return value
+
+        if hasattr(value, "to_pydatetime"):
+            dt_value = value.to_pydatetime()
+            if dt_value.tzinfo is None:
+                dt_value = dt_value.replace(tzinfo=timezone.utc)
+            return dt_value
+
+        if isinstance(value, (int, float)):
+            raw = float(value)
+            # Detect units by magnitude:
+            # - seconds since epoch are ~1e9
+            # - milliseconds ~1e12
+            # - microseconds ~1e15
+            if raw > 1e14:  # microseconds
+                raw /= 1_000_000
+            elif raw > 1e11:  # milliseconds
+                raw /= 1_000
+            # else assume raw is already in seconds
+            dt_value = datetime.fromtimestamp(raw, tz=timezone.utc)
+            return dt_value
+
+        # Fallback: parse ISO string
+        try:
+            dt_value = datetime.fromisoformat(str(value))
+            if dt_value.tzinfo is None:
+                dt_value = dt_value.replace(tzinfo=timezone.utc)
+        except ValueError:
+            logger.warning(
+                "timestamp_parse_failed",
+                raw_value=str(value),
+                message="Falling back to current UTC time",
+            )
+            dt_value = datetime.now(tz=timezone.utc)
+
+        # Sanity check: drop obviously broken timestamps (pre-2017)
+        if dt_value.year < 2017:
+            logger.warning(
+                "timestamp_sanitized",
+                original=str(dt_value),
+                message="Timestamp earlier than 2017 detected, clamping to 2017-01-01 UTC",
+            )
+            dt_value = datetime(2017, 1, 1, tzinfo=timezone.utc)
+
+        return dt_value
 
     def to_polars(self, labeled_trades: List[LabeledTrade]) -> pl.DataFrame:
         """

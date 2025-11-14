@@ -1,0 +1,28 @@
+╔══════════════════════════════════════════════════════════════╗
+║           HUracan Engine - Quick Start                       ║
+╚══════════════════════════════════════════════════════════════╝
+
+ONE COMMAND TO RUN EVERYTHING:
+
+  Mac/Linux:    ./start.sh
+  Windows:      python start.py
+  Any Platform: python start.py
+
+WHAT IT DOES:
+  ✅ Checks Python 3.8+
+  ✅ Creates virtual environment
+  ✅ Installs dependencies
+  ✅ Sets up environment
+  ✅ Runs the engine
+
+REQUIREMENTS:
+  - Python 3.8 or higher
+  - Internet connection (first run)
+
+OPTIONAL (set these if needed):
+  export DROPBOX_ACCESS_TOKEN="your_token"
+  export DATABASE_URL="postgresql://..."
+  export TELEGRAM_TOKEN="your_token"
+
+For more details, see: START_HERE.md
+

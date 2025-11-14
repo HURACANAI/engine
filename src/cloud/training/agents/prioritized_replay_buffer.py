@@ -74,8 +74,8 @@ class PrioritizedReplayBuffer:
         self.regime_focus_weight = regime_focus_weight
         
         # Storage
-        self._buffer: deque = deque(maxlen=capacity)
-        self._priorities: deque = deque(maxlen=capacity)
+        self._buffer: deque[Any] = deque(maxlen=capacity)
+        self._priorities: deque[float] = deque(maxlen=capacity)
         self._max_priority: float = 1.0
         
         # Beta annealing
