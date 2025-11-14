@@ -63,6 +63,39 @@ class BrainLibrary:
         """Create all Brain Library tables if they don't exist."""
         with self._get_connection() as conn:
             with conn.cursor() as cur:
+                # Ensure dynamic per-symbol configuration table exists
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS symbol_mode_config (
+                        symbol VARCHAR(32) NOT NULL,
+                        mode VARCHAR(32) NOT NULL,
+                        edge_threshold_bps DECIMAL(10, 4) NOT NULL,
+                        tp_atr_k DECIMAL(10, 4) NOT NULL,
+                        sl_atr_k DECIMAL(10, 4) NOT NULL,
+                        min_tp_bps DECIMAL(10, 4) NOT NULL,
+                        size_multiplier DECIMAL(10, 4) NOT NULL,
+                        tp_bps DECIMAL(10, 4) DEFAULT 0,
+                        sl_bps DECIMAL(10, 4) DEFAULT 0,
+                        fee_bps DECIMAL(10, 4) DEFAULT 0,
+                        spread_bps DECIMAL(10, 4) DEFAULT 0,
+                        slippage_bps DECIMAL(10, 4) DEFAULT 0,
+                        window_days INTEGER,
+                        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                        updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                        PRIMARY KEY (symbol, mode)
+                    )
+                """)
+                cur.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_symbol_mode_config_symbol 
+                    ON symbol_mode_config(symbol, mode)
+                """)
+                # Backwards compatibility for new columns
+                cur.execute("ALTER TABLE symbol_mode_config ADD COLUMN IF NOT EXISTS tp_bps DECIMAL(10, 4) DEFAULT 0")
+                cur.execute("ALTER TABLE symbol_mode_config ADD COLUMN IF NOT EXISTS sl_bps DECIMAL(10, 4) DEFAULT 0")
+                cur.execute("ALTER TABLE symbol_mode_config ADD COLUMN IF NOT EXISTS fee_bps DECIMAL(10, 4) DEFAULT 0")
+                cur.execute("ALTER TABLE symbol_mode_config ADD COLUMN IF NOT EXISTS spread_bps DECIMAL(10, 4) DEFAULT 0")
+                cur.execute("ALTER TABLE symbol_mode_config ADD COLUMN IF NOT EXISTS slippage_bps DECIMAL(10, 4) DEFAULT 0")
+                cur.execute("ALTER TABLE symbol_mode_config ADD COLUMN IF NOT EXISTS window_days INTEGER")
+
                 # Liquidation data table
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS liquidations (
@@ -275,6 +308,42 @@ class BrainLibrary:
                 cur.execute("""
                     CREATE INDEX IF NOT EXISTS idx_symbol_mode_trade_stats_symbol_mode 
                     ON symbol_mode_trade_stats(symbol, mode, stat_date DESC)
+                """)
+
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS symbol_mode_vol_stats (
+                        id SERIAL PRIMARY KEY,
+                        stat_date DATE NOT NULL,
+                        symbol VARCHAR(20) NOT NULL,
+                        mode VARCHAR(32) NOT NULL,
+                        atr_bps DECIMAL(10, 4) NOT NULL,
+                        realized_vol_bps DECIMAL(10, 4),
+                        created_at TIMESTAMP DEFAULT NOW(),
+                        UNIQUE(stat_date, symbol, mode)
+                    )
+                """)
+                cur.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_symbol_mode_vol_stats_symbol_mode
+                    ON symbol_mode_vol_stats(symbol, mode, stat_date DESC)
+                """)
+
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS symbol_mode_cost_stats (
+                        id SERIAL PRIMARY KEY,
+                        stat_date DATE NOT NULL,
+                        symbol VARCHAR(20) NOT NULL,
+                        mode VARCHAR(32) NOT NULL,
+                        avg_fee_bps DECIMAL(10, 4) NOT NULL,
+                        avg_slippage_bps DECIMAL(10, 4) NOT NULL,
+                        avg_spread_bps DECIMAL(10, 4) NOT NULL,
+                        median_total_costs_bps DECIMAL(10, 4) NOT NULL,
+                        created_at TIMESTAMP DEFAULT NOW(),
+                        UNIQUE(stat_date, symbol, mode)
+                    )
+                """)
+                cur.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_symbol_mode_cost_stats_symbol_mode
+                    ON symbol_mode_cost_stats(symbol, mode, stat_date DESC)
                 """)
                 
                 cur.execute("""
@@ -865,6 +934,245 @@ class BrainLibrary:
             trades=trades,
             trades_per_day=trades_per_day,
         )
+
+    def store_symbol_mode_vol_stats(
+        self,
+        stat_date: datetime,
+        symbol: str,
+        mode: str,
+        atr_bps: float,
+        realized_vol_bps: float,
+    ) -> None:
+        """Persist ATR/volatility statistics for meta tuning."""
+        with self._get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO symbol_mode_vol_stats (
+                        stat_date,
+                        symbol,
+                        mode,
+                        atr_bps,
+                        realized_vol_bps
+                    )
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON CONFLICT (stat_date, symbol, mode)
+                    DO UPDATE SET
+                        atr_bps = EXCLUDED.atr_bps,
+                        realized_vol_bps = EXCLUDED.realized_vol_bps
+                    """,
+                    (stat_date.date(), symbol, mode, atr_bps, realized_vol_bps),
+                )
+                conn.commit()
+        logger.info(
+            "symbol_mode_vol_stats_stored",
+            stat_date=stat_date.date().isoformat(),
+            symbol=symbol,
+            mode=mode,
+            atr_bps=atr_bps,
+            realized_vol_bps=realized_vol_bps,
+        )
+
+    def store_symbol_mode_cost_stats(
+        self,
+        stat_date: datetime,
+        symbol: str,
+        mode: str,
+        avg_fee_bps: float,
+        avg_slippage_bps: float,
+        avg_spread_bps: float,
+        median_total_costs_bps: float,
+    ) -> None:
+        """Persist realized cost components for meta tuning."""
+        with self._get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO symbol_mode_cost_stats (
+                        stat_date,
+                        symbol,
+                        mode,
+                        avg_fee_bps,
+                        avg_slippage_bps,
+                        avg_spread_bps,
+                        median_total_costs_bps
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (stat_date, symbol, mode)
+                    DO UPDATE SET
+                        avg_fee_bps = EXCLUDED.avg_fee_bps,
+                        avg_slippage_bps = EXCLUDED.avg_slippage_bps,
+                        avg_spread_bps = EXCLUDED.avg_spread_bps,
+                        median_total_costs_bps = EXCLUDED.median_total_costs_bps
+                    """,
+                    (
+                        stat_date.date(),
+                        symbol,
+                        mode,
+                        avg_fee_bps,
+                        avg_slippage_bps,
+                        avg_spread_bps,
+                        median_total_costs_bps,
+                    ),
+                )
+                conn.commit()
+        logger.info(
+            "symbol_mode_cost_stats_stored",
+            stat_date=stat_date.date().isoformat(),
+            symbol=symbol,
+            mode=mode,
+            avg_fee_bps=avg_fee_bps,
+            avg_slippage_bps=avg_slippage_bps,
+            avg_spread_bps=avg_spread_bps,
+            median_total_costs_bps=median_total_costs_bps,
+        )
+
+    def get_symbol_mode_config(self, symbol: str, mode: str) -> Optional[Dict[str, Any]]:
+        """Fetch dynamic configuration for a symbol/mode pair."""
+        with self._get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT symbol,
+                           mode,
+                           edge_threshold_bps,
+                           tp_atr_k,
+                           sl_atr_k,
+                           min_tp_bps,
+                           size_multiplier,
+                           tp_bps,
+                           sl_bps,
+                           fee_bps,
+                           spread_bps,
+                           slippage_bps,
+                           window_days,
+                           created_at,
+                           updated_at
+                      FROM symbol_mode_config
+                     WHERE symbol = %s AND mode = %s
+                    """,
+                    (symbol, mode),
+                )
+                row = cur.fetchone()
+        if not row:
+            return None
+        return {
+            "symbol": row[0],
+            "mode": row[1],
+            "edge_threshold_bps": float(row[2]),
+            "tp_atr_k": float(row[3]),
+            "sl_atr_k": float(row[4]),
+            "min_tp_bps": float(row[5]),
+            "size_multiplier": float(row[6]),
+            "tp_bps": float(row[7]) if row[7] is not None else 0.0,
+            "sl_bps": float(row[8]) if row[8] is not None else 0.0,
+            "fee_bps": float(row[9]) if row[9] is not None else 0.0,
+            "spread_bps": float(row[10]) if row[10] is not None else 0.0,
+            "slippage_bps": float(row[11]) if row[11] is not None else 0.0,
+            "window_days": row[12],
+            "created_at": row[13],
+            "updated_at": row[14],
+        }
+
+    def upsert_symbol_mode_config(self, symbol: str, mode: str, values: Dict[str, Any]) -> None:
+        """Insert or update dynamic configuration for a symbol/mode."""
+        defaults = {
+            "edge_threshold_bps": 5.0,
+            "tp_atr_k": 2.0,
+            "sl_atr_k": 1.0,
+            "min_tp_bps": 10.0,
+            "size_multiplier": 1.0,
+            "tp_bps": 0.0,
+            "sl_bps": 0.0,
+            "fee_bps": 0.0,
+            "spread_bps": 0.0,
+            "slippage_bps": 0.0,
+            "window_days": None,
+        }
+        payload = {**defaults, **values}
+        with self._get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO symbol_mode_config (
+                        symbol,
+                        mode,
+                        edge_threshold_bps,
+                        tp_atr_k,
+                        sl_atr_k,
+                        min_tp_bps,
+                        size_multiplier,
+                        tp_bps,
+                        sl_bps,
+                        fee_bps,
+                        spread_bps,
+                        slippage_bps,
+                        window_days,
+                        created_at,
+                        updated_at
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+                    ON CONFLICT (symbol, mode)
+                    DO UPDATE SET
+                        edge_threshold_bps = EXCLUDED.edge_threshold_bps,
+                        tp_atr_k = EXCLUDED.tp_atr_k,
+                        sl_atr_k = EXCLUDED.sl_atr_k,
+                        min_tp_bps = EXCLUDED.min_tp_bps,
+                        size_multiplier = EXCLUDED.size_multiplier,
+                        tp_bps = EXCLUDED.tp_bps,
+                        sl_bps = EXCLUDED.sl_bps,
+                        fee_bps = EXCLUDED.fee_bps,
+                        spread_bps = EXCLUDED.spread_bps,
+                        slippage_bps = EXCLUDED.slippage_bps,
+                        window_days = EXCLUDED.window_days,
+                        updated_at = NOW()
+                    """,
+                    (
+                        symbol,
+                        mode,
+                        payload["edge_threshold_bps"],
+                        payload["tp_atr_k"],
+                        payload["sl_atr_k"],
+                        payload["min_tp_bps"],
+                        payload["size_multiplier"],
+                        payload["tp_bps"],
+                        payload["sl_bps"],
+                        payload["fee_bps"],
+                        payload["spread_bps"],
+                        payload["slippage_bps"],
+                        payload["window_days"],
+                    ),
+                )
+                conn.commit()
+        logger.info(
+            "symbol_mode_config_upserted",
+            symbol=symbol,
+            mode=mode,
+            values=payload,
+        )
+
+    def load_symbol_mode_stats(
+        self,
+        table: str,
+        symbol: str,
+        mode: str,
+        start_date: datetime,
+        end_date: datetime,
+    ) -> List[Dict[str, Any]]:
+        """Generic helper to fetch per symbol/mode stats between dates."""
+        query = f"""
+            SELECT * FROM {table}
+             WHERE symbol = %s
+               AND mode = %s
+               AND stat_date BETWEEN %s AND %s
+             ORDER BY stat_date DESC
+        """
+        with self._get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(query, (symbol, mode, start_date.date(), end_date.date()))
+                rows = cur.fetchall()
+                columns = [desc[0] for desc in cur.description]
+        return [dict(zip(columns, row)) for row in rows]
 
     def get_model_metrics(
         self,

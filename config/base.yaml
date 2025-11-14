@@ -184,6 +184,9 @@ training:
     use_triple_barrier: true  # Triple-barrier labeling (no lookahead bias)
     use_recency_weighting: true  # Weight recent data higher
     use_v2_data_quality: true  # V2 data quality pipeline
+    enable_auto_window_selection: true
+    candidate_window_days: [180, 270, 365, 540]
+    enable_hyperparam_search: true
   rl_agent:
     enabled: true
     learning_rate: 0.0003

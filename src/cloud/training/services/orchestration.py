@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import pickle
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -55,6 +56,8 @@ from ..pipelines.progressive_training import ProgressiveHistoricalTrainer, Progr
 from ..models.multi_model_integration import train_multi_model_ensemble, predict_with_ensemble, replace_single_model_training
 from .brain_integrated_training import BrainIntegratedTraining
 from .model_selector import ModelSelector
+from .training_window_searcher import TrainingWindowSearcher
+from ..optimization.hyperparam_search import HyperparamSearch
 from .data_collector import DataCollector
 # FUTURE/MECHANIC - Not used in Engine (will be used when building Mechanic component)
 from src.shared.contracts.mechanic import MechanicContract  # NOQA: F401
@@ -201,6 +204,40 @@ def _simulate_trades(
     trades.sort_values("timestamp", inplace=True)
     trades["equity_curve"] = trades["pnl_bps"].cumsum()
     return trades
+
+
+def _compute_atr_stats(
+    frame: pd.DataFrame, period: int = 14
+) -> Tuple[float, float]:
+    """Compute ATR and realized volatility in basis points."""
+    required_cols = {"high", "low", "close"}
+    if not required_cols.issubset(set(frame.columns)):
+        return 0.0, 0.0
+    prices = frame.dropna(subset=["high", "low", "close"])
+    if len(prices) < period + 2:
+        return 0.0, 0.0
+    high = prices["high"].astype(float)
+    low = prices["low"].astype(float)
+    close = prices["close"].astype(float)
+    prev_close = close.shift(1)
+    tr_components = pd.concat(
+        [
+            (high - low).abs(),
+            (high - prev_close).abs(),
+            (low - prev_close).abs(),
+        ],
+        axis=1,
+    )
+    true_range = tr_components.max(axis=1)
+    atr = true_range.rolling(period).mean().iloc[-1]
+    avg_close = close.tail(period).mean()
+    atr_bps = float((atr / avg_close) * 10_000) if avg_close and avg_close != 0 else 0.0
+    realized_vol_bps = float(close.pct_change().rolling(period).std().iloc[-1] * 10_000)
+    if math.isnan(atr_bps):
+        atr_bps = 0.0
+    if math.isnan(realized_vol_bps):
+        realized_vol_bps = 0.0
+    return atr_bps, realized_vol_bps
 
 
 def _max_drawdown(equity: np.ndarray) -> float:
@@ -884,6 +921,8 @@ def _train_symbol(
         print(f"   edge_threshold_override: {settings.training.advanced.edge_threshold_override_bps}")
     
     run_date = date.fromisoformat(run_date_str)
+    training_mode = getattr(getattr(settings, "training", None), "trading_mode", "scalp")
+    symbol_mode_config_row: Optional[Dict[str, Any]] = None
     credentials = settings.exchange.credentials.get(exchange_id, {})
     exchange = ExchangeClient(exchange_id, credentials=credentials, sandbox=settings.exchange.sandbox)
     quality_suite = DataQualitySuite()
@@ -901,6 +940,19 @@ def _train_symbol(
         use_ensemble = False
         ensemble_techniques = ["lightgbm"]
         ensemble_method = "single_model"
+
+    candidate_window_days: List[int] = []
+    auto_window_enabled = False
+    hyperparam_search_enabled = False
+    if advanced_config:
+        candidate_window_days = getattr(advanced_config, "candidate_window_days", [])
+        auto_window_enabled = bool(getattr(advanced_config, "enable_auto_window_selection", False) and candidate_window_days)
+        hyperparam_search_enabled = bool(getattr(advanced_config, "enable_hyperparam_search", False))
+
+    effective_window_days = settings.training.window_days
+    download_window_days = effective_window_days
+    if auto_window_enabled:
+        download_window_days = max([effective_window_days, *candidate_window_days])
     
     # Multi-exchange fallback support
     # Get credentials for all exchanges for fallback
@@ -926,7 +978,7 @@ def _train_symbol(
         exchange_credentials=all_exchange_credentials,
         on_data_saved=dropbox_callback,  # Immediate upload callback
     )
-    start_at, end_at = _window_bounds(run_date, settings.scheduler.daily_run_time_utc, settings.training.window_days)
+    start_at, end_at = _window_bounds(run_date, settings.scheduler.daily_run_time_utc, download_window_days)
     query = CandleQuery(symbol=symbol, start_at=start_at, end_at=end_at)
     
     # Calculate actual days requested
@@ -937,9 +989,9 @@ def _train_symbol(
         symbol=symbol,
         start_at=start_at.isoformat(),
         end_at=end_at.isoformat(),
-        window_days=settings.training.window_days,
+        window_days=download_window_days,
         actual_days=actual_days,
-        message=f"Requesting {actual_days:.1f} days of data (window_days={settings.training.window_days})",
+        message=f"Requesting {actual_days:.1f} days of data (window_days={download_window_days})",
     )
     print(f"📥 [{symbol}] Requesting {actual_days:.1f} days of data (from {start_at.date()} to {end_at.date()})")
     raw_frame = loader.load(query)
@@ -987,6 +1039,35 @@ def _train_symbol(
                 metrics_payload=None,
                 model_params={},
                 feature_metadata={},
+            )
+
+    window_search_result = None
+    if auto_window_enabled and candidate_window_days:
+        searcher = TrainingWindowSearcher(
+            candidate_windows=candidate_window_days,
+            train_days=settings.training.walk_forward.train_days,
+            test_days=settings.training.walk_forward.test_days,
+        )
+        try:
+            search_result = searcher.select_best_window(raw_frame)
+            window_search_result = search_result
+            effective_window_days = search_result.window_days
+            settings.training.window_days = effective_window_days
+            cutoff_ts = end_at - timedelta(days=effective_window_days)
+            raw_frame = raw_frame.filter(pl.col("ts") >= cutoff_ts)
+            logger.info(
+                "auto_window_selection_applied",
+                symbol=symbol,
+                selected_window_days=effective_window_days,
+                score=search_result.score,
+                coverage_days=search_result.coverage_days,
+            )
+            print(f"🪟 [{symbol}] Auto-selected window_days={effective_window_days} (score={search_result.score:.3f})")
+        except Exception as exc:
+            logger.warning(
+                "auto_window_selection_failed",
+                symbol=symbol,
+                error=str(exc),
             )
     else:
         logger.error(
@@ -1103,6 +1184,25 @@ def _train_symbol(
         volatility_bps=volatility_bps,
         adv_quote=adv_quote,
     )
+
+    if symbol_mode_config_row:
+        fee_override = float(symbol_mode_config_row.get("fee_bps") or 0.0)
+        spread_override = float(symbol_mode_config_row.get("spread_bps") or 0.0)
+        slippage_override = float(symbol_mode_config_row.get("slippage_bps") or 0.0)
+        if fee_override or spread_override or slippage_override:
+            costs = CostBreakdown(
+                fee_bps=fee_override or costs.fee_bps,
+                spread_bps=spread_override or costs.spread_bps,
+                slippage_bps=slippage_override or costs.slippage_bps,
+            )
+            logger.info(
+                "cost_overrides_applied",
+                symbol=symbol,
+                mode=training_mode,
+                fee_bps=costs.fee_bps,
+                spread_bps=costs.spread_bps,
+                slippage_bps=costs.slippage_bps,
+            )
     
     # Verify costs are valid
     if not isinstance(costs.total_costs_bps, (int, float)) or costs.total_costs_bps < 0:
@@ -1817,8 +1917,26 @@ def _train_symbol(
             feature_metadata={},
         )
 
+    volatility_hint = 0.0
+    if "close" in raw_frame.columns:
+        close_np = raw_frame["close"].to_numpy()
+        if close_np.size > 1:
+            returns = np.diff(close_np) / close_np[:-1]
+            volatility_hint = float(np.nanstd(returns))
+
     # Use configurable training settings
     model_config = settings.training.model_training
+    if hyperparam_search_enabled:
+        searcher = HyperparamSearch("lightgbm")
+        suggestion = searcher.suggest(model_config.model_dump(), volatility_hint)
+        model_config = model_config.model_copy(update=suggestion.params)
+        logger.info(
+            "hyperparam_search_applied",
+            symbol=symbol,
+            mode=training_mode,
+            volatility_hint=volatility_hint,
+            params=suggestion.params,
+        )
     
     # Get regularization settings (with defaults - increased for better generalization)
     reg_alpha = getattr(model_config, 'reg_alpha', 2.0)  # L1 regularization (increased from 0.1)
@@ -2050,15 +2168,33 @@ def _train_symbol(
     
     # Initialize Brain Library integration (if database is available)
     brain_training = None
+    brain_library = None
     try:
         if dsn:
             from ..brain.brain_library import BrainLibrary
             brain_library = BrainLibrary(dsn=dsn, use_pool=True)
             brain_training = BrainIntegratedTraining(brain_library, settings)
             logger.info("brain_library_integration_enabled", symbol=symbol)
+            try:
+                symbol_mode_config_row = brain_library.get_symbol_mode_config(symbol, training_mode)
+            except Exception as cfg_err:
+                logger.warning("symbol_mode_config_fetch_failed", symbol=symbol, mode=training_mode, error=str(cfg_err))
     except Exception as e:
         logger.warning("brain_library_initialization_failed", symbol=symbol, error=str(e))
         # Continue without Brain Library if initialization fails
+    else:
+        if brain_library and window_search_result is not None:
+            try:
+                existing = brain_library.get_symbol_mode_config(symbol, training_mode) or {}
+                existing["window_days"] = window_search_result.window_days
+                brain_library.upsert_symbol_mode_config(symbol, training_mode, existing)
+            except Exception as upd_err:
+                logger.warning(
+                    "symbol_mode_window_store_failed",
+                    symbol=symbol,
+                    mode=training_mode,
+                    error=str(upd_err),
+                )
     
     logger.info(
         "model_training_config",
@@ -2532,6 +2668,8 @@ def _train_symbol(
     total_trades = len(combined_trades) if not combined_trades.empty else 0
     _print_status(f"Walk-forward training complete: {len(splits)} splits, {total_trades:,} total trades, {total_training_time/60:.1f} minutes", sym=symbol, level="SUCCESS")
     
+    atr_bps, realized_vol_bps = _compute_atr_stats(dataset)
+
     if not combined_trades.empty:
         winning_trades = (combined_trades["pnl_bps"] > 0).sum()
         losing_trades = (combined_trades["pnl_bps"] <= 0).sum()
@@ -2551,8 +2689,6 @@ def _train_symbol(
             trades_per_day = float(total_trades / days_range)
 
             if brain_training is not None:
-                # For now, treat this training as "scalp" mode by default.
-                training_mode = getattr(settings.training, "trading_mode", "scalp")
                 try:
                     brain_training.brain.store_symbol_mode_trade_stats(  # type: ignore[attr-defined]
                         stat_date=run_date,
@@ -2576,6 +2712,40 @@ def _train_symbol(
             )
     else:
         _print_status("WARNING: No trades generated during walk-forward validation", sym=symbol, level="WARN")
+    
+    if brain_training is not None:
+        try:
+            brain_training.brain.store_symbol_mode_vol_stats(  # type: ignore[attr-defined]
+                stat_date=run_date,
+                symbol=symbol,
+                mode=str(training_mode),
+                atr_bps=atr_bps,
+                realized_vol_bps=realized_vol_bps,
+            )
+        except Exception as e:
+            logger.warning(
+                "symbol_mode_vol_stats_store_failed",
+                symbol=symbol,
+                mode=str(training_mode),
+                error=str(e),
+            )
+        try:
+            brain_training.brain.store_symbol_mode_cost_stats(  # type: ignore[attr-defined]
+                stat_date=run_date,
+                symbol=symbol,
+                mode=str(training_mode),
+                avg_fee_bps=float(getattr(costs, "fee_bps", 0.0)),
+                avg_slippage_bps=float(getattr(costs, "slippage_bps", 0.0)),
+                avg_spread_bps=float(getattr(costs, "spread_bps", 0.0)),
+                median_total_costs_bps=float(getattr(costs, "total_costs_bps", 0.0)),
+            )
+        except Exception as e:
+            logger.warning(
+                "symbol_mode_cost_stats_store_failed",
+                symbol=symbol,
+                mode=str(training_mode),
+                error=str(e),
+            )
     
     metrics = _compute_metrics(combined_trades, costs.total_costs_bps, len(dataset))
     

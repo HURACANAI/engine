@@ -96,136 +96,62 @@ class SymbolModeConfig:
     sl_atr_k: float
     min_tp_bps: float
     size_multiplier: float
+    tp_bps: float = 0.0
+    sl_bps: float = 0.0
+    fee_bps: float = 0.0
+    spread_bps: float = 0.0
+    slippage_bps: float = 0.0
+    window_days: Optional[int] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
 
-# ---------------------------------------------------------------------------
-# Low-level DB helpers for symbol_mode_config
-# ---------------------------------------------------------------------------
-
-
-def _ensure_symbol_mode_config_table(brain: BrainLibrary) -> None:
-    """
-    Ensure the symbol_mode_config table exists.
-
-    Table schema:
-        symbol          VARCHAR(32)
-        mode            VARCHAR(32)
-        edge_threshold_bps  DECIMAL(10, 4)
-        tp_atr_k        DECIMAL(10, 4)
-        sl_atr_k        DECIMAL(10, 4)
-        min_tp_bps      DECIMAL(10, 4)
-        size_multiplier DECIMAL(10, 4)
-        created_at      TIMESTAMP
-        updated_at      TIMESTAMP
-        PRIMARY KEY (symbol, mode)
-    """
-    with brain._get_connection() as conn:  # type: ignore[attr-defined]
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                CREATE TABLE IF NOT EXISTS symbol_mode_config (
-                    symbol VARCHAR(32) NOT NULL,
-                    mode VARCHAR(32) NOT NULL,
-                    edge_threshold_bps DECIMAL(10, 4) NOT NULL,
-                    tp_atr_k DECIMAL(10, 4) NOT NULL,
-                    sl_atr_k DECIMAL(10, 4) NOT NULL,
-                    min_tp_bps DECIMAL(10, 4) NOT NULL,
-                    size_multiplier DECIMAL(10, 4) NOT NULL,
-                    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-                    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-                    PRIMARY KEY (symbol, mode)
-                )
-                """
-            )
-    logger.info("symbol_mode_config_table_ensured")
+def _config_from_dict(data: Dict[str, Any], symbol: str, mode: str) -> SymbolModeConfig:
+    return SymbolModeConfig(
+        symbol=symbol,
+        mode=mode,
+        edge_threshold_bps=float(data.get("edge_threshold_bps", 5.0)),
+        tp_atr_k=float(data.get("tp_atr_k", 2.0)),
+        sl_atr_k=float(data.get("sl_atr_k", 1.0)),
+        min_tp_bps=float(data.get("min_tp_bps", 10.0)),
+        size_multiplier=float(data.get("size_multiplier", 1.0)),
+        tp_bps=float(data.get("tp_bps", 0.0)),
+        sl_bps=float(data.get("sl_bps", 0.0)),
+        fee_bps=float(data.get("fee_bps", 0.0)),
+        spread_bps=float(data.get("spread_bps", 0.0)),
+        slippage_bps=float(data.get("slippage_bps", 0.0)),
+        window_days=data.get("window_days"),
+        created_at=data.get("created_at"),
+        updated_at=data.get("updated_at"),
+    )
 
 
 def _load_symbol_mode_config(
     brain: BrainLibrary, symbol: str, mode: str
 ) -> Optional[SymbolModeConfig]:
-    with brain._get_connection() as conn:  # type: ignore[attr-defined]
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT symbol,
-                       mode,
-                       edge_threshold_bps,
-                       tp_atr_k,
-                       sl_atr_k,
-                       min_tp_bps,
-                       size_multiplier,
-                       created_at,
-                       updated_at
-                  FROM symbol_mode_config
-                 WHERE symbol = %s AND mode = %s
-                """,
-                (symbol, mode),
-            )
-            row = cur.fetchone()
-
+    row = brain.get_symbol_mode_config(symbol, mode)
     if not row:
         return None
-
-    return SymbolModeConfig(
-        symbol=row[0],
-        mode=row[1],
-        edge_threshold_bps=float(row[2]),
-        tp_atr_k=float(row[3]),
-        sl_atr_k=float(row[4]),
-        min_tp_bps=float(row[5]),
-        size_multiplier=float(row[6]),
-        created_at=row[7],
-        updated_at=row[8],
-    )
+    return _config_from_dict(row, symbol, mode)
 
 
 def _upsert_symbol_mode_config(brain: BrainLibrary, cfg: SymbolModeConfig) -> None:
-    with brain._get_connection() as conn:  # type: ignore[attr-defined]
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                INSERT INTO symbol_mode_config (
-                    symbol,
-                    mode,
-                    edge_threshold_bps,
-                    tp_atr_k,
-                    sl_atr_k,
-                    min_tp_bps,
-                    size_multiplier,
-                    created_at,
-                    updated_at
-                )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
-                ON CONFLICT (symbol, mode)
-                DO UPDATE SET
-                    edge_threshold_bps = EXCLUDED.edge_threshold_bps,
-                    tp_atr_k = EXCLUDED.tp_atr_k,
-                    sl_atr_k = EXCLUDED.sl_atr_k,
-                    min_tp_bps = EXCLUDED.min_tp_bps,
-                    size_multiplier = EXCLUDED.size_multiplier,
-                    updated_at = NOW()
-                """,
-                (
-                    cfg.symbol,
-                    cfg.mode,
-                    cfg.edge_threshold_bps,
-                    cfg.tp_atr_k,
-                    cfg.sl_atr_k,
-                    cfg.min_tp_bps,
-                    cfg.size_multiplier,
-                ),
-            )
-    logger.info(
-        "symbol_mode_config_upserted",
-        symbol=cfg.symbol,
-        mode=cfg.mode,
-        edge_threshold_bps=cfg.edge_threshold_bps,
-        tp_atr_k=cfg.tp_atr_k,
-        sl_atr_k=cfg.sl_atr_k,
-        min_tp_bps=cfg.min_tp_bps,
-        size_multiplier=cfg.size_multiplier,
+    brain.upsert_symbol_mode_config(
+        cfg.symbol,
+        cfg.mode,
+        {
+            "edge_threshold_bps": cfg.edge_threshold_bps,
+            "tp_atr_k": cfg.tp_atr_k,
+            "sl_atr_k": cfg.sl_atr_k,
+            "min_tp_bps": cfg.min_tp_bps,
+            "size_multiplier": cfg.size_multiplier,
+            "tp_bps": cfg.tp_bps,
+            "sl_bps": cfg.sl_bps,
+            "fee_bps": cfg.fee_bps,
+            "spread_bps": cfg.spread_bps,
+            "slippage_bps": cfg.slippage_bps,
+            "window_days": cfg.window_days,
+        },
     )
 
 
@@ -293,6 +219,71 @@ def _get_recent_trade_stats(
         "avg_fee_bps": 0.0,
         "avg_slippage_bps": 0.0,
         "avg_spread_bps": 0.0,
+    }
+
+
+def _get_recent_volatility_stats(
+    brain: BrainLibrary, symbol: str, mode: str, lookback_days: int
+) -> Dict[str, float]:
+    end_date = datetime.utcnow()
+    start_date = end_date - timedelta(days=lookback_days)
+    rows = brain.load_symbol_mode_stats(
+        "symbol_mode_vol_stats", symbol, mode, start_date, end_date
+    )
+    if not rows:
+        return {"atr_bps": 0.0, "realized_vol_bps": 0.0}
+
+    atr_values = [float(row["atr_bps"]) for row in rows if row.get("atr_bps") is not None]
+    vol_values = [
+        float(row["realized_vol_bps"]) for row in rows if row.get("realized_vol_bps") is not None
+    ]
+    atr_bps = sum(atr_values) / len(atr_values) if atr_values else 0.0
+    realized_vol_bps = sum(vol_values) / len(vol_values) if vol_values else 0.0
+    logger.info(
+        "recent_volatility_stats_loaded",
+        symbol=symbol,
+        mode=mode,
+        atr_bps=atr_bps,
+        realized_vol_bps=realized_vol_bps,
+        samples=len(rows),
+    )
+    return {"atr_bps": atr_bps, "realized_vol_bps": realized_vol_bps}
+
+
+def _get_recent_cost_stats(
+    brain: BrainLibrary, symbol: str, mode: str, lookback_days: int
+) -> Dict[str, float]:
+    end_date = datetime.utcnow()
+    start_date = end_date - timedelta(days=lookback_days)
+    rows = brain.load_symbol_mode_stats(
+        "symbol_mode_cost_stats", symbol, mode, start_date, end_date
+    )
+    if not rows:
+        return {
+            "avg_fee_bps": 0.0,
+            "avg_slippage_bps": 0.0,
+            "avg_spread_bps": 0.0,
+            "median_total_costs_bps": 0.0,
+        }
+    fee = sum(float(row["avg_fee_bps"]) for row in rows) / len(rows)
+    slippage = sum(float(row["avg_slippage_bps"]) for row in rows) / len(rows)
+    spread = sum(float(row["avg_spread_bps"]) for row in rows) / len(rows)
+    median_costs = sum(float(row["median_total_costs_bps"]) for row in rows) / len(rows)
+    logger.info(
+        "recent_cost_stats_loaded",
+        symbol=symbol,
+        mode=mode,
+        avg_fee_bps=fee,
+        avg_slippage_bps=slippage,
+        avg_spread_bps=spread,
+        median_total_costs_bps=median_costs,
+        samples=len(rows),
+    )
+    return {
+        "avg_fee_bps": fee,
+        "avg_slippage_bps": slippage,
+        "avg_spread_bps": spread,
+        "median_total_costs_bps": median_costs,
     }
 
 
@@ -503,8 +494,6 @@ def run_meta_tuning(brain: BrainLibrary, symbols_and_modes: List[Tuple[str, str]
         lookback_days_trades=TRADES_LOOKBACK_DAYS,
     )
 
-    _ensure_symbol_mode_config_table(brain)
-
     for symbol, mode in symbols_and_modes:
         mode_cfg = DEFAULT_MODE_CONFIGS.get(
             mode,
@@ -528,6 +517,11 @@ def run_meta_tuning(brain: BrainLibrary, symbols_and_modes: List[Tuple[str, str]
                     sl_atr_k=1.0,
                     min_tp_bps=10.0,
                     size_multiplier=1.0,
+                    tp_bps=10.0,
+                    sl_bps=5.0,
+                    fee_bps=0.0,
+                    spread_bps=0.0,
+                    slippage_bps=0.0,
                 )
                 logger.info(
                     "symbol_mode_config_seeded_with_defaults",
@@ -546,10 +540,18 @@ def run_meta_tuning(brain: BrainLibrary, symbols_and_modes: List[Tuple[str, str]
             metrics = _get_recent_model_metrics(
                 brain, symbol, mode, METRICS_LOOKBACK_DAYS
             )
+            vol_stats = _get_recent_volatility_stats(
+                brain, symbol, mode, METRICS_LOOKBACK_DAYS
+            )
+            cost_stats = _get_recent_cost_stats(
+                brain, symbol, mode, METRICS_LOOKBACK_DAYS
+            )
 
             trades_per_day = trade_stats.get("trades_per_day", 0.0)
             sharpe = metrics.get("sharpe", 0.0)
             max_dd = metrics.get("max_drawdown", 0.0)
+            atr_bps = vol_stats.get("atr_bps", 0.0)
+            median_costs_bps = cost_stats.get("median_total_costs_bps", 0.0)
 
             # If we really have no data, skip safely.
             if trades_per_day == 0.0 and sharpe == 0.0:
@@ -580,8 +582,64 @@ def run_meta_tuning(brain: BrainLibrary, symbols_and_modes: List[Tuple[str, str]
                 max_drawdown=max_dd,
             )
 
-            # TODO: TP/SL tuning and cost model updating can be wired here once
-            # ATR and realized cost stats are available per symbol/mode.
+            # TP/SL tuning using ATR stats
+            if atr_bps > 0:
+                candidate_tp = max(current_cfg.min_tp_bps, atr_bps * current_cfg.tp_atr_k)
+                candidate_sl = max(1.0, atr_bps * current_cfg.sl_atr_k)
+                if abs(candidate_tp - current_cfg.tp_bps) > 1e-6 or abs(candidate_sl - current_cfg.sl_bps) > 1e-6:
+                    logger.info(
+                        "tp_sl_updated",
+                        symbol=symbol,
+                        mode=mode,
+                        old_tp_bps=current_cfg.tp_bps,
+                        new_tp_bps=candidate_tp,
+                        old_sl_bps=current_cfg.sl_bps,
+                        new_sl_bps=candidate_sl,
+                        atr_bps=atr_bps,
+                    )
+                    current_cfg.tp_bps = candidate_tp
+                    current_cfg.sl_bps = candidate_sl
+
+            # Ensure TP minimum stays above costs
+            if median_costs_bps > 0 and current_cfg.min_tp_bps < median_costs_bps + 1.0:
+                old_min_tp = current_cfg.min_tp_bps
+                current_cfg.min_tp_bps = median_costs_bps + 1.0
+                logger.info(
+                    "min_tp_adjusted_for_costs",
+                    symbol=symbol,
+                    mode=mode,
+                    old_min_tp_bps=old_min_tp,
+                    new_min_tp_bps=current_cfg.min_tp_bps,
+                    median_costs_bps=median_costs_bps,
+                )
+
+            # Cost overrides using realized stats
+            new_fee = cost_stats.get("avg_fee_bps", 0.0)
+            new_spread = cost_stats.get("avg_spread_bps", 0.0)
+            new_slippage = cost_stats.get("avg_slippage_bps", 0.0)
+            if (
+                new_fee
+                and new_spread
+                and (
+                    abs(new_fee - current_cfg.fee_bps) > 1e-6
+                    or abs(new_spread - current_cfg.spread_bps) > 1e-6
+                    or abs(new_slippage - current_cfg.slippage_bps) > 1e-6
+                )
+            ):
+                logger.info(
+                    "cost_model_updated",
+                    symbol=symbol,
+                    mode=mode,
+                    old_fee_bps=current_cfg.fee_bps,
+                    new_fee_bps=new_fee,
+                    old_spread_bps=current_cfg.spread_bps,
+                    new_spread_bps=new_spread,
+                    old_slippage_bps=current_cfg.slippage_bps,
+                    new_slippage_bps=new_slippage,
+                )
+                current_cfg.fee_bps = new_fee
+                current_cfg.spread_bps = new_spread
+                current_cfg.slippage_bps = new_slippage
 
             current_cfg.edge_threshold_bps = new_edge
             current_cfg.size_multiplier = new_size

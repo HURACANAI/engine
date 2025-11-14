@@ -214,6 +214,9 @@ class AdvancedTrainingSettings(BaseModel):
     use_recency_weighting: bool = True  # Weight recent data higher
     
     use_v2_data_quality: bool = True  # V2 data quality pipeline
+    enable_auto_window_selection: bool = False
+    candidate_window_days: List[int] = Field(default_factory=lambda: [180, 270, 365])
+    enable_hyperparam_search: bool = False
 
 
 class TrainingSettings(BaseModel):
